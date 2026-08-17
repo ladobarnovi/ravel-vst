@@ -96,6 +96,9 @@ channels for notes and CC.
 | Semitone | scale degrees | applied |
 | Continuous (MPE / Pitch Bend) | **semitones** | **bypassed** |
 
+A scale degree is not always a whole semitone — see [Scales and tunings](#scales-and-tunings)
+below.
+
 Maximum is 100. Notes clamp to the MIDI range, so how much of a large Range is actually
 reachable depends on **Root** — from the default Root of 48 (C3) there are only 79 semitones
 of headroom, so a Range above that flattens out at the top. Drop Root to 12 or 24 to use the
@@ -104,6 +107,33 @@ full span.
 In Semitone mode, mapping onto degrees rather than raw semitones is deliberate: it means
 every step lands on a usable note instead of several steps snapping onto the same pitch. On a
 five-note pentatonic, 12 degrees is nearly two and a half octaves.
+
+### Scales and tunings
+
+The **Scale** list holds the familiar 12-tone scales plus scales in three other equal
+divisions of the octave. Scales prefixed with a number are in that EDO:
+
+| Tuning | Step | Scales | Why it's there |
+|---|---|---|---|
+| 12-EDO | 100 ¢ | Chromatic, Major, Natural/Harmonic Minor, both Pentatonics, Dorian, Mixolydian, Whole Tone | The usual |
+| **19-EDO** | 63.2 ¢ | Chromatic, Major, Natural/Harmonic Minor, Pentatonic Minor, Blues | A meantone. The diatonic scales are the ordinary ones respelled 3-3-2-3-3-3-2, so they still sound major and minor, with thirds nearer just than 12-EDO manages. Sharps and flats separate: C♯ sits a step *below* D♭ |
+| **23-EDO** | 52.2 ¢ | Chromatic, Pentatonic, Mavila 7, Mavila 9 | The awkward one — its best fifth is a quarter-tone flat, so diatonic harmony doesn't survive the trip. What it has instead is **mavila**, where that flat fifth turns the diatonic scale inside out: the major-scale-shaped scale comes out with two large steps and five small ones, and its third degree is minor-sized |
+| **53-EDO** | 22.6 ¢ (the Holdrian comma) | Chromatic, Just Major, Just Minor, Pythagorean Major, Just Pentatonic, Rast, Hicaz | Fifth 701.9 ¢, major third 384.9 ¢ — it renders 5-limit just intonation to within a couple of cents, and Pythagorean tuning separately, which is why the two major scales differ at all. It's also the grid Turkish makam theory is written on |
+
+Every tuning keeps a 2:1 octave, so a full scale-octave is always exactly 12 semitones however
+many degrees it took to climb, and patterns stay octave-aligned with everything else in the
+session. Only the degrees *within* an octave fall between the keys.
+
+**Those in-between degrees play as a note plus pitch bend**, the same mechanism continuous
+pitch uses — so with Quantize on, a non-12 scale is subject to the same limit: **one microtone
+at a time per channel.** Overlapping notes (a Gate over 100 %, Voices above 1, or three poly
+lanes at once) share the channel's wheel, so they can't hold different microtones. Keep to one
+voice for microtonal work, or give the lanes separate instances. `Bend range` becomes live and
+is announced by RPN just as it is in continuous mode; the residual never exceeds half a
+semitone, so the ±2 default is plenty.
+
+Remember that **Range is counted in degrees**. 53-EDO chromatic spends them fast — at the
+default Range of 12 it covers a quarter of an octave — so turn Range up for the larger EDOs.
 
 ### Continuous (unquantized) pitch
 
@@ -135,7 +165,9 @@ always plays the identical pitch no matter how high Slew is set.
 
 **Bend Range** is transmitted, not assumed. The MPE default per-note range is ±48 semitones,
 so an instrument left at that default while the plugin scaled for ±2 would play 24× the
-intended interval. Whenever the mode, range or target channel changes, TriLane sends:
+intended interval. Whenever the range, the target channel, or *whether pitch bends at all*
+changes — that last one covers Quantize and switching to or from a non-12 scale — TriLane
+sends:
 
 - MPE mode — the MPE Configuration Message (RPN 6) plus the per-note bend range (RPN 0)
 - Pitch Bend mode — pitch bend sensitivity (RPN 0) on `Note Chan`, and no zone message
@@ -143,6 +175,10 @@ intended interval. Whenever the mode, range or target channel changes, TriLane s
 Switching away from MPE tears the zone down (RPN 6 with zero member channels) so the
 instrument isn't left in MPE mode. Smaller Bend Range means finer resolution; ±2 is the
 default and is plenty, since the residual never exceeds half a semitone.
+
+Going the other way — Quantize back on, or a non-12 scale back to a 12-EDO one — the wheel is
+explicitly recentred. Nothing in that mode ever writes the wheel again, so the bend the last
+note left on the channel would otherwise detune every note that followed.
 
 Those RPNs are written out as raw controller events rather than via `juce::MPEMessages`,
 which returns a `MidiBuffer` by value and would allocate on the audio thread.

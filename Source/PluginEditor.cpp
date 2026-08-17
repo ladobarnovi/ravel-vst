@@ -76,6 +76,7 @@ TriLaneAudioProcessorEditor::TriLaneAudioProcessorEditor (TriLaneAudioProcessor&
     // Polled on the timer rather than via a parameter listener, because listener
     // callbacks arrive on the audio thread and must not touch components.
     quantizeParam = state.getRawParameterValue (params::quantizeId);
+    scaleParam    = state.getRawParameterValue (params::scaleId);
     polyModeParam = state.getRawParameterValue (params::polyModeId);
 
     setSize (windowWidth, windowHeight);
@@ -94,6 +95,9 @@ void TriLaneAudioProcessorEditor::buildTabs()
     auto& notes = pitchPage.addColumn ("Notes");
     notes.add (params::rootNoteId,   "Root");
     scaleRow = notes.add (params::scaleId, "Scale");
+    scaleRow->setTooltip ("Scales named 19, 23 or 53 divide the octave into that many equal "
+                          "steps. Their degrees land between the keys, so they play as a note "
+                          "plus pitch bend -- one microtone at a time per channel");
     notes.add (params::rangeStepsId, "Range");
     quantizeRow = notes.add (params::quantizeId, "Quantize");
     quantizeRow->setTooltip ("On: pitch snaps to the selected scale. Off: continuous "
@@ -203,19 +207,22 @@ void TriLaneAudioProcessorEditor::timerCallback()
 
     mixMeter.setValue (engine.getMixValue());
 
-    if (quantizeParam != nullptr)
+    if (quantizeParam != nullptr && scaleParam != nullptr)
     {
         const int quantize = quantizeParam->load() > 0.5f ? 1 : 0;
+        const int scale    = (int) scaleParam->load();
 
-        if (quantize != lastQuantize)
+        if (quantize != lastQuantize || scale != lastScale)
         {
             lastQuantize = quantize;
+            lastScale    = scale;
 
-            // The two are mutually exclusive by construction: quantized pitch consults the
-            // scale and never writes a bend, continuous pitch bypasses the scale and needs
-            // the bend range.
+            // Continuous pitch bypasses the scale entirely, so the row goes dim.
             scaleRow->setDimmed (quantize == 0);
-            bendRangeRow->setDimmed (quantize != 0);
+
+            // Bend range is live wherever pitch can land between semitones: continuous mode,
+            // and any scale in an EDO other than 12.
+            bendRangeRow->setDimmed (quantize != 0 && ! params::scaleNeedsBend (scale));
         }
     }
 

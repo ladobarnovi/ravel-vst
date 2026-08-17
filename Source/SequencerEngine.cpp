@@ -291,10 +291,21 @@ SequencerEngine::PitchResult SequencerEngine::pitchFor (float value, const Snaps
 
     if (s.quantize)
     {
-        const int degree   = (int) std::lround (value * (float) s.rangeSteps);
-        const int semitone = params::scaleStepToSemitone (degree, s.scale);
+        const int   degree    = (int) std::lround (value * (float) s.rangeSteps);
+        const float absolute  = (float) s.root + params::scaleStepToSemitone (degree, s.scale);
 
-        result.note = juce::jlimit (0, 127, s.root + semitone);
+        result.note = juce::jlimit (0, 127, (int) std::lround (absolute));
+
+        // A 12-EDO scale lands exactly on note numbers and the wheel is left alone, as it
+        // always was. Any other EDO puts most of its degrees between the keys, so the
+        // residual rides on pitch bend -- the same trick continuous mode uses below, and it
+        // inherits the same limit: one bend per channel, so overlapping notes cannot hold
+        // different microtones.
+        //
+        // Written even when the residual is zero. Degree 0 of a 19-EDO scale is in tune only
+        // if the bend the *previous* degree left on the channel is cleared.
+        if (params::scaleNeedsBend (s.scale))
+            result.bend = params::pitchBendForSemitones (absolute - (float) result.note, bendRange);
 
         return result;
     }
@@ -310,12 +321,7 @@ SequencerEngine::PitchResult SequencerEngine::pitchFor (float value, const Snaps
     const float absolute = (float) s.root + params::continuousSemitones (value, s.rangeSteps);
 
     result.note = juce::jlimit (0, 127, (int) std::lround (absolute));
-
-    const float residual   = absolute - (float) result.note;
-    const float normalised = juce::jlimit (-1.0f, 1.0f, residual / (float) bendRange);
-
-    result.bend = juce::jlimit (0, 16383,
-                                params::pitchBendCentre + (int) std::lround (normalised * 8191.0f));
+    result.bend = params::pitchBendForSemitones (absolute - (float) result.note, bendRange);
 
     return result;
 }
@@ -390,11 +396,16 @@ void SequencerEngine::process (const Snapshot& s,
     const int noteChannel = juce::jlimit (1, 16, s.midiChannel);
     const int bendRange   = juce::jlimit (1, 48, s.bendRange);
 
+    // Pitch rides on the wheel whenever it can land between semitones: in continuous mode
+    // always, and in quantized mode when the scale divides the octave into something other
+    // than 12.
+    const bool usesBend = ! s.quantize || params::scaleNeedsBend (s.scale);
+
     // The receiving instrument has to be told the bend range: an instrument left at its own
     // default while we scale for +/-2 semitones plays the wrong interval.
     if (notesEnabled)
     {
-        const int wantedMode = s.quantize ? 1 : 0;
+        const int wantedMode = usesBend ? 0 : 1;
 
         const bool changed = configuredMode != wantedMode
                           || configuredBendRange != bendRange
@@ -402,16 +413,17 @@ void SequencerEngine::process (const Snapshot& s,
 
         if (changed)
         {
-            if (! s.quantize)
+            if (usesBend)
             {
                 sendPitchBendRange (out, 0, noteChannel, bendRange);
             }
             else if (configuredMode == 0)
             {
-                // Turning Quantize back on: the channel is still holding whatever bend the
-                // last continuous note set, and nothing in quantized mode ever writes the
-                // wheel again -- so every note that follows would play detuned by that
-                // leftover amount. Centre it on the channel the bends actually went to.
+                // Leaving a mode that bends -- Quantize turned back on, or a switch from a
+                // microtonal scale to a 12-EDO one. The channel is still holding whatever
+                // bend the last note set, and nothing in this mode ever writes the wheel
+                // again, so every note that follows would play detuned by that leftover
+                // amount. Centre it on the channel the bends actually went to.
                 const int staleChannel = configuredChannel >= 1 ? configuredChannel : noteChannel;
 
                 out.addEvent (juce::MidiMessage::pitchWheel (staleChannel, params::pitchBendCentre), 0);

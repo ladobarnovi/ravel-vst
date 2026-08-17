@@ -184,10 +184,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
             [] (int v, int) { return noteNameText (v); })));
 
     // Semitones in the continuous pitch modes; scale degrees in Semitone mode, where the
-    // octave span then depends on the scale. Notes clamp to the MIDI range, so how much of
-    // a large Range is actually reachable depends on Root.
+    // octave span then depends on the scale -- 12 degrees is two and a half octaves of a
+    // pentatonic but only a quarter of an octave of 53-EDO chromatic. Notes clamp to the MIDI
+    // range, so how much of a large Range is actually reachable depends on Root.
     layout.add (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { rangeStepsId, versionHint }, "Range", 1, 100, 12));
+
+    // The two lists are indexed by the same parameter value, so they have to stay in step.
+    jassert (scaleNames.size() == numScales);
 
     layout.add (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { scaleId, versionHint }, "Scale", scaleNames, 4));

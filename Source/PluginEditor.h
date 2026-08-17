@@ -62,6 +62,11 @@ private:
     std::atomic<float>* quantizeParam = nullptr;
     int lastQuantize = -1;
 
+    // Watched alongside Quantize because the scale decides whether Bend Range is in play:
+    // a 19-, 23- or 53-EDO scale rides on the wheel even with Quantize on.
+    std::atomic<float>* scaleParam = nullptr;
+    int lastScale = -1;
+
     std::atomic<float>* polyModeParam = nullptr;
     int lastPolyMode = -1;
 

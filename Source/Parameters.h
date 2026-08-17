@@ -47,6 +47,18 @@ inline constexpr int pitchBendRangeRpn = 0;
 /** Centre position of the 14-bit pitch wheel: no bend. */
 inline constexpr int pitchBendCentre = 8192;
 
+/** The wheel value that expresses a pitch offset in semitones, for an instrument set to the
+    given bend range. Clamped rather than wrapped, so an offset larger than the range bottoms
+    out at the extreme instead of jumping to the opposite one.
+*/
+inline int pitchBendForSemitones (float semitones, int bendRange) noexcept
+{
+    const float normalised = juce::jlimit (-1.0f, 1.0f,
+                                           semitones / (float) juce::jmax (1, bendRange));
+
+    return juce::jlimit (0, 16383, pitchBendCentre + (int) std::lround (normalised * 8191.0f));
+}
+
 // Combine-mode indices, used by the engine's switch.
 enum CombineMode { modeAdd = 0, modeMultiply = 1, modeMax = 2, modeSampleHold = 3 };
 
@@ -55,42 +67,135 @@ enum CombineMode { modeAdd = 0, modeMultiply = 1, modeMax = 2, modeSampleHold = 
 enum OutputMode { outNotes = 0, outCC = 1, outBoth = 2 };
 
 //==============================================================================
-inline constexpr int maxScaleSize = 12;
+// Scales are stored as steps of an equal division of the octave rather than as semitones,
+// so 19-, 23- and 53-EDO sit in the same table as the familiar 12-EDO ones and the engine
+// needs one code path for all of them. Every tuning here keeps a 2:1 octave, which is what
+// makes the mapping onto MIDI note numbers tractable: a full scale-octave is always exactly
+// 12 semitones however many degrees it took to climb, so only the degrees *within* an octave
+// ever fall between the keys.
+//
+// 53 is the largest EDO in the table and so sets the array width.
+inline constexpr int maxScaleSize = 53;
 
 struct ScaleDef
 {
+    /** Degrees above the root, in steps of `edo`. Only the first `size` entries are used. */
     std::array<int, maxScaleSize> intervals;
     int size;
+
+    /** Equal divisions of the octave the intervals are counted in. */
+    int edo;
 };
+
+/** Every step of an EDO, i.e. that tuning's own chromatic scale. A function because spelling
+    out 53 consecutive integers by hand is noise, not documentation.
+*/
+constexpr ScaleDef edoChromatic (int edo) noexcept
+{
+    ScaleDef def { {}, edo, edo };
+
+    for (int i = 0; i < edo; ++i)
+        def.intervals[(size_t) i] = i;
+
+    return def;
+}
 
 inline const juce::StringArray scaleNames
 {
     "Chromatic", "Major", "Natural Minor", "Harmonic Minor",
-    "Pentatonic Minor", "Pentatonic Major", "Dorian", "Mixolydian", "Whole Tone"
+    "Pentatonic Minor", "Pentatonic Major", "Dorian", "Mixolydian", "Whole Tone",
+
+    "19 Chromatic", "19 Major", "19 Natural Minor", "19 Harmonic Minor",
+    "19 Pentatonic Minor", "19 Blues",
+
+    "23 Chromatic", "23 Pentatonic", "23 Mavila 7", "23 Mavila 9",
+
+    "53 Chromatic", "53 Just Major", "53 Just Minor", "53 Pythagorean Major",
+    "53 Just Pentatonic", "53 Rast", "53 Hicaz"
 };
 
 inline constexpr ScaleDef scales[]
 {
-    { { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11 }, 12 },   // Chromatic
-    { { 0, 2, 4, 5, 7, 9, 11, 0, 0, 0, 0, 0 },   7 },   // Major
-    { { 0, 2, 3, 5, 7, 8, 10, 0, 0, 0, 0, 0 },   7 },   // Natural Minor
-    { { 0, 2, 3, 5, 7, 8, 11, 0, 0, 0, 0, 0 },   7 },   // Harmonic Minor
-    { { 0, 3, 5, 7, 10, 0, 0, 0, 0, 0, 0, 0 },   5 },   // Pentatonic Minor
-    { { 0, 2, 4, 7, 9, 0, 0, 0, 0, 0, 0, 0 },    5 },   // Pentatonic Major
-    { { 0, 2, 3, 5, 7, 9, 10, 0, 0, 0, 0, 0 },   7 },   // Dorian
-    { { 0, 2, 4, 5, 7, 9, 10, 0, 0, 0, 0, 0 },   7 },   // Mixolydian
-    { { 0, 2, 4, 6, 8, 10, 0, 0, 0, 0, 0, 0 },   6 },   // Whole Tone
+    //--------------------------------------------------------------------------
+    // 12-EDO. Unchanged, and still the only ones that land exactly on MIDI notes.
+    edoChromatic (12),                          // Chromatic
+    { { 0, 2, 4, 5, 7, 9, 11 }, 7, 12 },        // Major
+    { { 0, 2, 3, 5, 7, 8, 10 }, 7, 12 },        // Natural Minor
+    { { 0, 2, 3, 5, 7, 8, 11 }, 7, 12 },        // Harmonic Minor
+    { { 0, 3, 5, 7, 10 },       5, 12 },        // Pentatonic Minor
+    { { 0, 2, 4, 7, 9 },        5, 12 },        // Pentatonic Major
+    { { 0, 2, 3, 5, 7, 9, 10 }, 7, 12 },        // Dorian
+    { { 0, 2, 4, 5, 7, 9, 10 }, 7, 12 },        // Mixolydian
+    { { 0, 2, 4, 6, 8, 10 },    6, 12 },        // Whole Tone
+
+    //--------------------------------------------------------------------------
+    // 19-EDO. Step 63.2 cents. A meantone tuning, so the diatonic scales below are the
+    // ordinary ones respelled -- 3+3+2+3+3+3+2 instead of 2+2+1+2+2+2+1 -- and sound
+    // recognisably major and minor, with thirds closer to just than 12-EDO manages.
+    // What is new is that sharps and flats separate: C# sits a step below Db.
+    edoChromatic (19),                          // 19 Chromatic
+    { { 0, 3, 6, 8, 11, 14, 17 }, 7, 19 },      // 19 Major
+    { { 0, 3, 5, 8, 11, 13, 16 }, 7, 19 },      // 19 Natural Minor
+    { { 0, 3, 5, 8, 11, 13, 17 }, 7, 19 },      // 19 Harmonic Minor
+    { { 0, 5, 8, 11, 16 },        5, 19 },      // 19 Pentatonic Minor
+    { { 0, 5, 8, 9, 11, 16 },     6, 19 },      // 19 Blues
+
+    //--------------------------------------------------------------------------
+    // 23-EDO. Step 52.2 cents. The odd one out: its best fifth (13 steps, 678 cents) is a
+    // quarter-tone flat, so diatonic harmony does not survive the trip and transcribing a
+    // 12-EDO scale into it is pointless. What it does have is the mavila family, where a
+    // flat fifth turns the diatonic scale inside out -- the "major" scale comes out with
+    // two large steps and five small ones, the reverse of the usual arrangement. Those MOS
+    // scales are generated by stacking that 13-step fifth, which is why they are the ones
+    // offered here.
+    edoChromatic (23),                          // 23 Chromatic
+    { { 0, 3, 6, 13, 16 },              5, 23 },    // 23 Pentatonic  (2L 3s)
+    { { 0, 3, 6, 9, 13, 16, 19 },       7, 23 },    // 23 Mavila 7    (2L 5s, antidiatonic)
+    { { 0, 3, 6, 9, 12, 13, 16, 19, 22 }, 9, 23 },  // 23 Mavila 9    (7L 2s)
+
+    //--------------------------------------------------------------------------
+    // 53-EDO. Step 22.6 cents, the Holdrian comma. Its fifth is 31 steps (701.9 cents,
+    // under a cent from just) and its major third 17 steps (384.9 cents), so it renders
+    // 5-limit just intonation almost exactly -- and, separately, Pythagorean tuning, which
+    // is why the two major scales below differ at all. It is also the grid Turkish makam
+    // theory is written on, hence Rast and Hicaz.
+    //
+    // 53 degrees to the octave means Range is spending them fast: at the default Range of
+    // 12 the chromatic scale covers a quarter of an octave, so turn Range up for these.
+    edoChromatic (53),                          // 53 Chromatic
+    { { 0, 9, 17, 22, 31, 39, 48 }, 7, 53 },    // 53 Just Major        9/8 5/4 4/3 3/2 5/3 15/8
+    { { 0, 9, 14, 22, 31, 36, 45 }, 7, 53 },    // 53 Just Minor        9/8 6/5 4/3 3/2 8/5 9/5
+    { { 0, 9, 18, 22, 31, 40, 49 }, 7, 53 },    // 53 Pythagorean Major stacked 3/2s
+    { { 0, 9, 17, 31, 39 },         5, 53 },    // 53 Just Pentatonic
+    { { 0, 9, 17, 22, 31, 40, 48 }, 7, 53 },    // 53 Rast   9-8-5-9-9-8-5 commas
+    { { 0, 5, 17, 22, 31, 39, 44 }, 7, 53 },    // 53 Hicaz  5-12-5 tetrachord + Rast pentachord
 };
 
 inline constexpr int numScales = (int) (sizeof (scales) / sizeof (scales[0]));
+
+/** Equal divisions of the octave the scale's degrees are measured in. */
+inline int scaleEdo (int scaleIndex) noexcept
+{
+    return scales[(size_t) juce::jlimit (0, numScales - 1, scaleIndex)].edo;
+}
+
+/** True when the scale's degrees do not all coincide with 12-EDO semitones, so its notes
+    only play in tune if they carry a pitch bend.
+*/
+inline bool scaleNeedsBend (int scaleIndex) noexcept
+{
+    return scaleEdo (scaleIndex) != 12;
+}
 
 /** Converts a scale-degree offset into semitones, wrapping octaves as it goes.
 
     Mapping the mixed value onto scale *degrees* rather than semitones-then-snap
     means every step lands on a usable note and the range is distributed evenly,
     instead of clustering several steps onto the same snapped pitch.
+
+    Fractional for a non-12 EDO; whole numbers, exactly, for the 12-EDO scales.
 */
-inline int scaleStepToSemitone (int step, int scaleIndex) noexcept
+inline float scaleStepToSemitone (int step, int scaleIndex) noexcept
 {
     const auto& s = scales[(size_t) juce::jlimit (0, numScales - 1, scaleIndex)];
     const int size = s.size;
@@ -98,7 +203,9 @@ inline int scaleStepToSemitone (int step, int scaleIndex) noexcept
     const int octave = (int) std::floor ((double) step / (double) size);
     const int degree = step - octave * size;
 
-    return octave * 12 + s.intervals[(size_t) degree];
+    // Counted in EDO steps first and converted once, so a whole number of octaves comes back
+    // as an exact multiple of 12 rather than accumulating rounding per octave.
+    return (float) (octave * s.edo + s.intervals[(size_t) degree]) * 12.0f / (float) s.edo;
 }
 
 /** Linear mix-to-pitch mapping used when Quantize is off.

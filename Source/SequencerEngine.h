@@ -207,7 +207,8 @@ private:
 
     // What the receiving instrument has already been told, so the RPNs are re-sent only
     // when the mode, range or target channel actually changes.
-    // -1 until the first block, then 1 for quantized and 0 for continuous.
+    // -1 until the first block, then 0 while pitch rides on the wheel (continuous mode, or a
+    // quantized scale in an EDO other than 12) and 1 while it does not.
     int   configuredMode      = -1;
     int   configuredBendRange = -1;
     int   configuredChannel   = -1;

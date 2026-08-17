@@ -817,6 +817,219 @@ int main()
     }
 
     //==========================================================================
+    section ("Scale table invariants");
+    {
+        bool rootIsZero    = true;
+        bool octavesExact  = true;
+        bool degreesSorted = true;
+
+        for (int i = 0; i < params::numScales; ++i)
+        {
+            const auto& def = params::scales[(size_t) i];
+
+            rootIsZero = rootIsZero && def.intervals[0] == 0
+                                    && std::abs (params::scaleStepToSemitone (0, i)) < 1.0e-6f;
+
+            // One scale-octave is 12 semitones in every tuning here, upwards and downwards,
+            // however many degrees it took to climb. That is what keeps a 19- or 53-EDO
+            // pattern octave-aligned with everything else in the session.
+            octavesExact = octavesExact
+                        && std::abs (params::scaleStepToSemitone (def.size, i) - 12.0f) < 1.0e-6f
+                        && std::abs (params::scaleStepToSemitone (-def.size, i) + 12.0f) < 1.0e-6f;
+
+            for (int d = 1; d < def.size; ++d)
+                degreesSorted = degreesSorted
+                             && def.intervals[(size_t) d] > def.intervals[(size_t) d - 1]
+                             && def.intervals[(size_t) d] < def.edo;
+        }
+
+        check (params::scaleNames.size() == params::numScales, "every scale in the table is named");
+        check (rootIsZero,    "degree 0 is the root in every scale");
+        check (octavesExact,  "a scale-octave is exactly 12 semitones in every tuning");
+        check (degreesSorted, "degrees ascend and stay inside one octave of their EDO");
+    }
+
+    //==========================================================================
+    section ("Non-12 EDO scales land where the tuning says");
+    {
+        const auto indexOfScale = [] (const char* name) { return params::scaleNames.indexOf (name); };
+
+        const auto centsOfDegree = [&] (const char* name, int degree)
+        {
+            return (double) params::scaleStepToSemitone (degree, indexOfScale (name)) * 100.0;
+        };
+
+        // 19-EDO is a meantone: its major third (6 of 19 steps) is flatter than 12-EDO's 400
+        // cents and closer to just intonation's 386.3.
+        check (std::abs (centsOfDegree ("19 Major", 2) - 378.9) < 0.5,
+               "the 19-EDO major third is 6 steps, 378.9 cents");
+
+        check (std::abs (centsOfDegree ("19 Chromatic", 1) - 63.2) < 0.5,
+               "one 19-EDO step is 63.2 cents");
+
+        // The point of mavila: the scale is shaped like a major scale but its third degree
+        // comes out minor-sized, because the generating fifth is flat.
+        check (std::abs (centsOfDegree ("23 Mavila 7", 2) - 313.0) < 0.5,
+               "the 23-EDO antidiatonic third is minor-sized at 313 cents");
+
+        // 53-EDO's whole reason for existing: near-exact just thirds and fifths.
+        check (std::abs (centsOfDegree ("53 Just Major", 2) - 386.3) < 2.0,
+               "53-EDO renders 5/4 to within a couple of cents");
+
+        check (std::abs (centsOfDegree ("53 Just Major", 4) - 702.0) < 1.0,
+               "53-EDO renders 3/2 to within a cent");
+
+        // Turkish makam is written on the same 53 commas; Rast differs from a just major
+        // scale at the sixth, which is what stops it sounding like one.
+        check (centsOfDegree ("53 Rast", 5) > centsOfDegree ("53 Just Major", 5),
+               "Rast takes a higher sixth than the just major scale");
+    }
+
+    //==========================================================================
+    section ("A quantized microtonal scale plays as note + bend");
+    {
+        auto s = baseSnapshot();
+        s.scale      = params::scaleNames.indexOf ("19 Chromatic");
+        s.quantize   = true;
+        s.root       = 48;
+        s.rangeSteps = 19;      // one 19-EDO octave over the full mix range
+        s.bendRange  = 2;
+        s.lanes[0].length = 4;
+
+        // Degrees 0, 1, 7 and 19: the root, one step up, a scale note that falls between two
+        // MIDI keys, and the octave.
+        const int degrees[] { 0, 1, 7, 19 };
+
+        for (int i = 0; i < 4; ++i)
+            s.lanes[0].values[i] = (float) degrees[i] / 19.0f;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto events = run (engine, s, 4 * samplesPerStep);
+        const auto ons    = only (events, noteOn);
+        const auto bends  = only (events, pitchBend);
+
+        bool inTune      = ons.size() == 4;
+        bool alwaysBends = ons.size() == 4;
+
+        for (size_t i = 0; i < ons.size() && i < 4; ++i)
+        {
+            double pitch = -1.0;
+
+            for (const auto& bend : bends)
+                if (bend.sample == ons[i].sample && bend.channel == ons[i].channel)
+                    pitch = (double) ons[i].number
+                          + ((double) bend.value - 8192.0) / 8191.0 * (double) s.bendRange;
+
+            // A bend accompanies every note, including the two that need none: without it the
+            // note would inherit whatever the previous degree left on the channel.
+            alwaysBends = alwaysBends && pitch > 0.0;
+
+            const double expected = 48.0 + (double) degrees[i] * 12.0 / 19.0;
+
+            inTune = inTune && pitch > 0.0 && std::abs (pitch - expected) < 0.01;
+        }
+
+        check (alwaysBends, "every note in a microtonal scale carries its own bend");
+        check (inTune,      "note + bend reconstructs the 19-EDO degree");
+
+        bool octaveIsExact = false;
+
+        for (const auto& bend : bends)
+            if (! ons.empty() && ons.size() == 4 && bend.sample == ons[3].sample)
+                octaveIsExact = ons[3].number == 60
+                             && std::abs (bend.value - params::pitchBendCentre) <= 1;
+
+        check (octaveIsExact, "the 19th degree is the octave, on the key, with a centred wheel");
+    }
+
+    //==========================================================================
+    section ("A quantized microtonal scale announces its bend range");
+    {
+        auto s = baseSnapshot();
+        s.scale       = params::scaleNames.indexOf ("53 Just Major");
+        s.quantize    = true;
+        s.bendRange   = 5;
+        s.midiChannel = 2;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        juce::MidiBuffer buffer;
+        engine.process (s, buffer, 512, 0.0, ppqPerSample, true);
+
+        bool announced = false;
+        int currentRpn = -1;
+
+        for (const auto metadata : buffer)
+        {
+            const auto message = metadata.getMessage();
+
+            if (! message.isController())
+                continue;
+
+            if (message.getControllerNumber() == 0x64)
+                currentRpn = message.getControllerValue();
+
+            if (message.getControllerNumber() == 0x06
+                && currentRpn == params::pitchBendRangeRpn
+                && message.getControllerValue() == 5
+                && message.getChannel() == 2)
+                announced = true;
+        }
+
+        check (announced, "bend range RPN 0 goes out for a microtonal scale, not just continuous mode");
+    }
+
+    //==========================================================================
+    section ("Leaving a microtonal scale recentres the pitch wheel");
+    {
+        // Same hazard as switching Quantize back on: a 12-EDO scale never writes the wheel,
+        // so the bend the last 19-EDO note left behind would detune everything after it.
+        auto s = baseSnapshot();
+        s.scale = params::scaleNames.indexOf ("19 Chromatic");
+        s.lanes[0].length = 1;
+        s.lanes[0].values[0] = 7.0f / 19.0f;    // a degree that sits between two keys
+        s.rangeSteps = 19;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        juce::MidiBuffer buffer;
+        engine.process (s, buffer, 512, 0.0, ppqPerSample, true);
+
+        int lastBend = params::pitchBendCentre;
+
+        for (const auto metadata : buffer)
+            if (metadata.getMessage().isPitchWheel())
+                lastBend = metadata.getMessage().getPitchWheelValue();
+
+        check (lastBend != params::pitchBendCentre, "a 19-EDO degree leaves the wheel off centre");
+
+        s.scale = 0;    // back to 12-EDO Chromatic
+        buffer.clear();
+        engine.process (s, buffer, 512, ppqPerSample * 512, ppqPerSample, true);
+
+        bool recentred = false;
+        bool stillBends = false;
+
+        for (const auto metadata : buffer)
+        {
+            if (! metadata.getMessage().isPitchWheel())
+                continue;
+
+            if (metadata.getMessage().getPitchWheelValue() == params::pitchBendCentre)
+                recentred = true;
+            else
+                stillBends = true;
+        }
+
+        check (recentred,   "switching to a 12-EDO scale sends a centred pitch wheel");
+        check (! stillBends, "and a 12-EDO scale writes no bend of its own");
+    }
+
+    //==========================================================================
     section ("Per-step probability");
     {
         const auto countNotesWithChance = [] (float chance)
