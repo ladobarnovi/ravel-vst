@@ -171,7 +171,7 @@ namespace
         s.ccChannel     = 1;
         s.offset        = 0.0f;
         s.slewMs        = 0.0f;
-        s.pitchMode     = params::pitchSemitone;
+        s.quantize      = true;
         s.bendRange     = 2;
 
         return s;
@@ -517,58 +517,7 @@ int main()
         for (const auto& e : ons)
             onNoteChannel = onNoteChannel && (e.channel == 1);
 
-        check (onNoteChannel, "semitone mode uses the Note Channel parameter");
-    }
-
-    //==========================================================================
-    section ("Continuous pitch via MPE");
-    {
-        auto s = baseSnapshot();
-        s.lanes[0].length = 1;
-        s.lanes[0].values[0] = 0.3f;   // 0.3 * 12 = 3.6 semitones above root 48 -> 51.6
-        s.scale      = 0;              // Chromatic, so degrees are plain semitones
-        s.rangeSteps = 12;
-        s.root       = 48;
-        s.pitchMode  = params::pitchMpe;
-        s.bendRange  = 2;
-
-        SequencerEngine engine;
-        engine.prepare (sampleRate);
-
-        const auto events = run (engine, s, 4 * samplesPerStep);
-        const auto ons   = only (events, noteOn);
-        const auto bends = only (events, pitchBend);
-
-        check (! ons.empty(), "continuous mode still fires notes");
-        check (bends.size() >= ons.size(), "every note is preceded by a pitch bend");
-
-        // The real invariant: note number plus bend must reconstruct the fractional pitch.
-        bool reconstructs = false;
-
-        if (! ons.empty())
-        {
-            for (const auto& bend : bends)
-            {
-                if (bend.sample == ons[0].sample && bend.channel == ons[0].channel)
-                {
-                    const double pitch = (double) ons[0].number
-                                       + ((double) bend.value - 8192.0) / 8191.0 * (double) s.bendRange;
-
-                    reconstructs = std::abs (pitch - 51.6) < 0.01;
-                }
-            }
-        }
-
-        check (reconstructs, "note + bend reconstructs 51.6 semitones");
-
-        bool onMemberChannels = ! ons.empty();
-
-        for (const auto& e : ons)
-            onMemberChannels = onMemberChannels && e.channel >= 2 && e.channel <= 16;
-
-        check (onMemberChannels, "notes are sent on MPE member channels (2-16)");
-        check (ons.size() >= 2 && ons[0].channel != ons[1].channel,
-               "consecutive notes rotate across member channels");
+        check (onNoteChannel, "quantized mode uses the Note Channel parameter");
     }
 
     //==========================================================================
@@ -580,7 +529,7 @@ int main()
         s.scale      = 0;
         s.rangeSteps = 12;
         s.root       = 48;
-        s.pitchMode  = params::pitchMpe;
+        s.quantize   = false;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -595,58 +544,13 @@ int main()
 
         for (const auto& bend : bends)
             if (! ons.empty() && bend.sample == ons[0].sample && bend.channel == ons[0].channel)
-                centred = std::abs (bend.value - 8192) <= 1;
+                centred = std::abs (bend.value - params::pitchBendCentre) <= 1;
 
         check (centred, "bend is centred when no fractional part is needed");
     }
 
     //==========================================================================
-    section ("MPE configuration message");
-    {
-        auto s = baseSnapshot();
-        s.pitchMode = params::pitchMpe;
-        s.bendRange = 12;
-
-        SequencerEngine engine;
-        engine.prepare (sampleRate);
-
-        juce::MidiBuffer buffer;
-        engine.process (s, buffer, 512, 0.0, ppqPerSample, true);
-
-        bool sawZone = false;
-        bool sawBendRange = false;
-        int currentRpn = -1;
-
-        for (const auto metadata : buffer)
-        {
-            const auto message = metadata.getMessage();
-
-            if (! message.isController())
-                continue;
-
-            if (message.getControllerNumber() == 0x64)
-                currentRpn = message.getControllerValue();
-
-            if (message.getControllerNumber() == 0x06)
-            {
-                if (currentRpn == params::mpeZoneRpn
-                    && message.getControllerValue() == params::mpeMemberChannels
-                    && message.getChannel() == 1)
-                    sawZone = true;
-
-                if (currentRpn == params::pitchBendRangeRpn
-                    && message.getControllerValue() == 12
-                    && message.getChannel() == 2)
-                    sawBendRange = true;
-            }
-        }
-
-        check (sawZone, "RPN 6 declares 15 member channels on the master channel");
-        check (sawBendRange, "RPN 0 transmits the 12-semitone per-note bend range on channel 2");
-    }
-
-    //==========================================================================
-    section ("Scale is bypassed in continuous modes");
+    section ("Scale is bypassed when Quantize is off");
     {
         // The same pattern under a pentatonic scale and under chromatic must produce
         // identical pitches: continuous mode is raw semitones, the scale only applies
@@ -658,7 +562,7 @@ int main()
             s.scale      = scaleIndex;
             s.rangeSteps = 12;
             s.root       = 48;
-            s.pitchMode  = params::pitchBend;
+            s.quantize   = false;
             s.bendRange  = 2;
 
             for (int i = 0; i < 4; ++i)
@@ -714,7 +618,7 @@ int main()
         s.lanes[0].values[1] = 0.61f;
         s.scale      = 0;
         s.rangeSteps = 12;
-        s.pitchMode  = params::pitchBend;
+        s.quantize   = false;
         s.slewMs     = 400.0f;   // heavy slew: must affect CC only, never pitch
 
         SequencerEngine engine;
@@ -746,7 +650,7 @@ int main()
         s.scale       = 0;
         s.rangeSteps  = 12;
         s.root        = 48;
-        s.pitchMode   = params::pitchBend;
+        s.quantize    = false;
         s.bendRange   = 2;
         s.midiChannel = 5;
 
@@ -790,10 +694,10 @@ int main()
     }
 
     //==========================================================================
-    section ("Pitch bend mode sends no MPE zone message");
+    section ("Continuous pitch announces its bend range and nothing else");
     {
         auto s = baseSnapshot();
-        s.pitchMode   = params::pitchBend;
+        s.quantize    = false;
         s.bendRange   = 7;
         s.midiChannel = 3;
 
@@ -803,7 +707,7 @@ int main()
         juce::MidiBuffer buffer;
         engine.process (s, buffer, 512, 0.0, ppqPerSample, true);
 
-        bool sawZoneRpn = false;
+        int rpnDataEntries = 0;
         bool sawRangeOnNoteChannel = false;
         int currentRpn = -1;
 
@@ -819,8 +723,7 @@ int main()
 
             if (message.getControllerNumber() == 0x06)
             {
-                if (currentRpn == params::mpeZoneRpn)
-                    sawZoneRpn = true;
+                ++rpnDataEntries;
 
                 if (currentRpn == params::pitchBendRangeRpn
                     && message.getControllerValue() == 7
@@ -829,8 +732,8 @@ int main()
             }
         }
 
-        check (! sawZoneRpn, "no MPE configuration message is sent in pitch bend mode");
         check (sawRangeOnNoteChannel, "bend range RPN 0 goes to the Note Chan");
+        check (rpnDataEntries == 1, "only the bend range is announced, no other RPN");
     }
 
     //==========================================================================
@@ -841,7 +744,7 @@ int main()
         s.scale      = 0;      // Chromatic
         s.rangeSteps = 24;
         s.root       = 36;
-        s.pitchMode  = params::pitchBend;
+        s.quantize   = false;
         s.bendRange  = 2;
 
         for (int i = 0; i < 4; ++i)
@@ -875,10 +778,15 @@ int main()
     }
 
     //==========================================================================
-    section ("Switching away from MPE clears the zone");
+    section ("Turning Quantize back on recentres the pitch wheel");
     {
+        // Continuous notes leave a bend on the channel. Quantized mode never writes the wheel
+        // again, so without an explicit recentre every following note would play detuned.
         auto s = baseSnapshot();
-        s.pitchMode = params::pitchMpe;
+        s.quantize = false;
+        s.lanes[0].length = 1;
+        s.lanes[0].values[0] = 0.3f;    // a value with a fractional semitone, so bend != centre
+        s.rangeSteps = 12;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -886,31 +794,26 @@ int main()
         juce::MidiBuffer buffer;
         engine.process (s, buffer, 512, 0.0, ppqPerSample, true);
 
-        // Now switch to pitch bend mode and check the zone gets torn down.
-        s.pitchMode = params::pitchBend;
+        int lastBend = params::pitchBendCentre;
+
+        for (const auto metadata : buffer)
+            if (metadata.getMessage().isPitchWheel())
+                lastBend = metadata.getMessage().getPitchWheelValue();
+
+        check (lastBend != params::pitchBendCentre, "continuous pitch leaves the wheel off centre");
+
+        s.quantize = true;
         buffer.clear();
         engine.process (s, buffer, 512, ppqPerSample * 512, ppqPerSample, true);
 
-        bool clearedZone = false;
-        int currentRpn = -1;
+        bool recentred = false;
 
         for (const auto metadata : buffer)
-        {
-            const auto message = metadata.getMessage();
+            if (metadata.getMessage().isPitchWheel()
+                && metadata.getMessage().getPitchWheelValue() == params::pitchBendCentre)
+                recentred = true;
 
-            if (! message.isController())
-                continue;
-
-            if (message.getControllerNumber() == 0x64)
-                currentRpn = message.getControllerValue();
-
-            if (message.getControllerNumber() == 0x06
-                && currentRpn == params::mpeZoneRpn
-                && message.getControllerValue() == 0)
-                clearedZone = true;
-        }
-
-        check (clearedZone, "leaving MPE sends RPN 6 with 0 member channels");
+        check (recentred, "switching Quantize on sends a centred pitch wheel");
     }
 
     //==========================================================================

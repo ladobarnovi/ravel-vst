@@ -75,8 +75,8 @@ TriLaneAudioProcessorEditor::TriLaneAudioProcessorEditor (TriLaneAudioProcessor&
 
     // Polled on the timer rather than via a parameter listener, because listener
     // callbacks arrive on the audio thread and must not touch components.
-    pitchModeParam = state.getRawParameterValue (params::pitchModeId);
-    polyModeParam  = state.getRawParameterValue (params::polyModeId);
+    quantizeParam = state.getRawParameterValue (params::quantizeId);
+    polyModeParam = state.getRawParameterValue (params::polyModeId);
 
     setSize (windowWidth, windowHeight);
     startTimerHz (30);
@@ -95,7 +95,9 @@ void TriLaneAudioProcessorEditor::buildTabs()
     notes.add (params::rootNoteId,   "Root");
     scaleRow = notes.add (params::scaleId, "Scale");
     notes.add (params::rangeStepsId, "Range");
-    notes.add (params::pitchModeId,  "Pitch");
+    quantizeRow = notes.add (params::quantizeId, "Quantize");
+    quantizeRow->setTooltip ("On: pitch snaps to the selected scale. Off: continuous "
+                             "microtonal pitch, sent as a note plus pitch bend");
 
     auto& bend = pitchPage.addColumn ("Bend");
     bendRangeRow = bend.add (params::bendRangeId, "Bend range");
@@ -115,7 +117,7 @@ void TriLaneAudioProcessorEditor::buildTabs()
 
     //--------------------------------------------------------------------------
     auto& global = routingPage.addColumn ("Notes and mix");
-    noteChannelRow = global.add (params::midiChannelId, "Note channel");
+    global.add (params::midiChannelId, "Note channel");
     global.add (params::ccNumberId,  "Mix CC");
     global.add (params::ccChannelId, "Mix CC channel");
 
@@ -201,19 +203,19 @@ void TriLaneAudioProcessorEditor::timerCallback()
 
     mixMeter.setValue (engine.getMixValue());
 
-    if (pitchModeParam != nullptr)
+    if (quantizeParam != nullptr)
     {
-        const auto pitchMode = (int) std::lround (pitchModeParam->load());
+        const int quantize = quantizeParam->load() > 0.5f ? 1 : 0;
 
-        if (pitchMode != lastPitchMode)
+        if (quantize != lastQuantize)
         {
-            lastPitchMode = pitchMode;
+            lastQuantize = quantize;
 
-            // Scale is bypassed by the continuous modes, bend range is only sent by them,
-            // and MPE allocates its own channels rather than using Note channel.
-            scaleRow->setDimmed (params::isContinuousPitch (pitchMode));
-            bendRangeRow->setDimmed (! params::isContinuousPitch (pitchMode));
-            noteChannelRow->setDimmed (pitchMode == params::pitchMpe);
+            // The two are mutually exclusive by construction: quantized pitch consults the
+            // scale and never writes a bend, continuous pitch bypasses the scale and needs
+            // the bend range.
+            scaleRow->setDimmed (quantize == 0);
+            bendRangeRow->setDimmed (quantize != 0);
         }
     }
 

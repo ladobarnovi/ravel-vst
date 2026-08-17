@@ -167,9 +167,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     layout.add (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { triggerSrcId, versionHint }, "Trigger", triggerNames, 0));
 
-    // Defaults to Semitone so existing sessions keep the behaviour they were saved with.
-    layout.add (std::make_unique<juce::AudioParameterChoice> (
-        juce::ParameterID { pitchModeId, versionHint }, "Pitch", pitchModeNames, pitchSemitone));
+    // On: pitch snaps to degrees of the selected scale. Off: continuous microtonal pitch,
+    // carried as the nearest note plus a pitch bend. Defaults to on, which is the behaviour
+    // the old three-way Pitch choice defaulted to.
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { quantizeId, versionHint }, "Quantize", true));
 
     layout.add (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { bendRangeId, versionHint }, "Bend Range", 1, 48, 2,

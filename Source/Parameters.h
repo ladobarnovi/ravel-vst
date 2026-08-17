@@ -32,30 +32,20 @@ inline const juce::StringArray directionNames  { "Forward", "Reverse", "Ping-Pon
 inline const juce::StringArray modeNames       { "Add", "Multiply", "Max", "S&H" };
 inline const juce::StringArray outputModeNames { "Notes", "CC", "Notes + CC" };
 inline const juce::StringArray triggerNames    { "Lane 1", "Lane 2", "Lane 3", "Any Lane" };
-// Appended rather than reordered so a saved session's stored index keeps its meaning.
-inline const juce::StringArray pitchModeNames
-    { "Semitone", "Continuous (MPE)", "Continuous (Pitch Bend)" };
-
-enum PitchMode { pitchSemitone = 0, pitchMpe = 1, pitchBend = 2 };
-
-/** True for the modes where pitch is not quantized to semitones. Both continuous modes
-    share the note-plus-bend maths and differ only in how the bend is channelled.
-*/
-inline bool isContinuousPitch (int pitchMode) noexcept
-{
-    return pitchMode == pitchMpe || pitchMode == pitchBend;
-}
 
 //==============================================================================
-// MPE lower zone: channel 1 is the master, 2..16 are member channels. Notes are
-// rotated across the member channels so per-note pitch bend on a new note can't
-// pull the pitch of one still releasing.
-inline constexpr int mpeMasterChannel  = 1;
-inline constexpr int mpeMemberChannels = 15;
+// Pitch is either quantized to scale degrees or continuous. Continuous pitch is carried as
+// the nearest note plus a pitch bend on the note channel, so a whole chord or a set of
+// overlapping notes shares one bend -- the trade for surviving hosts that merge MIDI
+// channels when routing between tracks.
+//
+// RPN 0 is pitch bend sensitivity, which the receiving instrument has to be told: leaving it
+// at an instrument's own default while we scale for a different range plays the wrong
+// interval.
+inline constexpr int pitchBendRangeRpn = 0;
 
-// RPN 6 is the MPE Configuration Message; RPN 0 is pitch bend sensitivity.
-inline constexpr int mpeZoneRpn         = 6;
-inline constexpr int pitchBendRangeRpn  = 0;
+/** Centre position of the 14-bit pitch wheel: no bend. */
+inline constexpr int pitchBendCentre = 8192;
 
 // Combine-mode indices, used by the engine's switch.
 enum CombineMode { modeAdd = 0, modeMultiply = 1, modeMax = 2, modeSampleHold = 3 };
@@ -111,11 +101,11 @@ inline int scaleStepToSemitone (int step, int scaleIndex) noexcept
     return octave * 12 + s.intervals[(size_t) degree];
 }
 
-/** Linear mix-to-pitch mapping used by the continuous pitch modes.
+/** Linear mix-to-pitch mapping used when Quantize is off.
 
     The scale is deliberately not consulted here. Continuous pitch is meant to be raw
     microtonal values, so Range is read as semitones and the mapping is a straight ramp.
-    Scale quantisation applies only in Semitone mode.
+    Scale quantisation applies only when Quantize is on.
 */
 inline float continuousSemitones (float mix, int rangeSemitones) noexcept
 {
@@ -144,7 +134,7 @@ juce::String laneCcChanId   (int lane);
 // Global / output-section parameter IDs.
 inline constexpr auto outputModeId   = "out_mode";
 inline constexpr auto triggerSrcId   = "trig_src";
-inline constexpr auto pitchModeId    = "pitch_mode";
+inline constexpr auto quantizeId     = "quantize";
 inline constexpr auto bendRangeId    = "bend_range";
 inline constexpr auto rootNoteId     = "root_note";
 inline constexpr auto rangeStepsId   = "range_steps";

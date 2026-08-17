@@ -53,19 +53,6 @@ namespace
 }
 
 //==============================================================================
-void SequencerEngine::sendMpeConfiguration (juce::MidiBuffer& out, int sampleOffset, int bendRange)
-{
-    // Same three-part sequence as MPEMessages::setLowerZone().
-    addRpn (out, sampleOffset, params::mpeMasterChannel, params::mpeZoneRpn, params::mpeMemberChannels);
-    addRpn (out, sampleOffset, params::mpeMasterChannel + 1, params::pitchBendRangeRpn, bendRange);
-    addRpn (out, sampleOffset, params::mpeMasterChannel, params::pitchBendRangeRpn, 2);
-}
-
-void SequencerEngine::clearMpeZone (juce::MidiBuffer& out, int sampleOffset)
-{
-    addRpn (out, sampleOffset, params::mpeMasterChannel, params::mpeZoneRpn, 0);
-}
-
 void SequencerEngine::sendPitchBendRange (juce::MidiBuffer& out, int sampleOffset,
                                           int channel, int bendRange)
 {
@@ -106,7 +93,6 @@ void SequencerEngine::reset()
     configuredMode      = -1;
     configuredBendRange = -1;
     configuredChannel   = -1;
-    memberChannelIndex  = 0;
     configuredPolyMode  = -1;
 
     for (int lane = 0; lane < params::numLanes; ++lane)
@@ -298,48 +284,38 @@ int SequencerEngine::allocateVoice (juce::MidiBuffer& out, int sampleOffset,
 
 //==============================================================================
 SequencerEngine::PitchResult SequencerEngine::pitchFor (float value, const Snapshot& s,
-                                                       int noteChannel, int bendRange)
+                                                       int noteChannel, int bendRange) noexcept
 {
     PitchResult result;
+    result.channel = noteChannel;
 
-    if (params::isContinuousPitch (s.pitchMode))
-    {
-        // Raw microtonal pitch: Range is semitones and the scale is bypassed. Nearest
-        // semitone carries the note number; the residual (at most half a semitone) is
-        // expressed as pitch bend.
-        const float absolute = (float) s.root + params::continuousSemitones (value, s.rangeSteps);
-
-        result.note = juce::jlimit (0, 127, (int) std::lround (absolute));
-
-        if (s.pitchMode == params::pitchMpe)
-        {
-            // Rotate member channels so a new note's bend can't pull the pitch of one that
-            // is still sounding. This is also what makes polyphonic microtonal pitch
-            // possible at all, in poly mode as much as with an overlapping gate.
-            result.channel = params::mpeMasterChannel + 1 + memberChannelIndex;
-            memberChannelIndex = (memberChannelIndex + 1) % params::mpeMemberChannels;
-        }
-        else
-        {
-            // Single channel: survives hosts that merge MIDI channels when routing between
-            // tracks, but the bend is shared by every voice on it, so overlapping notes --
-            // including three poly lanes at once -- cannot hold different microtones.
-            result.channel = noteChannel;
-        }
-
-        const float residual   = absolute - (float) result.note;
-        const float normalised = juce::jlimit (-1.0f, 1.0f, residual / (float) bendRange);
-
-        result.bend = juce::jlimit (0, 16383, 8192 + (int) std::lround (normalised * 8191.0f));
-    }
-    else
+    if (s.quantize)
     {
         const int degree   = (int) std::lround (value * (float) s.rangeSteps);
         const int semitone = params::scaleStepToSemitone (degree, s.scale);
 
-        result.note    = juce::jlimit (0, 127, s.root + semitone);
-        result.channel = noteChannel;
+        result.note = juce::jlimit (0, 127, s.root + semitone);
+
+        return result;
     }
+
+    // Raw microtonal pitch: Range is semitones and the scale is bypassed. The nearest
+    // semitone carries the note number; the residual (at most half a semitone) is expressed
+    // as pitch bend.
+    //
+    // The bend goes on the note channel, which is shared by every voice on it -- so
+    // overlapping notes, including three poly lanes at once, cannot hold different
+    // microtones. That is the cost of staying on one channel, which is what survives hosts
+    // that merge MIDI channels when routing between tracks.
+    const float absolute = (float) s.root + params::continuousSemitones (value, s.rangeSteps);
+
+    result.note = juce::jlimit (0, 127, (int) std::lround (absolute));
+
+    const float residual   = absolute - (float) result.note;
+    const float normalised = juce::jlimit (-1.0f, 1.0f, residual / (float) bendRange);
+
+    result.bend = juce::jlimit (0, 16383,
+                                params::pitchBendCentre + (int) std::lround (normalised * 8191.0f));
 
     return result;
 }
@@ -414,27 +390,34 @@ void SequencerEngine::process (const Snapshot& s,
     const int noteChannel = juce::jlimit (1, 16, s.midiChannel);
     const int bendRange   = juce::jlimit (1, 48, s.bendRange);
 
-    // The receiving instrument has to be told the bend range -- the MPE default is +/-48
-    // semitones, so an instrument left at that default while we scale for +/-2 plays 24x
-    // the intended interval.
+    // The receiving instrument has to be told the bend range: an instrument left at its own
+    // default while we scale for +/-2 semitones plays the wrong interval.
     if (notesEnabled)
     {
-        const bool changed = configuredMode != s.pitchMode
+        const int wantedMode = s.quantize ? 1 : 0;
+
+        const bool changed = configuredMode != wantedMode
                           || configuredBendRange != bendRange
-                          || (s.pitchMode == params::pitchBend && configuredChannel != noteChannel);
+                          || configuredChannel != noteChannel;
 
         if (changed)
         {
-            // Don't leave the instrument stuck in MPE mode after switching away from it.
-            if (configuredMode == params::pitchMpe && s.pitchMode != params::pitchMpe)
-                clearMpeZone (out, 0);
-
-            if (s.pitchMode == params::pitchMpe)
-                sendMpeConfiguration (out, 0, bendRange);
-            else if (s.pitchMode == params::pitchBend)
+            if (! s.quantize)
+            {
                 sendPitchBendRange (out, 0, noteChannel, bendRange);
+            }
+            else if (configuredMode == 0)
+            {
+                // Turning Quantize back on: the channel is still holding whatever bend the
+                // last continuous note set, and nothing in quantized mode ever writes the
+                // wheel again -- so every note that follows would play detuned by that
+                // leftover amount. Centre it on the channel the bends actually went to.
+                const int staleChannel = configuredChannel >= 1 ? configuredChannel : noteChannel;
 
-            configuredMode      = s.pitchMode;
+                out.addEvent (juce::MidiMessage::pitchWheel (staleChannel, params::pitchBendCentre), 0);
+            }
+
+            configuredMode      = wantedMode;
             configuredBendRange = bendRange;
             configuredChannel   = noteChannel;
         }

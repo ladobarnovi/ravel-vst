@@ -50,7 +50,7 @@ public:
 
         int   outputMode    = params::outNotes;
         int   triggerSource = 0;
-        int   pitchMode     = params::pitchSemitone;
+        bool  quantize      = true;
         int   bendRange     = 2;
         int   root          = 48;
         int   rangeSteps    = 12;
@@ -128,14 +128,10 @@ private:
     static std::int64_t resolveGlobalIndex (double ppq, double stepPpq, const LaneSnapshot& lane,
                                             float swing, int laneIndex) noexcept;
 
-    /** Emits the MPE Configuration Message and per-note bend range. Written out as raw
-        RPN controller messages rather than via juce::MPEMessages, because that returns a
-        MidiBuffer by value and would allocate on the audio thread.
+    /** Pitch bend sensitivity (RPN 0) for the note channel. Written out as raw RPN controller
+        messages rather than via a JUCE helper, because those return a MidiBuffer by value and
+        would allocate on the audio thread.
     */
-    void sendMpeConfiguration (juce::MidiBuffer& out, int sampleOffset, int bendRange);
-    void clearMpeZone (juce::MidiBuffer& out, int sampleOffset);
-
-    /** Pitch bend sensitivity (RPN 0) for a single channel -- the non-MPE equivalent. */
     void sendPitchBendRange (juce::MidiBuffer& out, int sampleOffset, int channel, int bendRange);
 
     struct LaneState
@@ -180,9 +176,7 @@ private:
     /** Releases voices in slots the current mode and voice count no longer own. */
     void retireUnownedVoices (juce::MidiBuffer& out, int sampleOffset, int voiceLimit, bool polyMode);
 
-    /** The note, channel and pitch bend a 0..1 value maps to under the current pitch mode.
-        Not const: MPE mode advances the member-channel rotation as a side effect.
-    */
+    /** The note, channel and pitch bend a 0..1 value maps to under the current pitch setting. */
     struct PitchResult
     {
         int note    = 0;
@@ -190,7 +184,7 @@ private:
         int bend    = -1;   // -1 means no bend is needed
     };
 
-    PitchResult pitchFor (float value, const Snapshot& s, int noteChannel, int bendRange);
+    static PitchResult pitchFor (float value, const Snapshot& s, int noteChannel, int bendRange) noexcept;
 
     /** The MIDI velocity for a note fired by a given step: the global Velocity scaled by the
         lane's trim and then by that step's own accent. */
@@ -213,10 +207,10 @@ private:
 
     // What the receiving instrument has already been told, so the RPNs are re-sent only
     // when the mode, range or target channel actually changes.
+    // -1 until the first block, then 1 for quantized and 0 for continuous.
     int   configuredMode      = -1;
     int   configuredBendRange = -1;
     int   configuredChannel   = -1;
-    int   memberChannelIndex  = 0;
 
     // Slot ownership differs between the two modes, so anything still sounding when the
     // switch is flipped is released rather than left for the other mode to inherit.

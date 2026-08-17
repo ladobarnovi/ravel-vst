@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include "Parameters.h"
 #include "SequencerEngine.h"
@@ -71,7 +71,7 @@ private:
 
     std::atomic<float>* pOutputMode  = nullptr;
     std::atomic<float>* pTriggerSrc  = nullptr;
-    std::atomic<float>* pPitchMode   = nullptr;
+    std::atomic<float>* pQuantize    = nullptr;
     std::atomic<float>* pBendRange   = nullptr;
     std::atomic<float>* pRootNote    = nullptr;
     std::atomic<float>* pRangeSteps  = nullptr;

@@ -56,11 +56,11 @@ private:
     // Non-owning; point into the tab pages. Dimmed when the current mode ignores them.
     ControlRow* scaleRow = nullptr;
     ControlRow* bendRangeRow = nullptr;
-    ControlRow* noteChannelRow = nullptr;
+    ControlRow* quantizeRow = nullptr;
     ControlRow* triggerRow = nullptr;
 
-    std::atomic<float>* pitchModeParam = nullptr;
-    int lastPitchMode = -1;
+    std::atomic<float>* quantizeParam = nullptr;
+    int lastQuantize = -1;
 
     std::atomic<float>* polyModeParam = nullptr;
     int lastPolyMode = -1;
