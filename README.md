@@ -46,10 +46,14 @@ channels for notes and CC.
 | Semitone | scale degrees | applied |
 | Continuous (MPE / Pitch Bend) | **semitones** | **bypassed** |
 
-Maximum is 60 either way — five octaves in semitones — and notes clamp to the MIDI range
-regardless. In Semitone mode, mapping onto degrees rather than raw semitones is deliberate:
-it means every step lands on a usable note instead of several steps snapping onto the same
-pitch. On a five-note pentatonic, 12 degrees is nearly two and a half octaves.
+Maximum is 100. Notes clamp to the MIDI range, so how much of a large Range is actually
+reachable depends on **Root** — from the default Root of 48 (C3) there are only 79 semitones
+of headroom, so a Range above that flattens out at the top. Drop Root to 12 or 24 to use the
+full span.
+
+In Semitone mode, mapping onto degrees rather than raw semitones is deliberate: it means
+every step lands on a usable note instead of several steps snapping onto the same pitch. On a
+five-note pentatonic, 12 degrees is nearly two and a half octaves.
 
 ### Continuous (unquantized) pitch
 
