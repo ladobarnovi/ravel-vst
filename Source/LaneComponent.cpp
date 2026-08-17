@@ -2,25 +2,17 @@
 
 namespace
 {
-    using theme::styleCaption;
+    constexpr int gateHeight   = 5;
+    constexpr int gateGap      = 4;
 
-    /** Populates a ComboBox from the choice parameter it is about to be attached to,
-        so the item order always matches the parameter's own index order.
-    */
-    void fillFromChoiceParam (juce::AudioProcessorValueTreeState& state,
-                              const juce::String& paramID,
-                              juce::ComboBox& box)
-    {
-        if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (state.getParameter (paramID)))
-            box.addItemList (choice->choices, 1);
-    }
+    // Wide enough that the eight gate strips read as eight marks rather than as one line
+    // ruled under the whole step area.
+    constexpr int slotGap      = 5;
 
-    void styleCompactSlider (juce::Slider& slider, juce::Colour accent, int textBoxWidth)
-    {
-        slider.setSliderStyle (juce::Slider::LinearHorizontal);
-        slider.setTextBoxStyle (juce::Slider::TextBoxRight, false, textBoxWidth, 18);
-        slider.setColour (juce::Slider::trackColourId, accent.withAlpha (0.75f));
-    }
+    constexpr int railWidth    = 3;
+    constexpr int numberWidth  = 16;
+    constexpr int paramWidth   = 280;
+    constexpr int dividerGap   = 14;
 }
 
 //==============================================================================
@@ -29,24 +21,27 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
 {
     valueSlider.setSliderStyle (juce::Slider::LinearBarVertical);
     valueSlider.setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
-    valueSlider.setColour (juce::Slider::trackColourId, accent);
     valueSlider.setColour (juce::Slider::backgroundColourId, theme::track);
     valueSlider.setPopupDisplayEnabled (true, true, getParentComponent());
     valueSlider.setDoubleClickReturnValue (true, 0.0);
+    theme::setRole (valueSlider, theme::Role::stepBar);
     addAndMakeVisible (valueSlider);
 
-    // Thin bar under the value: the step's chance of firing. Dimmer than the value bar
-    // so a lane still reads as a pattern at a glance.
-    chanceSlider.setSliderStyle (juce::Slider::LinearBar);
+    // Added after the value bar so it paints on top of it; see ChanceOverlay for how the
+    // two share the same rectangle without fighting over the mouse.
+    chanceSlider.setSliderStyle (juce::Slider::LinearBarVertical);
     chanceSlider.setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
-    chanceSlider.setColour (juce::Slider::trackColourId, accent.withAlpha (0.45f));
-    chanceSlider.setColour (juce::Slider::backgroundColourId, theme::track);
+    chanceSlider.setColour (juce::Slider::backgroundColourId, juce::Colours::transparentBlack);
+    chanceSlider.setColour (juce::Slider::trackColourId, theme::text.withAlpha (0.7f));
     chanceSlider.setPopupDisplayEnabled (true, true, getParentComponent());
     chanceSlider.setDoubleClickReturnValue (true, 1.0);
-    chanceSlider.setTooltip ("Chance this step fires");
+    chanceSlider.setTooltip ("Chance this step fires -- drag the right edge of the bar");
+    theme::setRole (chanceSlider, theme::Role::stepChance);
     addAndMakeVisible (chanceSlider);
 
     onButton.setColour (juce::ToggleButton::tickColourId, accent);
+    onButton.setTooltip ("Mute or unmute this step");
+    theme::setRole (onButton, theme::Role::stepGate);
     addAndMakeVisible (onButton);
 
     valueAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
@@ -57,29 +52,41 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
 
     onAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         state, params::stepOnId (laneIndex, stepIndex), onButton);
+
+    // ButtonAttachment listens through addListener rather than through either callback,
+    // so onStateChange is free for the lane's own use.
+    onButton.onStateChange = [this] { applyGateState(); };
+    applyGateState();
 }
 
-void StepSlot::paint (juce::Graphics& g)
+void StepSlot::applyGateState()
+{
+    const bool on = onButton.getToggleState();
+
+    valueSlider.setColour (juce::Slider::trackColourId, on ? accent : accent.withAlpha (0.25f));
+    valueSlider.repaint();
+}
+
+void StepSlot::paintOverChildren (juce::Graphics& g)
 {
     if (! playing)
         return;
 
-    // Playhead ring around the whole slot.
-    g.setColour (accent.withAlpha (0.9f));
-    g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (0.75f), 4.0f, 1.5f);
+    // Drawn over the children rather than in paint(), because the value bar now fills the
+    // whole slot and would cover anything painted underneath it.
+    g.setColour (accent);
+    g.drawRoundedRectangle (valueSlider.getBounds().toFloat().reduced (0.75f), 3.0f, 1.5f);
 }
 
 void StepSlot::resized()
 {
-    auto r = getLocalBounds().reduced (2);
+    auto r = getLocalBounds();
 
-    onButton.setBounds (r.removeFromBottom (16));
-    r.removeFromBottom (3);
-
-    chanceSlider.setBounds (r.removeFromBottom (9));
-    r.removeFromBottom (3);
+    onButton.setBounds (r.removeFromBottom (gateHeight));
+    r.removeFromBottom (gateGap);
 
     valueSlider.setBounds (r);
+    chanceSlider.setBounds (r);
 }
 
 void StepSlot::setPlaying (bool shouldBePlaying)
@@ -95,79 +102,34 @@ void StepSlot::setPlaying (bool shouldBePlaying)
 LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int laneIndex,
                               params::LanePattern& sharedClipboard)
     : apvts (state), lane (laneIndex), accent (theme::laneAccent (laneIndex)),
-      clipboard (sharedClipboard)
+      clipboard (sharedClipboard), paramGroup (state)
 {
-    titleLabel.setText ("LANE " + juce::String (laneIndex + 1), juce::dontSendNotification);
-    titleLabel.setFont (theme::titleFont());
-    titleLabel.setColour (juce::Label::textColourId, accent);
-    titleLabel.setInterceptsMouseClicks (false, false);
-    addAndMakeVisible (titleLabel);
+    numberLabel.setText (juce::String (laneIndex + 1), juce::dontSendNotification);
+    numberLabel.setFont (juce::Font (juce::FontOptions (14.0f, juce::Font::bold)));
+    numberLabel.setColour (juce::Label::textColourId, accent);
+    numberLabel.setJustificationType (juce::Justification::centred);
+    numberLabel.setInterceptsMouseClicks (false, false);
+    numberLabel.setBorderSize (juce::BorderSize<int> (0));
+    addAndMakeVisible (numberLabel);
 
     for (int step = 0; step < params::numSteps; ++step)
         addAndMakeVisible (slots.add (new StepSlot (state, laneIndex, step)));
 
     //--------------------------------------------------------------------------
-    styleCompactSlider (lengthSlider, accent, 34);
-    addAndMakeVisible (lengthSlider);
-    styleCaption (lengthLabel, "Length");
-    addAndMakeVisible (lengthLabel);
-
-    styleCompactSlider (depthSlider, accent, 48);
-    depthSlider.setDoubleClickReturnValue (true, 0.0);
-    addAndMakeVisible (depthSlider);
-    styleCaption (depthLabel, "Depth");
-    addAndMakeVisible (depthLabel);
-
-    styleCompactSlider (nudgeSlider, accent, 48);
-    nudgeSlider.setDoubleClickReturnValue (true, 0.0);
-    nudgeSlider.setTooltip ("Shift this whole lane earlier or later, up to half a step");
-    addAndMakeVisible (nudgeSlider);
-    styleCaption (nudgeLabel, "Nudge");
-    addAndMakeVisible (nudgeLabel);
-
-    styleCompactSlider (humanizeSlider, accent, 44);
-    humanizeSlider.setTooltip ("Random timing jitter, repeatable per bar");
-    addAndMakeVisible (humanizeSlider);
-    styleCaption (humanizeLabel, "Humanize");
-    addAndMakeVisible (humanizeLabel);
-
-    styleCompactSlider (ccNumberSlider, accent, 38);
-    addAndMakeVisible (ccNumberSlider);
-    styleCaption (ccNumberLabel, "CC Number");
-    addAndMakeVisible (ccNumberLabel);
-
-    styleCompactSlider (ccChannelSlider, accent, 38);
-    addAndMakeVisible (ccChannelSlider);
-    styleCaption (ccChannelLabel, "CC Chan");
-    addAndMakeVisible (ccChannelLabel);
-
-    ccOnButton.setColour (juce::ToggleButton::tickColourId, accent);
-    ccOnButton.setTooltip ("Send this lane's own value as CC, independent of Depth");
-    addAndMakeVisible (ccOnButton);
-    styleCaption (ccOnLabel, "Lane CC");
-    addAndMakeVisible (ccOnLabel);
-
-    fillFromChoiceParam (state, params::laneDivId (laneIndex), divisionBox);
-    addAndMakeVisible (divisionBox);
-    styleCaption (divisionLabel, "Rate");
-    addAndMakeVisible (divisionLabel);
-
-    fillFromChoiceParam (state, params::laneDirId (laneIndex), directionBox);
-    addAndMakeVisible (directionBox);
-    styleCaption (directionLabel, "Direction");
-    addAndMakeVisible (directionLabel);
-
-    fillFromChoiceParam (state, params::laneModeId (laneIndex), modeBox);
-    addAndMakeVisible (modeBox);
-    styleCaption (modeLabel, "Mix Mode");
-    addAndMakeVisible (modeLabel);
+    // Two columns, filled left to right then wrapping, so each row pairs a length-ish
+    // parameter with a character-ish one.
+    paramGroup.add (params::laneLengthId (laneIndex), "Length");
+    paramGroup.add (params::laneDivId (laneIndex),    "Rate");
+    paramGroup.add (params::laneDirId (laneIndex),    "Direction");
+    paramGroup.add (params::laneDepthId (laneIndex),  "Depth");
+    paramGroup.add (params::laneModeId (laneIndex),   "Mix mode");
+    paramGroup.add (params::laneNudgeId (laneIndex),  "Nudge")
+              ->setTooltip ("Shift this whole lane earlier or later, up to half a step");
+    paramGroup.setColumns (2);
+    addAndMakeVisible (paramGroup);
 
     //--------------------------------------------------------------------------
-    styleCaption (patternLabel, "Pattern");
-    addAndMakeVisible (patternLabel);
-
     randomiseButton.setTooltip ("Randomise this lane's 8 step values");
-    randomiseButton.setColour (juce::TextButton::textColourOffId, accent);
     randomiseButton.onClick = [this] { params::randomiseLaneValues (apvts, lane, random); };
     addAndMakeVisible (randomiseButton);
 
@@ -178,18 +140,6 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
     menuButton.setTooltip ("Rotate, invert, copy and paste this lane's pattern");
     menuButton.onClick = [this] { showActionsMenu(); };
     addAndMakeVisible (menuButton);
-
-    //--------------------------------------------------------------------------
-    lengthAttachment    = std::make_unique<SliderAttachment>   (state, params::laneLengthId (laneIndex),   lengthSlider);
-    depthAttachment     = std::make_unique<SliderAttachment>   (state, params::laneDepthId (laneIndex),    depthSlider);
-    nudgeAttachment     = std::make_unique<SliderAttachment>   (state, params::laneNudgeId (laneIndex),    nudgeSlider);
-    humanizeAttachment  = std::make_unique<SliderAttachment>   (state, params::laneHumanizeId (laneIndex), humanizeSlider);
-    ccNumberAttachment  = std::make_unique<SliderAttachment>   (state, params::laneCcNumId (laneIndex),    ccNumberSlider);
-    ccChannelAttachment = std::make_unique<SliderAttachment>   (state, params::laneCcChanId (laneIndex),   ccChannelSlider);
-    divisionAttachment  = std::make_unique<ComboBoxAttachment> (state, params::laneDivId (laneIndex),      divisionBox);
-    directionAttachment = std::make_unique<ComboBoxAttachment> (state, params::laneDirId (laneIndex),      directionBox);
-    modeAttachment      = std::make_unique<ComboBoxAttachment> (state, params::laneModeId (laneIndex),     modeBox);
-    ccOnAttachment      = std::make_unique<ButtonAttachment>   (state, params::laneCcOnId (laneIndex),     ccOnButton);
 }
 
 //==============================================================================
@@ -198,12 +148,12 @@ void LaneComponent::showActionsMenu()
     juce::PopupMenu menu;
     menu.setLookAndFeel (&getLookAndFeel());
 
-    menu.addItem (1, "Rotate Left");
-    menu.addItem (2, "Rotate Right");
-    menu.addItem (3, "Invert Values");
+    menu.addItem (1, "Rotate left");
+    menu.addItem (2, "Rotate right");
+    menu.addItem (3, "Invert values");
     menu.addSeparator();
-    menu.addItem (4, "Copy Pattern");
-    menu.addItem (5, "Paste Pattern", clipboard.valid);
+    menu.addItem (4, "Copy pattern");
+    menu.addItem (5, "Paste pattern", clipboard.valid);
 
     // The callback fires after this component could have been torn down.
     const juce::Component::SafePointer<LaneComponent> safeThis (this);
@@ -234,73 +184,52 @@ void LaneComponent::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
 
+    // A flat fill and no outline: the lane reads as a surface a step lighter than the
+    // window, which separates it without adding another rectangle to the picture.
     g.setColour (theme::panel);
     g.fillRoundedRectangle (bounds, 6.0f);
 
-    g.setColour (theme::outline);
-    g.drawRoundedRectangle (bounds.reduced (0.5f), 6.0f, 1.0f);
-
     // Accent stripe down the left edge identifies the lane at a glance.
-    g.setColour (accent.withAlpha (0.85f));
-    g.fillRoundedRectangle (bounds.getX() + 4.0f, bounds.getY() + 10.0f, 3.0f,
-                            bounds.getHeight() - 20.0f, 1.5f);
+    g.setColour (accent);
+    g.fillRoundedRectangle (bounds.getX() + 10.0f, bounds.getY() + 14.0f, (float) railWidth,
+                            bounds.getHeight() - 28.0f, 1.5f);
+
+    g.setColour (theme::outline);
+    g.fillRect ((float) dividerX, bounds.getY() + 14.0f, 1.0f, bounds.getHeight() - 28.0f);
 }
 
 void LaneComponent::resized()
 {
-    auto r = getLocalBounds().reduced (12, 10);
+    auto r = getLocalBounds().reduced (10, 10);
 
-    auto titleArea = r.removeFromLeft (52);
-    titleLabel.setBounds (titleArea.removeFromTop (18));
-
-    r.removeFromLeft (4);
+    r.removeFromLeft (railWidth);
+    r.removeFromLeft (8);
+    numberLabel.setBounds (r.removeFromLeft (numberWidth));
+    r.removeFromLeft (10);
 
     //--------------------------------------------------------------------------
-    constexpr int slotWidth = 44;
-    auto stepsArea = r.removeFromLeft (params::numSteps * slotWidth);
+    auto paramBlock = r.removeFromRight (paramWidth);
+    r.removeFromRight (dividerGap);
+    dividerX = r.getRight() + dividerGap / 2;
+
+    //--------------------------------------------------------------------------
+    const int slotWidth = r.getWidth() / params::numSteps;
 
     for (auto* slot : slots)
-        slot->setBounds (stepsArea.removeFromLeft (slotWidth).reduced (2, 0));
-
-    r.removeFromLeft (16);
+        slot->setBounds (r.removeFromLeft (slotWidth).withTrimmedRight (slotGap));
 
     //--------------------------------------------------------------------------
-    // Three rows of four cells.
-    constexpr int columns = 4;
-    const int cellWidth = r.getWidth() / columns;
-    const int rowHeight = r.getHeight() / 3;
+    // Parameter rows plus the pattern buttons, as one block centred against the steps.
+    const int groupHeight  = ControlGroup::heightForRows (3, false);
+    const int buttonHeight = theme::rowHeight;
+    const int blockHeight  = groupHeight + theme::rowGap * 2 + buttonHeight;
 
-    const auto placeCell = [] (juce::Rectangle<int> cell, juce::Label& caption, juce::Component& control)
-    {
-        cell = cell.reduced (6, 4);
-        caption.setBounds (cell.removeFromTop (13));
-        cell.removeFromTop (2);
-        control.setBounds (cell.removeFromTop (juce::jmin (22, cell.getHeight())));
-    };
+    paramBlock = paramBlock.withSizeKeepingCentre (paramBlock.getWidth(), blockHeight);
 
-    auto row1 = r.removeFromTop (rowHeight);
-    auto row2 = r.removeFromTop (rowHeight);
-    auto row3 = r;
+    paramGroup.setBounds (paramBlock.removeFromTop (groupHeight));
+    paramBlock.removeFromTop (theme::rowGap * 2);
 
-    placeCell (row1.removeFromLeft (cellWidth), lengthLabel,    lengthSlider);
-    placeCell (row1.removeFromLeft (cellWidth), divisionLabel,  divisionBox);
-    placeCell (row1.removeFromLeft (cellWidth), directionLabel, directionBox);
-    placeCell (row1,                            depthLabel,     depthSlider);
-
-    placeCell (row2.removeFromLeft (cellWidth), modeLabel,      modeBox);
-    placeCell (row2.removeFromLeft (cellWidth), nudgeLabel,     nudgeSlider);
-    placeCell (row2.removeFromLeft (cellWidth), humanizeLabel,  humanizeSlider);
-    placeCell (row2,                            ccOnLabel,      ccOnButton);
-
-    placeCell (row3.removeFromLeft (cellWidth), ccNumberLabel,  ccNumberSlider);
-    placeCell (row3.removeFromLeft (cellWidth), ccChannelLabel, ccChannelSlider);
-
-    //--------------------------------------------------------------------------
-    auto buttonCell = row3.removeFromLeft (cellWidth).reduced (6, 4);
-    patternLabel.setBounds (buttonCell.removeFromTop (13));
-    buttonCell.removeFromTop (2);
-
-    auto buttonRow = buttonCell.removeFromTop (juce::jmin (22, buttonCell.getHeight()));
+    auto buttonRow = paramBlock.removeFromTop (buttonHeight).removeFromLeft (paramWidth / 2 - 14);
     const int buttonWidth = (buttonRow.getWidth() - 8) / 3;
 
     randomiseButton.setBounds (buttonRow.removeFromLeft (buttonWidth));

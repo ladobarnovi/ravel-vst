@@ -1,21 +1,43 @@
 #pragma once
 
+#include "Controls.h"
 #include "Parameters.h"
 #include "Theme.h"
 
-/** One step: a vertical value bar with an on/off toggle underneath. */
+/** Chance, drawn as a tick across its parent step bar.
+
+    It covers the same rectangle as the value bar, but only claims the mouse in a narrow
+    strip down the right-hand edge -- a child that fails hitTest passes the event through
+    to the sibling underneath, so the bulk of the bar still drags the value. That is what
+    lets one step present two continuous parameters without stacking two visible bars.
+*/
+class ChanceOverlay final : public juce::Slider
+{
+public:
+    static constexpr int gutterWidth = 9;
+
+    bool hitTest (int x, int) override { return x >= getWidth() - gutterWidth; }
+};
+
+//==============================================================================
+/** One step: a tall value bar, a chance tick across it, and a gate strip beneath. */
 class StepSlot final : public juce::Component
 {
 public:
     StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, int stepIndex);
 
-    void paint (juce::Graphics&) override;
+    void paintOverChildren (juce::Graphics&) override;
     void resized() override;
 
     void setPlaying (bool shouldBePlaying);
 
 private:
-    juce::Slider valueSlider, chanceSlider;
+    /** Recolours the value bar to match the gate, so a muted step reads as muted without
+        needing a separate indicator. */
+    void applyGateState();
+
+    juce::Slider valueSlider;
+    ChanceOverlay chanceSlider;
     juce::ToggleButton onButton;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> valueAttachment, chanceAttachment;
@@ -28,8 +50,12 @@ private:
 };
 
 //==============================================================================
-/** A full lane: 8 steps plus the lane's length, clock division, direction,
-    depth and combine mode.
+/** A full lane: 8 steps plus the six parameters worth reaching for while it plays.
+
+    The lane's routing parameters (its CC number, CC channel and CC enable) and its
+    humanise amount live in the editor's tab pages instead: they are set once when the
+    track is wired up, and keeping them here is what made every lane read as a wall of
+    identical controls.
 */
 class LaneComponent final : public juce::Component
 {
@@ -48,35 +74,22 @@ private:
     const int lane;
     const juce::Colour accent;
 
-    juce::Label titleLabel;
+    juce::Label numberLabel;
     juce::OwnedArray<StepSlot> slots;
 
     params::LanePattern& clipboard;
 
-    juce::Slider lengthSlider, depthSlider, nudgeSlider, humanizeSlider;
-    juce::Slider ccNumberSlider, ccChannelSlider;
-    juce::ComboBox divisionBox, directionBox, modeBox;
-    juce::ToggleButton ccOnButton;
+    ControlGroup paramGroup;
 
-    juce::Label lengthLabel, depthLabel, divisionLabel, directionLabel, modeLabel;
-    juce::Label nudgeLabel, humanizeLabel, ccOnLabel, ccNumberLabel, ccChannelLabel;
-
-    juce::TextButton randomiseButton { "RND" }, clearButton { "CLR" }, menuButton { "..." };
-    juce::Label patternLabel;
+    juce::TextButton randomiseButton { "Rnd" }, clearButton { "Clr" }, menuButton { "..." };
     juce::Random random;
 
-    void showActionsMenu();
-
-    using SliderAttachment   = juce::AudioProcessorValueTreeState::SliderAttachment;
-    using ComboBoxAttachment = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
-    using ButtonAttachment   = juce::AudioProcessorValueTreeState::ButtonAttachment;
-
-    std::unique_ptr<SliderAttachment> lengthAttachment, depthAttachment, nudgeAttachment,
-                                      humanizeAttachment, ccNumberAttachment, ccChannelAttachment;
-    std::unique_ptr<ComboBoxAttachment> divisionAttachment, directionAttachment, modeAttachment;
-    std::unique_ptr<ButtonAttachment> ccOnAttachment;
+    // Set in resized(), drawn in paint(): the hairline between steps and parameters.
+    int dividerX = 0;
 
     int playingStep = -1;
+
+    void showActionsMenu();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (LaneComponent)
 };

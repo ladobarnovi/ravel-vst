@@ -1,41 +1,10 @@
 #pragma once
 
+#include "Controls.h"
 #include "LaneComponent.h"
 #include "PluginProcessor.h"
 #include "Theme.h"
 
-/** A caption plus whichever widget suits the parameter's type.
-
-    Building the widget from the parameter rather than declaring one per control
-    keeps the output section to a list of IDs instead of thirty near-identical
-    member declarations.
-*/
-class ParamCell final : public juce::Component
-{
-public:
-    ParamCell (juce::AudioProcessorValueTreeState& state,
-               const juce::String& paramID,
-               const juce::String& caption,
-               int textBoxWidth = 58);
-
-    void resized() override;
-
-    /** Greys out and disables the cell, for parameters the current mode ignores. */
-    void setDimmed (bool shouldBeDimmed);
-
-private:
-    juce::Label captionLabel;
-    std::unique_ptr<juce::Component> control;
-    bool dimmed = false;
-
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>   sliderAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> comboAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>   buttonAttachment;
-
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ParamCell)
-};
-
-//==============================================================================
 /** Read-out of the combined value the three lanes currently produce. */
 class MixMeter final : public juce::Component
 {
@@ -61,29 +30,40 @@ public:
 private:
     void timerCallback() override;
 
+    /** Fills in the three tab pages. Split out only because listing 28 parameters inline
+        buries the layout code in the constructor. */
+    void buildTabs();
+
     // Declared first so it outlives every child that references it.
     TriLaneLookAndFeel lookAndFeel;
 
     TriLaneAudioProcessor& processorRef;
 
-    juce::Label titleLabel, outputSectionLabel, mixCaption;
+    juce::Label titleLabel, mixCaption;
 
     // Shared by all three lanes, so a pattern can be copied from one and pasted onto another.
     params::LanePattern patternClipboard;
 
     juce::OwnedArray<LaneComponent> lanes;
-    juce::OwnedArray<ParamCell> headerCells, outputCells;
 
-    // Non-owning; point into outputCells. Dimmed when the pitch mode ignores them.
-    ParamCell* scaleCell = nullptr;
-    ParamCell* noteChannelCell = nullptr;
+    // Output mode is the one global that changes what the plugin *is*, so it stays in the
+    // header rather than going behind a tab with the rest of the setup.
+    ControlGroup outputGroup;
+
+    TabPage pitchPage, timingPage, routingPage;
+    TabStrip tabs;
+
+    // Non-owning; point into the tab pages. Dimmed when the pitch mode ignores them.
+    ControlRow* scaleRow = nullptr;
+    ControlRow* bendRangeRow = nullptr;
+    ControlRow* noteChannelRow = nullptr;
 
     std::atomic<float>* pitchModeParam = nullptr;
     int lastPitchMode = -1;
 
     MixMeter mixMeter;
 
-    juce::Rectangle<int> outputPanelArea;
+    juce::Rectangle<int> panelArea;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TriLaneAudioProcessorEditor)
 };

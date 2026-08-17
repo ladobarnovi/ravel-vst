@@ -2,85 +2,15 @@
 
 namespace
 {
-    constexpr int laneHeight   = 168;
-    constexpr int headerHeight = 40;
+    constexpr int windowWidth  = 1000;
+    constexpr int windowHeight = 654;
+
+    constexpr int laneHeight   = 140;
+    constexpr int headerHeight = 26;
     constexpr int gap          = 8;
     constexpr int margin       = 12;
-}
 
-//==============================================================================
-ParamCell::ParamCell (juce::AudioProcessorValueTreeState& state,
-                      const juce::String& paramID,
-                      const juce::String& caption,
-                      int textBoxWidth)
-{
-    theme::styleCaption (captionLabel, caption);
-    addAndMakeVisible (captionLabel);
-
-    auto* param = state.getParameter (paramID);
-
-    if (auto* choiceParam = dynamic_cast<juce::AudioParameterChoice*> (param))
-    {
-        auto box = std::make_unique<juce::ComboBox>();
-        box->addItemList (choiceParam->choices, 1);
-
-        comboAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
-            state, paramID, *box);
-
-        control = std::move (box);
-    }
-    else if (dynamic_cast<juce::AudioParameterBool*> (param) != nullptr)
-    {
-        auto button = std::make_unique<juce::ToggleButton>();
-        button->setColour (juce::ToggleButton::tickColourId, theme::text);
-
-        buttonAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
-            state, paramID, *button);
-
-        control = std::move (button);
-    }
-    else
-    {
-        auto slider = std::make_unique<juce::Slider>();
-        slider->setSliderStyle (juce::Slider::LinearHorizontal);
-        slider->setTextBoxStyle (juce::Slider::TextBoxRight, false, textBoxWidth, 18);
-        slider->setColour (juce::Slider::trackColourId, theme::text.withAlpha (0.55f));
-
-        sliderAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
-            state, paramID, *slider);
-
-        control = std::move (slider);
-    }
-
-    addAndMakeVisible (*control);
-}
-
-void ParamCell::resized()
-{
-    auto r = getLocalBounds();
-
-    captionLabel.setBounds (r.removeFromTop (13));
-    r.removeFromTop (2);
-
-    if (control != nullptr)
-        control->setBounds (r.removeFromTop (juce::jmin (22, r.getHeight())));
-}
-
-void ParamCell::setDimmed (bool shouldBeDimmed)
-{
-    if (dimmed == shouldBeDimmed)
-        return;
-
-    dimmed = shouldBeDimmed;
-
-    const float alpha = dimmed ? 0.35f : 1.0f;
-    captionLabel.setAlpha (alpha);
-
-    if (control != nullptr)
-    {
-        control->setAlpha (alpha);
-        control->setEnabled (! dimmed);
-    }
+    constexpr int meterWidth   = 210;
 }
 
 //==============================================================================
@@ -96,79 +26,52 @@ void MixMeter::setValue (float newValue)
 void MixMeter::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
+    const float corner = bounds.getHeight() * 0.5f;
 
     g.setColour (theme::track);
-    g.fillRoundedRectangle (bounds, 3.0f);
+    g.fillRoundedRectangle (bounds, corner);
 
     const float width = bounds.getWidth() * juce::jlimit (0.0f, 1.0f, value);
 
     if (width > 1.0f)
     {
         g.setColour (theme::text.withAlpha (0.8f));
-        g.fillRoundedRectangle (bounds.withWidth (width), 3.0f);
+        g.fillRoundedRectangle (bounds.withWidth (juce::jmax (width, bounds.getHeight())), corner);
     }
-
-    g.setColour (theme::outline);
-    g.drawRoundedRectangle (bounds.reduced (0.5f), 3.0f, 1.0f);
 }
 
 //==============================================================================
 TriLaneAudioProcessorEditor::TriLaneAudioProcessorEditor (TriLaneAudioProcessor& p)
-    : AudioProcessorEditor (&p), processorRef (p)
+    : AudioProcessorEditor (&p), processorRef (p),
+      outputGroup (p.apvts), pitchPage (p.apvts), timingPage (p.apvts), routingPage (p.apvts)
 {
     setLookAndFeel (&lookAndFeel);
 
     titleLabel.setText ("TRILANE", juce::dontSendNotification);
-    titleLabel.setFont (juce::Font (juce::FontOptions (20.0f, juce::Font::bold)));
+    titleLabel.setFont (theme::titleFont());
     titleLabel.setColour (juce::Label::textColourId, theme::text);
+    titleLabel.setInterceptsMouseClicks (false, false);
     addAndMakeVisible (titleLabel);
 
     auto& state = processorRef.apvts;
 
-    headerCells.add (new ParamCell (state, params::outputModeId, "Output"));
-    headerCells.add (new ParamCell (state, params::triggerSrcId, "Trigger"));
-    headerCells.add (new ParamCell (state, params::swingId,      "Swing", 48));
-    headerCells.add (new ParamCell (state, params::voiceCountId, "Voices", 30));
-    headerCells.add (new ParamCell (state, params::freeRunId,    "Free Run"));
+    outputGroup.add (params::outputModeId, "Output");
+    addAndMakeVisible (outputGroup);
 
-    for (auto* cell : headerCells)
-        addAndMakeVisible (cell);
-
-    theme::styleCaption (mixCaption, "Mix");
+    theme::styleHeading (mixCaption, "Mix");
     addAndMakeVisible (mixCaption);
     addAndMakeVisible (mixMeter);
 
     for (int lane = 0; lane < params::numLanes; ++lane)
         addAndMakeVisible (lanes.add (new LaneComponent (state, lane, patternClipboard)));
 
-    outputSectionLabel.setText ("OUTPUT", juce::dontSendNotification);
-    outputSectionLabel.setFont (theme::titleFont());
-    outputSectionLabel.setColour (juce::Label::textColourId, theme::text);
-    addAndMakeVisible (outputSectionLabel);
-
-    outputCells.add (new ParamCell (state, params::rootNoteId,    "Root",       46));
-    scaleCell = outputCells.add (new ParamCell (state, params::scaleId, "Scale"));
-    outputCells.add (new ParamCell (state, params::rangeStepsId,  "Range",      38));
-    outputCells.add (new ParamCell (state, params::pitchModeId,   "Pitch"));
-
-    outputCells.add (new ParamCell (state, params::bendRangeId,   "Bend Range", 44));
-    outputCells.add (new ParamCell (state, params::velocityId,    "Velocity",   38));
-    outputCells.add (new ParamCell (state, params::gateLengthId,  "Gate",       50));
-    noteChannelCell = outputCells.add (new ParamCell (state, params::midiChannelId, "Note Chan", 38));
-
-    outputCells.add (new ParamCell (state, params::offsetId,      "Offset",     52));
-    outputCells.add (new ParamCell (state, params::slewId,        "Slew",       58));
-    outputCells.add (new ParamCell (state, params::ccNumberId,    "Mix CC",     38));
-    outputCells.add (new ParamCell (state, params::ccChannelId,   "Mix CC Chan", 38));
-
-    for (auto* cell : outputCells)
-        addAndMakeVisible (cell);
+    buildTabs();
 
     // Polled on the timer rather than via a parameter listener, because listener
     // callbacks arrive on the audio thread and must not touch components.
-    pitchModeParam = processorRef.apvts.getRawParameterValue (params::pitchModeId);
+    pitchModeParam = state.getRawParameterValue (params::pitchModeId);
 
-    setSize (1120, 794);
+    setSize (windowWidth, windowHeight);
     startTimerHz (30);
 }
 
@@ -179,19 +82,72 @@ TriLaneAudioProcessorEditor::~TriLaneAudioProcessorEditor()
 }
 
 //==============================================================================
+void TriLaneAudioProcessorEditor::buildTabs()
+{
+    auto& notes = pitchPage.addColumn ("Notes");
+    notes.add (params::rootNoteId,   "Root");
+    scaleRow = notes.add (params::scaleId, "Scale");
+    notes.add (params::rangeStepsId, "Range");
+    notes.add (params::pitchModeId,  "Pitch");
+
+    auto& bend = pitchPage.addColumn ("Bend");
+    bendRangeRow = bend.add (params::bendRangeId, "Bend range");
+    bend.add (params::offsetId, "Offset");
+    bend.add (params::slewId,   "Slew");
+
+    auto& voice = pitchPage.addColumn ("Voice");
+    voice.add (params::velocityId,   "Velocity");
+    voice.add (params::gateLengthId, "Gate");
+    voice.add (params::voiceCountId, "Voices");
+
+    //--------------------------------------------------------------------------
+    auto& clock = timingPage.addColumn ("Clock");
+    clock.add (params::swingId,     "Swing");
+    clock.add (params::freeRunId,   "Free run");
+    clock.add (params::triggerSrcId, "Trigger");
+
+    auto& humanise = timingPage.addColumn ("Humanise");
+
+    for (int lane = 0; lane < params::numLanes; ++lane)
+        humanise.add (params::laneHumanizeId (lane), "Lane " + juce::String (lane + 1))
+                ->setTooltip ("Random timing jitter, repeatable per bar");
+
+    //--------------------------------------------------------------------------
+    auto& global = routingPage.addColumn ("Notes and mix");
+    noteChannelRow = global.add (params::midiChannelId, "Note channel");
+    global.add (params::ccNumberId,  "Mix CC");
+    global.add (params::ccChannelId, "Mix CC channel");
+
+    for (int lane = 0; lane < params::numLanes; ++lane)
+    {
+        auto& column = routingPage.addColumn ("Lane " + juce::String (lane + 1));
+
+        column.add (params::laneCcOnId (lane), "Send CC")
+              ->setTooltip ("Send this lane's own value as CC, independent of Depth");
+        column.add (params::laneCcNumId (lane),  "CC number");
+        column.add (params::laneCcChanId (lane), "CC channel");
+    }
+
+    //--------------------------------------------------------------------------
+    addAndMakeVisible (pitchPage);
+    addChildComponent (timingPage);
+    addChildComponent (routingPage);
+
+    tabs.addTab ("Pitch",   pitchPage);
+    tabs.addTab ("Timing",  timingPage);
+    tabs.addTab ("Routing", routingPage);
+    addAndMakeVisible (tabs);
+}
+
+//==============================================================================
 void TriLaneAudioProcessorEditor::paint (juce::Graphics& g)
 {
     g.fillAll (theme::background);
 
-    if (! outputPanelArea.isEmpty())
+    if (! panelArea.isEmpty())
     {
-        const auto bounds = outputPanelArea.toFloat();
-
         g.setColour (theme::panel);
-        g.fillRoundedRectangle (bounds, 6.0f);
-
-        g.setColour (theme::outline);
-        g.drawRoundedRectangle (bounds.reduced (0.5f), 6.0f, 1.0f);
+        g.fillRoundedRectangle (panelArea.toFloat(), 6.0f);
     }
 }
 
@@ -202,18 +158,15 @@ void TriLaneAudioProcessorEditor::resized()
     //--------------------------------------------------------------------------
     auto header = r.removeFromTop (headerHeight);
 
-    titleLabel.setBounds (header.removeFromLeft (120).withTrimmedTop (4));
+    titleLabel.setBounds (header.removeFromLeft (92));
+    header.removeFromLeft (12);
 
-    headerCells[0]->setBounds (header.removeFromLeft (160).reduced (6, 2));
-    headerCells[1]->setBounds (header.removeFromLeft (140).reduced (6, 2));
-    headerCells[2]->setBounds (header.removeFromLeft (150).reduced (6, 2));
-    headerCells[3]->setBounds (header.removeFromLeft (110).reduced (6, 2));
-    headerCells[4]->setBounds (header.removeFromLeft (90).reduced (6, 2));
+    outputGroup.setBounds (header.removeFromLeft (190)
+                                 .withSizeKeepingCentre (190, theme::rowHeight));
 
-    auto meterArea = header.removeFromRight (200).reduced (6, 2);
-    mixCaption.setBounds (meterArea.removeFromTop (13));
-    meterArea.removeFromTop (2);
-    mixMeter.setBounds (meterArea.removeFromTop (18));
+    auto meterArea = header.removeFromRight (meterWidth).withSizeKeepingCentre (meterWidth, 10);
+    mixCaption.setBounds (meterArea.removeFromLeft (28));
+    mixMeter.setBounds (meterArea);
 
     r.removeFromTop (gap);
 
@@ -225,32 +178,16 @@ void TriLaneAudioProcessorEditor::resized()
     }
 
     //--------------------------------------------------------------------------
-    outputPanelArea = r;
+    panelArea = r;
 
-    auto panel = r.reduced (12, 10);
-    outputSectionLabel.setBounds (panel.removeFromTop (18));
-    panel.removeFromTop (4);
+    auto panel = r.reduced (14, 8);
+    tabs.setBounds (panel.removeFromTop (TabStrip::height));
+    panel.removeFromTop (6);
 
-    constexpr int columns = 4;
-    const int rows = (outputCells.size() + columns - 1) / columns;
-    const int cellWidth = panel.getWidth() / columns;
-    const int rowHeight = rows > 0 ? panel.getHeight() / rows : panel.getHeight();
-
-    for (int row = 0; row < rows; ++row)
-    {
-        auto rowArea = (row == rows - 1) ? panel : panel.removeFromTop (rowHeight);
-
-        for (int column = 0; column < columns; ++column)
-        {
-            const int index = row * columns + column;
-
-            if (index >= outputCells.size())
-                break;
-
-            auto cell = (column == columns - 1) ? rowArea : rowArea.removeFromLeft (cellWidth);
-            outputCells[index]->setBounds (cell.reduced (6, 4));
-        }
-    }
+    // Every page gets the same bounds; the tab strip decides which one is visible.
+    pitchPage.setBounds (panel);
+    timingPage.setBounds (panel);
+    routingPage.setBounds (panel);
 }
 
 //==============================================================================
@@ -271,10 +208,11 @@ void TriLaneAudioProcessorEditor::timerCallback()
         {
             lastPitchMode = pitchMode;
 
-            // Scale is bypassed by the continuous modes, and MPE allocates its own
-            // channels rather than using Note Chan.
-            scaleCell->setDimmed (params::isContinuousPitch (pitchMode));
-            noteChannelCell->setDimmed (pitchMode == params::pitchMpe);
+            // Scale is bypassed by the continuous modes, bend range is only sent by them,
+            // and MPE allocates its own channels rather than using Note channel.
+            scaleRow->setDimmed (params::isContinuousPitch (pitchMode));
+            bendRangeRow->setDimmed (! params::isContinuousPitch (pitchMode));
+            noteChannelRow->setDimmed (pitchMode == params::pitchMpe);
         }
     }
 }

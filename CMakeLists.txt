@@ -48,6 +48,7 @@ target_sources(TriLane PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/LaneComponent.cpp
+    Source/Controls.cpp
 )
 
 target_compile_definitions(TriLane PUBLIC
@@ -106,6 +107,7 @@ if(TRILANE_BUILD_TESTS)
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp
         Source/LaneComponent.cpp
+        Source/Controls.cpp
         Source/Parameters.cpp
         Source/SequencerEngine.cpp
     )
