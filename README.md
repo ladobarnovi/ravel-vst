@@ -150,6 +150,28 @@ which returns a `MidiBuffer` by value and would allocate on the audio thread.
 **Free Run** keeps the sequencer moving while the transport is stopped, so you can
 audition patterns without pressing play.
 
+### Polyphony
+
+**Voices** (header, 1–8) is the ceiling on notes sounding at once. At **1** the behaviour is
+the original monophonic one — a retrigger always closes the previous note, so a Gate over
+100 % simply cuts itself off. Above 1, a long Gate **overlaps into the following step**.
+
+This is about overlapping gates, not chords: pitch comes from the single mixed value, so
+simultaneous triggers would land on the same note. Set Gate above 100 % to hear it.
+
+Two details the engine has to get right:
+
+- **A repeated pitch reuses its voice rather than stacking.** MIDI can't distinguish two
+  identical note-ons on one channel, so one note-off would silence both and the survivor
+  would hang forever. Same pitch + same channel retriggers in place.
+- **Turning Voices down releases anything outside the new limit**, rather than orphaning it.
+
+In **Continuous (MPE)** mode each voice gets its own member channel and therefore its own
+bend, so polyphonic microtonal pitch works properly. In **Continuous (Pitch Bend)** mode all
+voices share one channel and one bend, so overlapping notes cannot hold different microtones —
+the most recent bend applies to all of them. That's a MIDI limitation, not a bug; use MPE if
+you need poly *and* microtonality.
+
 ---
 
 ## Building
@@ -189,9 +211,9 @@ In Live: **Preferences → Plug-Ins → VST3 Plug-In Custom Folder**, point it a
 .\build\TriLaneProcessorTests_artefacts\Release\TriLaneProcessorTests.exe
 ```
 
-88 checks across two suites, neither needing a plugin host.
+95 checks across two suites, neither needing a plugin host.
 
-`Tests/EngineTests.cpp` (58 checks) drives `SequencerEngine` over a synthetic timeline. The
+`Tests/EngineTests.cpp` (65 checks) drives `SequencerEngine` over a synthetic timeline. The
 engine takes PPQ positions as plain arguments rather than reading a playhead itself, which is
 what makes that possible. Covers step timing, gate length, per-lane length and rate, disabled
 steps, the mix modes, transport jumps, stuck-note release on stop, CC output, directions, and

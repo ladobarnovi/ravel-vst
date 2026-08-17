@@ -57,6 +57,7 @@ public:
         float offset        = 0.0f;
         float slewMs        = 0.0f;
         float swing         = 0.0f;
+        int   voiceCount    = 1;
     };
 
     //==========================================================================
@@ -76,8 +77,10 @@ public:
                   double ppqPerSample,
                   bool transportRunning);
 
-    /** Releases a held note immediately -- used on transport stop and reset. */
-    void releaseHeldNote (juce::MidiBuffer& out, int sampleOffset);
+    /** Releases every sounding note immediately -- used on transport stop and reset. */
+    void releaseAllVoices (juce::MidiBuffer& out, int sampleOffset);
+
+    static constexpr int maxVoices = 8;
 
     //==========================================================================
     // Read by the editor's timer. Plain relaxed atomics: a torn read just means
@@ -128,9 +131,30 @@ private:
 
     double currentSampleRate = 44100.0;
 
-    int   activeNote      = -1;
-    int   activeChannel   = 1;
-    int   noteOffCountdown = 0;
+    /** One sounding note. A voice list rather than a single held note is what lets a Gate
+        above 100% overlap into the following step instead of cutting itself off.
+    */
+    struct Voice
+    {
+        int note    = -1;          // -1 when free
+        int channel = 1;
+        int samplesRemaining = 0;
+    };
+
+    Voice voices[maxVoices];
+
+    bool anyVoiceActive() const noexcept;
+
+    /** Counts down each sounding voice and emits note-off as they expire. */
+    void advanceVoices (juce::MidiBuffer& out, int sampleOffset);
+
+    /** Picks a slot for a new note, emitting a note-off first if it has to reuse or steal
+        one. Returns the index to fill in.
+    */
+    int allocateVoice (juce::MidiBuffer& out, int sampleOffset, int note, int channel, int voiceLimit);
+
+    /** Retires voices that fall outside a reduced voice count. */
+    void retireVoicesAbove (juce::MidiBuffer& out, int sampleOffset, int voiceLimit);
 
     float slewedValue = 0.0f;
     int   lastCcValue = -1;

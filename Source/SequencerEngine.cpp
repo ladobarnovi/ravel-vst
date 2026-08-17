@@ -93,8 +93,12 @@ void SequencerEngine::reset()
         lane.held = 0.0f;
     }
 
-    activeNote       = -1;
-    noteOffCountdown = 0;
+    for (auto& voice : voices)
+    {
+        voice.note = -1;
+        voice.samplesRemaining = 0;
+    }
+
     slewedValue      = 0.0f;
     lastCcValue      = -1;
     ccCountdown      = 0;
@@ -198,15 +202,85 @@ std::int64_t SequencerEngine::resolveGlobalIndex (double ppq, double stepPpq,
 }
 
 //==============================================================================
-void SequencerEngine::releaseHeldNote (juce::MidiBuffer& out, int sampleOffset)
+bool SequencerEngine::anyVoiceActive() const noexcept
 {
-    if (activeNote >= 0)
+    for (const auto& voice : voices)
+        if (voice.note >= 0)
+            return true;
+
+    return false;
+}
+
+void SequencerEngine::releaseAllVoices (juce::MidiBuffer& out, int sampleOffset)
+{
+    for (auto& voice : voices)
     {
-        out.addEvent (juce::MidiMessage::noteOff (activeChannel, activeNote), sampleOffset);
-        activeNote = -1;
+        if (voice.note >= 0)
+            out.addEvent (juce::MidiMessage::noteOff (voice.channel, voice.note), sampleOffset);
+
+        voice.note = -1;
+        voice.samplesRemaining = 0;
+    }
+}
+
+void SequencerEngine::advanceVoices (juce::MidiBuffer& out, int sampleOffset)
+{
+    for (auto& voice : voices)
+    {
+        if (voice.note < 0)
+            continue;
+
+        if (--voice.samplesRemaining <= 0)
+        {
+            out.addEvent (juce::MidiMessage::noteOff (voice.channel, voice.note), sampleOffset);
+            voice.note = -1;
+            voice.samplesRemaining = 0;
+        }
+    }
+}
+
+void SequencerEngine::retireVoicesAbove (juce::MidiBuffer& out, int sampleOffset, int voiceLimit)
+{
+    for (int i = juce::jlimit (1, maxVoices, voiceLimit); i < maxVoices; ++i)
+    {
+        if (voices[i].note < 0)
+            continue;
+
+        out.addEvent (juce::MidiMessage::noteOff (voices[i].channel, voices[i].note), sampleOffset);
+        voices[i].note = -1;
+        voices[i].samplesRemaining = 0;
+    }
+}
+
+int SequencerEngine::allocateVoice (juce::MidiBuffer& out, int sampleOffset,
+                                    int note, int channel, int voiceLimit)
+{
+    const int limit = juce::jlimit (1, maxVoices, voiceLimit);
+
+    // Same pitch already sounding on the same channel: MIDI cannot tell two identical
+    // notes apart, so one note-off would silence both. Reuse that voice instead.
+    for (int i = 0; i < limit; ++i)
+    {
+        if (voices[i].note == note && voices[i].channel == channel)
+        {
+            out.addEvent (juce::MidiMessage::noteOff (channel, note), sampleOffset);
+            return i;
+        }
     }
 
-    noteOffCountdown = 0;
+    for (int i = 0; i < limit; ++i)
+        if (voices[i].note < 0)
+            return i;
+
+    // All busy -- steal whichever is closest to finishing, as the least audible loss.
+    int stolen = 0;
+
+    for (int i = 1; i < limit; ++i)
+        if (voices[i].samplesRemaining < voices[stolen].samplesRemaining)
+            stolen = i;
+
+    out.addEvent (juce::MidiMessage::noteOff (voices[stolen].channel, voices[stolen].note), sampleOffset);
+    return stolen;
 }
 
 //==============================================================================
@@ -221,9 +295,15 @@ void SequencerEngine::process (const Snapshot& s,
     // held note so Live isn't left with a stuck voice.
     if (! transportRunning || ppqPerSample <= 0.0)
     {
-        releaseHeldNote (out, 0);
+        releaseAllVoices (out, 0);
         return;
     }
+
+    const int voiceLimit = juce::jlimit (1, maxVoices, s.voiceCount);
+
+    // If the voice count was turned down, anything sounding outside the new limit has to
+    // be let go or it would hang forever.
+    retireVoicesAbove (out, 0, voiceLimit);
 
     const bool notesEnabled = (s.outputMode != params::outCC);
     const bool ccEnabled    = (s.outputMode != params::outNotes);
@@ -371,16 +451,13 @@ void SequencerEngine::process (const Snapshot& s,
         //----------------------------------------------------------------------
         if (notesEnabled)
         {
-            if (noteOffCountdown > 0 && --noteOffCountdown == 0)
-                releaseHeldNote (out, n);
+            advanceVoices (out, n);
 
             if (triggered)
             {
-                // Monophonic: retrigger always closes the previous note first.
-                releaseHeldNote (out, n);
-
                 int note    = 0;
                 int channel = 1;
+                int bend    = -1;      // -1 means "no bend needed"
 
                 if (params::isContinuousPitch (s.pitchMode))
                 {
@@ -395,14 +472,16 @@ void SequencerEngine::process (const Snapshot& s,
                     if (s.pitchMode == params::pitchMpe)
                     {
                         // Rotate member channels so a new note's bend can't pull the pitch
-                        // of one that is still releasing.
+                        // of one that is still sounding. This is also what makes polyphonic
+                        // microtonal pitch possible at all.
                         channel = params::mpeMasterChannel + 1 + memberChannelIndex;
                         memberChannelIndex = (memberChannelIndex + 1) % params::mpeMemberChannels;
                     }
                     else
                     {
                         // Single channel: survives hosts that merge MIDI channels when
-                        // routing between tracks, at the cost of being monophonic.
+                        // routing between tracks, but the bend is shared by every voice on
+                        // it, so overlapping notes cannot hold different microtones.
                         channel = noteChannel;
                     }
 
@@ -410,11 +489,8 @@ void SequencerEngine::process (const Snapshot& s,
                     const float normalised = juce::jlimit (-1.0f, 1.0f,
                                                            residual / (float) bendRange);
 
-                    const int bend = juce::jlimit (0, 16383,
-                                                   8192 + (int) std::lround (normalised * 8191.0f));
-
-                    // Bend first, so the note starts already at the right pitch.
-                    out.addEvent (juce::MidiMessage::pitchWheel (channel, bend), n);
+                    bend = juce::jlimit (0, 16383,
+                                         8192 + (int) std::lround (normalised * 8191.0f));
                 }
                 else
                 {
@@ -425,19 +501,27 @@ void SequencerEngine::process (const Snapshot& s,
                     channel = noteChannel;
                 }
 
-                activeChannel = channel;
-                activeNote    = note;
+                // Allocate first: if this steals or reuses a voice, its note-off has to be
+                // ordered ahead of the bend and note-on that follow at this same sample.
+                const int slot = allocateVoice (out, n, note, channel, voiceLimit);
+
+                if (bend >= 0)
+                    out.addEvent (juce::MidiMessage::pitchWheel (channel, bend), n);
 
                 out.addEvent (juce::MidiMessage::noteOn (channel, note,
                                                         (juce::uint8) juce::jlimit (1, 127, s.velocity)), n);
 
                 const double stepSamples = triggerStepPpq / ppqPerSample;
-                noteOffCountdown = juce::jmax (1, (int) std::lround (stepSamples * (s.gatePercent * 0.01)));
+
+                voices[slot].note    = note;
+                voices[slot].channel = channel;
+                voices[slot].samplesRemaining =
+                    juce::jmax (1, (int) std::lround (stepSamples * (s.gatePercent * 0.01)));
             }
         }
-        else if (activeNote >= 0)
+        else if (anyVoiceActive())
         {
-            releaseHeldNote (out, n);
+            releaseAllVoices (out, n);
         }
 
         //----------------------------------------------------------------------

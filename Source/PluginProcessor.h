@@ -83,6 +83,7 @@ private:
     std::atomic<float>* pSlew        = nullptr;
     std::atomic<float>* pFreeRun     = nullptr;
     std::atomic<float>* pSwing       = nullptr;
+    std::atomic<float>* pVoiceCount  = nullptr;
 
     SequencerEngine engine;
 

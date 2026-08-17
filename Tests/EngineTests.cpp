@@ -148,7 +148,8 @@ namespace
             lane.ccOn      = false;
         }
 
-        s.swing = 0.0f;
+        s.swing      = 0.0f;
+        s.voiceCount = 1;
 
         s.lanes[0].depth = 1.0f;
 
@@ -1115,6 +1116,187 @@ int main()
                 sawLaneCc = true;
 
         check (! sawLaneCc, "a disabled lane sends no CC");
+    }
+
+    //==========================================================================
+    section ("Voices = 1 keeps the original monophonic behaviour");
+    {
+        auto s = baseSnapshot();
+        s.lanes[0].length = 4;
+        s.scale = 0;
+        s.gatePercent = 180.0f;   // would overlap if polyphony were allowed
+        s.voiceCount = 1;
+
+        for (int i = 0; i < 4; ++i)
+            s.lanes[0].values[i] = (float) (i + 1) / 12.0f;   // distinct pitches
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto events = run (engine, s, 4 * samplesPerStep);
+
+        // Walk the stream and track how many notes are sounding at once.
+        int sounding = 0;
+        int peak = 0;
+
+        for (const auto& e : events)
+        {
+            if (e.type == noteOn)  ++sounding;
+            if (e.type == noteOff) --sounding;
+
+            peak = juce::jmax (peak, sounding);
+        }
+
+        check (peak == 1, "with one voice a long gate never overlaps");
+    }
+
+    //==========================================================================
+    section ("Polyphony lets a long gate overlap");
+    {
+        auto s = baseSnapshot();
+        s.lanes[0].length = 4;
+        s.scale = 0;
+        s.gatePercent = 180.0f;   // 1.8 steps long, so each note laps into the next
+        s.voiceCount = 4;
+
+        for (int i = 0; i < 4; ++i)
+            s.lanes[0].values[i] = (float) (i + 1) / 12.0f;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto events = run (engine, s, 4 * samplesPerStep);
+
+        int sounding = 0;
+        int peak = 0;
+
+        for (const auto& e : events)
+        {
+            if (e.type == noteOn)  ++sounding;
+            if (e.type == noteOff) --sounding;
+
+            peak = juce::jmax (peak, sounding);
+        }
+
+        check (peak == 2, "a 180% gate holds two notes at once");
+
+        const auto ons  = only (events, noteOn);
+        const auto offs = only (events, noteOff);
+
+        // A 180% gate means the last note's release lands past the end of the run, so a
+        // small tail of still-held voices is correct. What matters is that nothing leaks:
+        // never more held than the voice count, and never a note-off without a note-on.
+        const int unreleased = (int) ons.size() - (int) offs.size();
+
+        check (unreleased >= 0 && unreleased <= s.voiceCount,
+               "note-offs match note-ons apart from voices still held when the run ends");
+    }
+
+    //==========================================================================
+    section ("Voice count is respected as a ceiling");
+    {
+        auto s = baseSnapshot();
+        s.lanes[0].length = 8;
+        s.scale = 0;
+        s.gatePercent = 200.0f;
+        s.voiceCount = 2;
+
+        for (int i = 0; i < params::numSteps; ++i)
+            s.lanes[0].values[i] = (float) (i + 1) / 24.0f;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto events = run (engine, s, 8 * samplesPerStep);
+
+        int sounding = 0;
+        int peak = 0;
+
+        for (const auto& e : events)
+        {
+            if (e.type == noteOn)  ++sounding;
+            if (e.type == noteOff) --sounding;
+
+            peak = juce::jmax (peak, sounding);
+        }
+
+        check (peak <= 2, "never more notes sounding than the voice count allows");
+    }
+
+    //==========================================================================
+    section ("Repeated pitch reuses its voice instead of hanging");
+    {
+        // Every step is the same pitch on the same channel with a long gate. MIDI cannot
+        // distinguish two identical notes, so the engine must retrigger rather than stack.
+        auto s = baseSnapshot();
+        s.lanes[0].length = 1;
+        s.lanes[0].values[0] = 0.25f;
+        s.scale = 0;
+        s.gatePercent = 190.0f;
+        s.voiceCount = 4;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto events = run (engine, s, 6 * samplesPerStep);
+
+        int sounding = 0;
+        int peak = 0;
+
+        for (const auto& e : events)
+        {
+            if (e.type == noteOn)  ++sounding;
+            if (e.type == noteOff) --sounding;
+
+            peak = juce::jmax (peak, sounding);
+        }
+
+        check (peak == 1, "an identical pitch never stacks on itself");
+    }
+
+    //==========================================================================
+    section ("Transport stop releases every voice");
+    {
+        auto s = baseSnapshot();
+        s.lanes[0].length = 4;
+        s.scale = 0;
+        s.gatePercent = 190.0f;
+        s.voiceCount = 4;
+
+        for (int i = 0; i < 4; ++i)
+            s.lanes[0].values[i] = (float) (i + 1) / 12.0f;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        juce::MidiBuffer buffer;
+        int sounding = 0;
+
+        // Run far enough to get two notes overlapping.
+        for (int pos = 0; pos < samplesPerStep + blockSize; pos += blockSize)
+        {
+            buffer.clear();
+            engine.process (s, buffer, blockSize, ppqPerSample * pos, ppqPerSample, true);
+
+            for (const auto metadata : buffer)
+            {
+                if (metadata.getMessage().isNoteOn())  ++sounding;
+                if (metadata.getMessage().isNoteOff()) --sounding;
+            }
+        }
+
+        check (sounding == 2, "two notes are sounding before the stop");
+
+        buffer.clear();
+        engine.process (s, buffer, blockSize, 0.0, ppqPerSample, false);
+
+        int released = 0;
+
+        for (const auto metadata : buffer)
+            if (metadata.getMessage().isNoteOff())
+                ++released;
+
+        check (released == sounding, "stopping releases all of them, leaving nothing stuck");
     }
 
     //==========================================================================

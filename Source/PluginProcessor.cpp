@@ -46,6 +46,7 @@ TriLaneAudioProcessor::TriLaneAudioProcessor()
     pSlew        = apvts.getRawParameterValue (params::slewId);
     pFreeRun     = apvts.getRawParameterValue (params::freeRunId);
     pSwing       = apvts.getRawParameterValue (params::swingId);
+    pVoiceCount  = apvts.getRawParameterValue (params::voiceCountId);
 }
 
 //==============================================================================
@@ -115,6 +116,7 @@ SequencerEngine::Snapshot TriLaneAudioProcessor::buildSnapshot() const
     s.offset        = pOffset->load();
     s.slewMs        = pSlew->load();
     s.swing         = pSwing->load();
+    s.voiceCount    = (int) std::lround (pVoiceCount->load());
 
     return s;
 }

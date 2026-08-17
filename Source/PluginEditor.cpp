@@ -128,6 +128,7 @@ TriLaneAudioProcessorEditor::TriLaneAudioProcessorEditor (TriLaneAudioProcessor&
     headerCells.add (new ParamCell (state, params::outputModeId, "Output"));
     headerCells.add (new ParamCell (state, params::triggerSrcId, "Trigger"));
     headerCells.add (new ParamCell (state, params::swingId,      "Swing", 48));
+    headerCells.add (new ParamCell (state, params::voiceCountId, "Voices", 30));
     headerCells.add (new ParamCell (state, params::freeRunId,    "Free Run"));
 
     for (auto* cell : headerCells)
@@ -206,7 +207,8 @@ void TriLaneAudioProcessorEditor::resized()
     headerCells[0]->setBounds (header.removeFromLeft (160).reduced (6, 2));
     headerCells[1]->setBounds (header.removeFromLeft (140).reduced (6, 2));
     headerCells[2]->setBounds (header.removeFromLeft (150).reduced (6, 2));
-    headerCells[3]->setBounds (header.removeFromLeft (90).reduced (6, 2));
+    headerCells[3]->setBounds (header.removeFromLeft (110).reduced (6, 2));
+    headerCells[4]->setBounds (header.removeFromLeft (90).reduced (6, 2));
 
     auto meterArea = header.removeFromRight (200).reduced (6, 2);
     mixCaption.setBounds (meterArea.removeFromTop (13));

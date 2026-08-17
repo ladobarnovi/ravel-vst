@@ -195,6 +195,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     layout.add (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { freeRunId, versionHint }, "Free Run", true));
 
+    // 1 is the historical monophonic behaviour: a retrigger always closes the previous
+    // note. Above 1, a Gate over 100% overlaps into the following step instead.
+    layout.add (std::make_unique<juce::AudioParameterInt> (
+        juce::ParameterID { voiceCountId, versionHint }, "Voices", 1, 8, 1));
+
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { swingId, versionHint }, "Swing",
         juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f,
