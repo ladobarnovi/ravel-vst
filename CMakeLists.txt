@@ -133,3 +133,16 @@ if(TRILANE_BUILD_TESTS)
     add_test(NAME engine    COMMAND TriLaneTests)
     add_test(NAME processor COMMAND TriLaneProcessorTests)
 endif()
+
+if(TRILANE_SNAPSHOT_SOURCE)
+    juce_add_console_app(TriLaneSnapshot PRODUCT_NAME "TriLaneSnapshot")
+    target_sources(TriLaneSnapshot PRIVATE ${TRILANE_SNAPSHOT_SOURCE}
+        Source/PluginProcessor.cpp Source/PluginEditor.cpp Source/LaneComponent.cpp
+        Source/Controls.cpp Source/Parameters.cpp Source/SequencerEngine.cpp)
+    target_include_directories(TriLaneSnapshot PRIVATE Source)
+    target_compile_definitions(TriLaneSnapshot PRIVATE
+        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="TriLane")
+    target_link_libraries(TriLaneSnapshot
+        PRIVATE juce::juce_audio_utils juce::juce_audio_processors juce::juce_gui_extra
+        PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+endif()

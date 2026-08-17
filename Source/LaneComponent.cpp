@@ -10,7 +10,11 @@ namespace
     constexpr int slotGap      = 5;
 
     constexpr int railWidth    = 3;
-    constexpr int numberWidth  = 16;
+
+    // Sized for the longest layer button, "Velocity". The column to the left of the steps was
+    // empty space anyway, and abbreviating the labels down to three letters cost more in
+    // legibility than the width was worth.
+    constexpr int numberWidth  = 54;
     constexpr int paramWidth   = 280;
     constexpr int dividerGap   = 14;
 }
@@ -19,36 +23,45 @@ namespace
 StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, int stepIndex)
     : accent (theme::laneAccent (laneIndex))
 {
-    valueSlider.setSliderStyle (juce::Slider::LinearBarVertical);
-    valueSlider.setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
-    valueSlider.setColour (juce::Slider::backgroundColourId, theme::track);
-    valueSlider.setPopupDisplayEnabled (true, true, getParentComponent());
-    valueSlider.setDoubleClickReturnValue (true, 0.0);
-    theme::setRole (valueSlider, theme::Role::stepBar);
-    addAndMakeVisible (valueSlider);
+    struct LayerSetup
+    {
+        juce::Slider& slider;
+        juce::String  paramID;
+        double        resetTo;
+        const char*   tooltip;
+    };
 
-    // Added after the value bar so it paints on top of it; see ChanceOverlay for how the
-    // two share the same rectangle without fighting over the mouse.
-    chanceSlider.setSliderStyle (juce::Slider::LinearBarVertical);
-    chanceSlider.setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
-    chanceSlider.setColour (juce::Slider::backgroundColourId, juce::Colours::transparentBlack);
-    chanceSlider.setColour (juce::Slider::trackColourId, theme::text.withAlpha (0.7f));
-    chanceSlider.setPopupDisplayEnabled (true, true, getParentComponent());
-    chanceSlider.setDoubleClickReturnValue (true, 1.0);
-    chanceSlider.setTooltip ("Chance this step fires -- drag the right edge of the bar");
-    theme::setRole (chanceSlider, theme::Role::stepChance);
-    addAndMakeVisible (chanceSlider);
+    const LayerSetup setups[]
+    {
+        { valueSlider,    params::stepValueId (laneIndex, stepIndex),    0.0, "Step value -- drives pitch" },
+        { velocitySlider, params::stepVelocityId (laneIndex, stepIndex), 1.0, "This step's accent, as a trim on the lane's velocity" },
+        { chanceSlider,   params::stepChanceId (laneIndex, stepIndex),   1.0, "Probability this step fires" },
+    };
+
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>* attachments[]
+        { &valueAttachment, &velocityAttachment, &chanceAttachment };
+
+    for (int i = 0; i < 3; ++i)
+    {
+        auto& slider = setups[i].slider;
+
+        slider.setSliderStyle (juce::Slider::LinearBarVertical);
+        slider.setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
+        slider.setColour (juce::Slider::backgroundColourId, theme::track);
+        slider.setPopupDisplayEnabled (true, true, getParentComponent());
+        slider.setDoubleClickReturnValue (true, setups[i].resetTo);
+        slider.setTooltip (setups[i].tooltip);
+        theme::setRole (slider, theme::Role::stepBar);
+        addChildComponent (slider);
+
+        *attachments[i] = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+            state, setups[i].paramID, slider);
+    }
 
     onButton.setColour (juce::ToggleButton::tickColourId, accent);
     onButton.setTooltip ("Mute or unmute this step");
     theme::setRole (onButton, theme::Role::stepGate);
     addAndMakeVisible (onButton);
-
-    valueAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
-        state, params::stepValueId (laneIndex, stepIndex), valueSlider);
-
-    chanceAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
-        state, params::stepChanceId (laneIndex, stepIndex), chanceSlider);
 
     onAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         state, params::stepOnId (laneIndex, stepIndex), onButton);
@@ -56,26 +69,88 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
     // ButtonAttachment listens through addListener rather than through either callback,
     // so onStateChange is free for the lane's own use.
     onButton.onStateChange = [this] { applyGateState(); };
+
+    setLayer (StepLayer::value);
     applyGateState();
+}
+
+juce::Slider& StepSlot::sliderFor (StepLayer layer) noexcept
+{
+    switch (layer)
+    {
+        case StepLayer::velocity: return velocitySlider;
+        case StepLayer::chance:   return chanceSlider;
+        case StepLayer::value:
+        default:                  return valueSlider;
+    }
+}
+
+void StepSlot::setLayer (StepLayer layer)
+{
+    currentLayer = layer;
+
+    for (auto l : { StepLayer::value, StepLayer::velocity, StepLayer::chance })
+        sliderFor (l).setVisible (l == layer);
+
+    applyGateState();
+    repaint();
 }
 
 void StepSlot::applyGateState()
 {
     const bool on = onButton.getToggleState();
+    auto& visible = sliderFor (currentLayer);
 
-    valueSlider.setColour (juce::Slider::trackColourId, on ? accent : accent.withAlpha (0.25f));
-    valueSlider.repaint();
+    visible.setColour (juce::Slider::trackColourId, on ? accent : accent.withAlpha (0.25f));
+    visible.repaint();
+}
+
+juce::Rectangle<int> StepSlot::barArea() const
+{
+    return getLocalBounds().withTrimmedBottom (gateHeight + gateGap);
+}
+
+void StepSlot::drawLayerTick (juce::Graphics& g, const juce::Slider& slider, StepLayer layer) const
+{
+    const auto range = slider.getRange();
+
+    if (range.getLength() <= 0.0)
+        return;
+
+    const auto bar = barArea().toFloat();
+    const float proportion = (float) ((slider.getValue() - range.getStart()) / range.getLength());
+    const float y = bar.getBottom() - bar.getHeight() * juce::jlimit (0.0f, 1.0f, proportion);
+
+    // One third each, in layer order, so the two visible ticks never overlap whichever layer
+    // happens to be the selected one.
+    const float width = bar.getWidth() / 3.0f;
+    const float x = bar.getX() + width * (float) (int) layer;
+
+    g.setColour (theme::text.withAlpha (0.55f));
+    g.fillRect (x, juce::jlimit (bar.getY(), bar.getBottom() - 1.5f, y - 0.75f), width, 1.5f);
 }
 
 void StepSlot::paintOverChildren (juce::Graphics& g)
 {
+    // The two layers that are not being edited show as ticks, so changing what the bars edit
+    // never hides the rest of the step. Each is drawn only when it is away from its default,
+    // so an untouched lane stays clean.
+    if (currentLayer != StepLayer::value && valueSlider.getValue() > 0.001)
+        drawLayerTick (g, valueSlider, StepLayer::value);
+
+    if (currentLayer != StepLayer::velocity && velocitySlider.getValue() < 0.999)
+        drawLayerTick (g, velocitySlider, StepLayer::velocity);
+
+    if (currentLayer != StepLayer::chance && chanceSlider.getValue() < 0.999)
+        drawLayerTick (g, chanceSlider, StepLayer::chance);
+
     if (! playing)
         return;
 
-    // Drawn over the children rather than in paint(), because the value bar now fills the
-    // whole slot and would cover anything painted underneath it.
+    // Drawn over the children rather than in paint(), because the bar fills the whole slot
+    // and would cover anything painted underneath it.
     g.setColour (accent);
-    g.drawRoundedRectangle (valueSlider.getBounds().toFloat().reduced (0.75f), 3.0f, 1.5f);
+    g.drawRoundedRectangle (barArea().toFloat().reduced (0.75f), 3.0f, 1.5f);
 }
 
 void StepSlot::resized()
@@ -86,6 +161,7 @@ void StepSlot::resized()
     r.removeFromBottom (gateGap);
 
     valueSlider.setBounds (r);
+    velocitySlider.setBounds (r);
     chanceSlider.setBounds (r);
 }
 
@@ -116,8 +192,8 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
         addAndMakeVisible (slots.add (new StepSlot (state, laneIndex, step)));
 
     //--------------------------------------------------------------------------
-    // Two columns, filled left to right then wrapping, so each row pairs a length-ish
-    // parameter with a character-ish one.
+    // Two columns, filled left to right then wrapping, so each row pairs a structural
+    // parameter with one that shapes the lane's feel.
     paramGroup.add (params::laneLengthId (laneIndex), "Length");
     paramGroup.add (params::laneDivId (laneIndex),    "Rate");
     paramGroup.add (params::laneDirId (laneIndex),    "Direction");
@@ -125,6 +201,10 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
     paramGroup.add (params::laneModeId (laneIndex),   "Mix mode");
     paramGroup.add (params::laneNudgeId (laneIndex),  "Nudge")
               ->setTooltip ("Shift this whole lane earlier or later, up to half a step");
+    paramGroup.add (params::laneVelocityId (laneIndex), "Velocity")
+              ->setTooltip ("Trim on the global Velocity, for notes this lane fires");
+    paramGroup.add (params::laneHumanizeId (laneIndex), "Humanise")
+              ->setTooltip ("Random timing jitter, repeatable per bar");
     paramGroup.setColumns (2);
     addAndMakeVisible (paramGroup);
 
@@ -140,6 +220,37 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
     menuButton.setTooltip ("Rotate, invert, copy and paste this lane's pattern");
     menuButton.onClick = [this] { showActionsMenu(); };
     addAndMakeVisible (menuButton);
+
+    //--------------------------------------------------------------------------
+    static const char* layerTooltips[]
+    {
+        "Bars edit each step's value, which drives pitch",
+        "Bars edit each step's velocity accent",
+        "Bars edit each step's probability of firing",
+    };
+
+    for (int i = 0; i < 3; ++i)
+    {
+        auto& button = layerButtons[i];
+
+        button.setTooltip (layerTooltips[i]);
+        button.setClickingTogglesState (false);
+        button.onClick = [this, i] { setLayer ((StepLayer) i); };
+        addAndMakeVisible (button);
+    }
+
+    setLayer (StepLayer::value);
+}
+
+void LaneComponent::setLayer (StepLayer layer)
+{
+    currentLayer = layer;
+
+    for (int i = 0; i < 3; ++i)
+        layerButtons[i].setToggleState (i == (int) layer, juce::dontSendNotification);
+
+    for (auto* slot : slots)
+        slot->setLayer (layer);
 }
 
 //==============================================================================
@@ -204,7 +315,17 @@ void LaneComponent::resized()
 
     r.removeFromLeft (railWidth);
     r.removeFromLeft (8);
-    numberLabel.setBounds (r.removeFromLeft (numberWidth));
+
+    auto leftColumn = r.removeFromLeft (numberWidth);
+    numberLabel.setBounds (leftColumn.removeFromTop (18));
+    leftColumn.removeFromTop (6);
+
+    for (auto& button : layerButtons)
+    {
+        button.setBounds (leftColumn.removeFromTop (theme::rowHeight));
+        leftColumn.removeFromTop (2);
+    }
+
     r.removeFromLeft (10);
 
     //--------------------------------------------------------------------------
@@ -220,7 +341,7 @@ void LaneComponent::resized()
 
     //--------------------------------------------------------------------------
     // Parameter rows plus the pattern buttons, as one block centred against the steps.
-    const int groupHeight  = ControlGroup::heightForRows (3, false);
+    const int groupHeight  = ControlGroup::heightForRows (4, false);
     const int buttonHeight = theme::rowHeight;
     const int blockHeight  = groupHeight + theme::rowGap * 2 + buttonHeight;
 

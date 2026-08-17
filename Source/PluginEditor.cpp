@@ -113,12 +113,6 @@ void TriLaneAudioProcessorEditor::buildTabs()
     clock.add (params::freeRunId, "Free run");
     triggerRow = clock.add (params::triggerSrcId, "Trigger");
 
-    auto& humanise = timingPage.addColumn ("Humanise");
-
-    for (int lane = 0; lane < params::numLanes; ++lane)
-        humanise.add (params::laneHumanizeId (lane), "Lane " + juce::String (lane + 1))
-                ->setTooltip ("Random timing jitter, repeatable per bar");
-
     //--------------------------------------------------------------------------
     auto& global = routingPage.addColumn ("Notes and mix");
     noteChannelRow = global.add (params::midiChannelId, "Note channel");

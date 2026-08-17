@@ -16,6 +16,7 @@ TriLaneAudioProcessor::TriLaneAudioProcessor()
             lp.values[step]  = apvts.getRawParameterValue (params::stepValueId (lane, step));
             lp.enabled[step] = apvts.getRawParameterValue (params::stepOnId (lane, step));
             lp.chance[step]  = apvts.getRawParameterValue (params::stepChanceId (lane, step));
+            lp.stepVelocity[step] = apvts.getRawParameterValue (params::stepVelocityId (lane, step));
         }
 
         lp.length    = apvts.getRawParameterValue (params::laneLengthId (lane));
@@ -25,6 +26,7 @@ TriLaneAudioProcessor::TriLaneAudioProcessor()
         lp.mode      = apvts.getRawParameterValue (params::laneModeId (lane));
         lp.nudge     = apvts.getRawParameterValue (params::laneNudgeId (lane));
         lp.humanize  = apvts.getRawParameterValue (params::laneHumanizeId (lane));
+        lp.velocity  = apvts.getRawParameterValue (params::laneVelocityId (lane));
         lp.ccOn      = apvts.getRawParameterValue (params::laneCcOnId (lane));
         lp.ccNumber  = apvts.getRawParameterValue (params::laneCcNumId (lane));
         lp.ccChannel = apvts.getRawParameterValue (params::laneCcChanId (lane));
@@ -88,6 +90,7 @@ SequencerEngine::Snapshot TriLaneAudioProcessor::buildSnapshot() const
             ls.values[step]  = lp.values[step]->load();
             ls.enabled[step] = lp.enabled[step]->load() > 0.5f;
             ls.chance[step]  = lp.chance[step]->load();
+            ls.velocity[step] = lp.stepVelocity[step]->load();
         }
 
         ls.length    = (int) std::lround (lp.length->load());
@@ -97,6 +100,7 @@ SequencerEngine::Snapshot TriLaneAudioProcessor::buildSnapshot() const
         ls.mode      = (int) std::lround (lp.mode->load());
         ls.nudge     = lp.nudge->load();
         ls.humanize  = lp.humanize->load();
+        ls.velocityScale = lp.velocity->load();
         ls.ccOn      = lp.ccOn->load() > 0.5f;
         ls.ccNumber  = (int) std::lround (lp.ccNumber->load());
         ls.ccChannel = (int) std::lround (lp.ccChannel->load());

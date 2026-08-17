@@ -12,6 +12,7 @@ namespace
 juce::String stepValueId    (int lane, int step) { return stepPrefix (lane, step) + "_val"; }
 juce::String stepOnId       (int lane, int step) { return stepPrefix (lane, step) + "_on"; }
 juce::String stepChanceId   (int lane, int step) { return stepPrefix (lane, step) + "_chance"; }
+juce::String stepVelocityId (int lane, int step) { return stepPrefix (lane, step) + "_vel"; }
 juce::String laneLengthId   (int lane)           { return lanePrefix (lane) + "_length"; }
 juce::String laneDivId      (int lane)           { return lanePrefix (lane) + "_div"; }
 juce::String laneDirId      (int lane)           { return lanePrefix (lane) + "_dir"; }
@@ -19,6 +20,7 @@ juce::String laneDepthId    (int lane)           { return lanePrefix (lane) + "_
 juce::String laneModeId     (int lane)           { return lanePrefix (lane) + "_mode"; }
 juce::String laneNudgeId    (int lane)           { return lanePrefix (lane) + "_nudge"; }
 juce::String laneHumanizeId (int lane)           { return lanePrefix (lane) + "_humanize"; }
+juce::String laneVelocityId (int lane)           { return lanePrefix (lane) + "_vel"; }
 juce::String laneCcOnId     (int lane)           { return lanePrefix (lane) + "_cc_on"; }
 juce::String laneCcNumId    (int lane)           { return lanePrefix (lane) + "_cc_num"; }
 juce::String laneCcChanId   (int lane)           { return lanePrefix (lane) + "_cc_chan"; }
@@ -82,6 +84,22 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
                 juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f),
                 1.0f,
                 juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
+
+            // The step's own accent, as a trim on the lane's velocity rather than an absolute
+            // number, so a pattern keeps its shape when the lane or the global Velocity is
+            // moved. 100% is unity, which is what makes this addition silent for a session
+            // saved before it existed.
+            //
+            // Attenuate-only, unlike the per-lane trim: the global and the lane already set
+            // the ceiling, and a range that went above unity would draw every untouched step
+            // as a half-height bar in the editor's velocity layer -- reading as "half" when
+            // it means "unchanged".
+            layout.add (std::make_unique<juce::AudioParameterFloat> (
+                juce::ParameterID { stepVelocityId (lane, step), versionHint },
+                stepName + " Velocity",
+                juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f),
+                1.0f,
+                juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
         }
 
         layout.add (std::make_unique<juce::AudioParameterInt> (
@@ -117,6 +135,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
             juce::ParameterID { laneHumanizeId (lane), versionHint },
             laneName + "Humanize",
             juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.0f,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
+
+        // A trim on the global Velocity rather than an absolute value, so the global stays
+        // the master control and a session saved before this existed sounds identical at
+        // the 100% default.
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { laneVelocityId (lane), versionHint },
+            laneName + "Velocity",
+            juce::NormalisableRange<float> (0.0f, 2.0f, 0.01f), 1.0f,
             juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
 
         layout.add (std::make_unique<juce::AudioParameterBool> (
@@ -269,9 +296,10 @@ void rotateLane (juce::AudioProcessorValueTreeState& state, int lane, int direct
     {
         const int source = (step + numSteps - shift) % numSteps;
 
-        setParam (state, stepValueId  (lane, step), pattern.values[source]);
-        setParam (state, stepOnId     (lane, step), pattern.enabled[source] ? 1.0f : 0.0f);
-        setParam (state, stepChanceId (lane, step), pattern.chance[source]);
+        setParam (state, stepValueId    (lane, step), pattern.values[source]);
+        setParam (state, stepOnId       (lane, step), pattern.enabled[source] ? 1.0f : 0.0f);
+        setParam (state, stepChanceId   (lane, step), pattern.chance[source]);
+        setParam (state, stepVelocityId (lane, step), pattern.velocity[source]);
     }
 }
 
@@ -281,9 +309,10 @@ LanePattern copyLane (juce::AudioProcessorValueTreeState& state, int lane)
 
     for (int step = 0; step < numSteps; ++step)
     {
-        pattern.values[step]  = getParam (state, stepValueId (lane, step));
-        pattern.enabled[step] = getParam (state, stepOnId (lane, step)) > 0.5f;
-        pattern.chance[step]  = getParam (state, stepChanceId (lane, step));
+        pattern.values[step]   = getParam (state, stepValueId (lane, step));
+        pattern.enabled[step]  = getParam (state, stepOnId (lane, step)) > 0.5f;
+        pattern.chance[step]   = getParam (state, stepChanceId (lane, step));
+        pattern.velocity[step] = getParam (state, stepVelocityId (lane, step));
     }
 
     pattern.valid = true;
@@ -297,9 +326,10 @@ void pasteLane (juce::AudioProcessorValueTreeState& state, int lane, const LaneP
 
     for (int step = 0; step < numSteps; ++step)
     {
-        setParam (state, stepValueId  (lane, step), pattern.values[step]);
-        setParam (state, stepOnId     (lane, step), pattern.enabled[step] ? 1.0f : 0.0f);
-        setParam (state, stepChanceId (lane, step), pattern.chance[step]);
+        setParam (state, stepValueId    (lane, step), pattern.values[step]);
+        setParam (state, stepOnId       (lane, step), pattern.enabled[step] ? 1.0f : 0.0f);
+        setParam (state, stepChanceId   (lane, step), pattern.chance[step]);
+        setParam (state, stepVelocityId (lane, step), pattern.velocity[step]);
     }
 }
 

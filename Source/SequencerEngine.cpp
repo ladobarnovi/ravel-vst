@@ -344,6 +344,21 @@ SequencerEngine::PitchResult SequencerEngine::pitchFor (float value, const Snaps
     return result;
 }
 
+int SequencerEngine::velocityFor (const Snapshot& s, int laneIndex, int stepIndex) noexcept
+{
+    const auto& ln = s.lanes[(size_t) juce::jlimit (0, params::numLanes - 1, laneIndex)];
+    const float step = ln.velocity[(size_t) juce::jlimit (0, params::numSteps - 1, stepIndex)];
+
+    // Three multiplied trims: the global Velocity is the master, the lane balances against
+    // its neighbours, and the step carries the accent. All default to unity, so the whole
+    // chain collapses to the bare global value.
+    const float scaled = (float) s.velocity * ln.velocityScale * step;
+
+    // Clamped to 1 rather than 0: a MIDI note-on at velocity 0 is a note-off, so a step
+    // pulled to 0% plays as quietly as MIDI allows instead of silently retiring itself.
+    return juce::jlimit (1, 127, (int) std::lround (scaled));
+}
+
 void SequencerEngine::startNote (juce::MidiBuffer& out, int sampleOffset, const PitchResult& pitch,
                                  int velocity, int gateSamples, int begin, int end)
 {
@@ -436,6 +451,8 @@ void SequencerEngine::process (const Snapshot& s,
 
         float accumulator   = 0.0f;
         bool  triggered     = false;
+        int   triggerLane   = 0;
+        int   triggerStep   = 0;
         double triggerStepPpq = params::divisionPpq[params::divIndex_1_16];
 
         // Poly mode: each lane's own trigger, collected here rather than emitted inside the
@@ -443,6 +460,7 @@ void SequencerEngine::process (const Snapshot& s,
         // ahead of any note-on landing on this same sample.
         bool   laneTriggered[params::numLanes] {};
         float  laneTriggerValue[params::numLanes] {};
+        int    laneTriggerStep[params::numLanes] {};
         double laneTriggerStepPpq[params::numLanes] {};
 
         //----------------------------------------------------------------------
@@ -531,6 +549,7 @@ void SequencerEngine::process (const Snapshot& s,
                 {
                     laneTriggered[laneIndex]      = true;
                     laneTriggerValue[laneIndex]   = value;
+                    laneTriggerStep[laneIndex]    = step;
                     laneTriggerStepPpq[laneIndex] = stepPpq;
                 }
             }
@@ -543,6 +562,8 @@ void SequencerEngine::process (const Snapshot& s,
                 if (advanced && stepOn && isTriggerLane)
                 {
                     triggered      = true;
+                    triggerLane    = laneIndex;
+                    triggerStep    = step;
                     triggerStepPpq = stepPpq;
                 }
             }
@@ -584,13 +605,10 @@ void SequencerEngine::process (const Snapshot& s,
 
                     const auto pitch = pitchFor (value, s, noteChannel, bendRange);
 
-                    // Depth is the lane's contribution in both modes: its share of the mix
-                    // there, its note velocity here.
-                    const int velocity = (int) std::lround ((float) s.velocity * std::abs (ln.depth));
-
                     const int begin = laneIndex * voicesPerLane;
 
-                    startNote (out, n, pitch, velocity,
+                    startNote (out, n, pitch,
+                               velocityFor (s, laneIndex, laneTriggerStep[laneIndex]),
                                gateSamplesFor (laneTriggerStepPpq[laneIndex]),
                                begin, begin + voiceLimit);
                 }
@@ -599,8 +617,10 @@ void SequencerEngine::process (const Snapshot& s,
             {
                 const auto pitch = pitchFor (mix, s, noteChannel, bendRange);
 
-                startNote (out, n, pitch, s.velocity, gateSamplesFor (triggerStepPpq),
-                           0, voiceLimit);
+                // The note belongs to whichever step of whichever lane triggered it, so that
+                // step's accent applies even though the pitch came from the combined mix.
+                startNote (out, n, pitch, velocityFor (s, triggerLane, triggerStep),
+                           gateSamplesFor (triggerStepPpq), 0, voiceLimit);
             }
         }
         else if (anyVoiceActive())

@@ -4,23 +4,18 @@
 #include "Parameters.h"
 #include "Theme.h"
 
-/** Chance, drawn as a tick across its parent step bar.
+/** Which of a step's three continuous parameters the tall bars currently edit.
 
-    It covers the same rectangle as the value bar, but only claims the mouse in a narrow
-    strip down the right-hand edge -- a child that fails hitTest passes the event through
-    to the sibling underneath, so the bulk of the bar still drags the value. That is what
-    lets one step present two continuous parameters without stacking two visible bars.
+    All three are full-height bars stacked in the same rectangle with one visible at a time,
+    rather than three smaller bars competing for the slot. The two that are hidden still show
+    as faint ticks, so the whole step stays readable while only one is editable -- and every
+    bar keeps its own parameter attachment, since nothing has to be rebound when the
+    selection changes.
 */
-class ChanceOverlay final : public juce::Slider
-{
-public:
-    static constexpr int gutterWidth = 9;
-
-    bool hitTest (int x, int) override { return x >= getWidth() - gutterWidth; }
-};
+enum class StepLayer { value = 0, velocity = 1, chance = 2 };
 
 //==============================================================================
-/** One step: a tall value bar, a chance tick across it, and a gate strip beneath. */
+/** One step: a tall bar for the selected layer, ticks for the other two, and a gate strip. */
 class StepSlot final : public juce::Component
 {
 public:
@@ -30,21 +25,33 @@ public:
     void resized() override;
 
     void setPlaying (bool shouldBePlaying);
+    void setLayer (StepLayer layer);
 
 private:
-    /** Recolours the value bar to match the gate, so a muted step reads as muted without
+    /** Recolours the visible bar to match the gate, so a muted step reads as muted without
         needing a separate indicator. */
     void applyGateState();
 
-    juce::Slider valueSlider;
-    ChanceOverlay chanceSlider;
+    /** A faint mark at a hidden layer's level, drawn over the visible bar. Each layer owns
+        one of three horizontal thirds, so no two ticks can ever sit on top of each other. */
+    void drawLayerTick (juce::Graphics&, const juce::Slider&, StepLayer) const;
+
+    /** The rectangle the three bars share, which is the slot minus the gate strip. */
+    juce::Rectangle<int> barArea() const;
+
+    juce::Slider valueSlider, velocitySlider, chanceSlider;
     juce::ToggleButton onButton;
 
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> valueAttachment, chanceAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> valueAttachment,
+                                                                         velocityAttachment,
+                                                                         chanceAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> onAttachment;
 
     juce::Colour accent;
     bool playing = false;
+    StepLayer currentLayer = StepLayer::value;
+
+    juce::Slider& sliderFor (StepLayer) noexcept;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StepSlot)
 };
@@ -83,6 +90,16 @@ private:
 
     juce::TextButton randomiseButton { "Rnd" }, clearButton { "Clr" }, menuButton { "..." };
     juce::Random random;
+
+    // Which per-step parameter the eight bars edit. Per lane rather than global, so one lane
+    // can be shown as accents while another is being dialled in for pitch.
+    juce::TextButton layerButtons[3] { juce::TextButton ("Value"),
+                                       juce::TextButton ("Velocity"),
+                                       juce::TextButton ("Prob") };
+
+    StepLayer currentLayer = StepLayer::value;
+
+    void setLayer (StepLayer);
 
     // Set in resized(), drawn in paint(): the hairline between steps and parameters.
     int dividerX = 0;

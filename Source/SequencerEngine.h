@@ -26,6 +26,9 @@ public:
         float values[params::numSteps] {};
         bool  enabled[params::numSteps] {};
         float chance[params::numSteps] {};
+
+        /** Per-step accent, as a trim like velocityScale below. 1 is unity. */
+        float velocity[params::numSteps] {};
         int   length    = params::numSteps;
         int   division  = params::divIndex_1_16;
         int   direction = 0;
@@ -33,6 +36,9 @@ public:
         int   mode      = params::modeAdd;
         float nudge     = 0.0f;
         float humanize  = 0.0f;
+
+        /** Trim on the global Velocity, applied to notes this lane fires. 1 is unity. */
+        float velocityScale = 1.0f;
         bool  ccOn      = false;
         int   ccNumber  = 20;
         int   ccChannel = 1;
@@ -61,9 +67,8 @@ public:
 
         /** False: the three lanes are mixed into one value that drives one note.
             True:  each lane triggers its own note off its own clock, so the three run as
-                   independent voices. Depth then sets the lane's note velocity as well as
-                   its share of the mix, and Trigger is unused because every lane triggers
-                   itself.
+                   independent voices. A lane at zero Depth stays silent, and Trigger is
+                   unused because every lane triggers itself.
         */
         bool  polyMode      = false;
     };
@@ -186,6 +191,10 @@ private:
     };
 
     PitchResult pitchFor (float value, const Snapshot& s, int noteChannel, int bendRange);
+
+    /** The MIDI velocity for a note fired by a given step: the global Velocity scaled by the
+        lane's trim and then by that step's own accent. */
+    static int velocityFor (const Snapshot& s, int laneIndex, int stepIndex) noexcept;
 
     /** Allocates a slot in [begin, end), emits the bend and note-on, and arms the gate. */
     void startNote (juce::MidiBuffer& out, int sampleOffset, const PitchResult& pitch,

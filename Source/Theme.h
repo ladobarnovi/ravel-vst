@@ -190,10 +190,15 @@ public:
     void drawButtonBackground (juce::Graphics& g, juce::Button& button, const juce::Colour&,
                                bool shouldDrawButtonAsHighlighted, bool) override
     {
-        if (! shouldDrawButtonAsHighlighted)
+        // A latched button (the per-lane layer selector) keeps a filled pill so the current
+        // selection is readable at rest; plain action buttons only light up under the mouse.
+        if (button.getToggleState())
+            g.setColour (theme::track);
+        else if (shouldDrawButtonAsHighlighted)
+            g.setColour (theme::track.withAlpha (0.55f));
+        else
             return;
 
-        g.setColour (theme::track);
         g.fillRoundedRectangle (button.getLocalBounds().toFloat(), 3.0f);
     }
 

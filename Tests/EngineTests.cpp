@@ -135,8 +135,13 @@ namespace
                 lane.enabled[i] = true;
             }
 
+            // Both default to unity in the parameter layout, so the harness has to set them
+            // too -- a default-constructed Snapshot would leave every step at zero velocity.
             for (int i = 0; i < params::numSteps; ++i)
-                lane.chance[i] = 1.0f;
+            {
+                lane.chance[i]   = 1.0f;
+                lane.velocity[i] = 1.0f;
+            }
 
             lane.length    = params::numSteps;
             lane.division  = params::divIndex_1_16;
@@ -145,6 +150,7 @@ namespace
             lane.mode      = params::modeAdd;
             lane.nudge     = 0.0f;
             lane.humanize  = 0.0f;
+            lane.velocityScale = 1.0f;
             lane.ccOn      = false;
         }
 
@@ -1357,7 +1363,125 @@ int main()
     }
 
     //==========================================================================
-    section ("Poly mode reads Depth as the lane's velocity");
+    section ("Per-lane velocity trims the global velocity");
+    {
+        auto s = baseSnapshot();
+        s.polyMode = true;
+        s.scale = 0;
+        s.velocity = 80;
+        s.gatePercent = 50.0f;
+
+        for (int lane = 0; lane < params::numLanes; ++lane)
+        {
+            s.lanes[lane].length = 1;
+            s.lanes[lane].values[0] = (float) lane / 12.0f;
+            s.lanes[lane].depth = 1.0f;
+        }
+
+        s.lanes[0].velocityScale = 1.0f;    // unity: the global value
+        s.lanes[1].velocityScale = 0.5f;    // half
+        s.lanes[2].velocityScale = 2.0f;    // double, clamped into range
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto ons = only (run (engine, s, 2 * samplesPerStep), noteOn);
+
+        int v48 = -1, v49 = -1, v50 = -1;
+
+        for (const auto& e : ons)
+        {
+            if (e.number == 48) v48 = e.value;
+            if (e.number == 49) v49 = e.value;
+            if (e.number == 50) v50 = e.value;
+        }
+
+        check (v48 == 80,  "a trim of 100% plays at the global velocity");
+        check (v49 == 40,  "a trim of 50% halves it");
+        check (v50 == 127, "a trim that would exceed 127 clamps instead of wrapping");
+    }
+
+    //==========================================================================
+    section ("Per-step velocity accents individual steps");
+    {
+        // One lane, four steps at distinct pitches so each note is identifiable, with a
+        // different accent on each.
+        auto s = baseSnapshot();
+        s.scale = 0;
+        s.velocity = 100;
+        s.gatePercent = 40.0f;
+        s.lanes[0].length = 4;
+
+        for (int i = 0; i < 4; ++i)
+            s.lanes[0].values[i] = (float) i / 12.0f;
+
+        s.lanes[0].velocity[0] = 1.0f;     // 100, unity
+        s.lanes[0].velocity[1] = 0.25f;    // 25
+        s.lanes[0].velocity[2] = 0.6f;     // 60
+        s.lanes[0].velocity[3] = 0.0f;     // clamps up to 1, never 0
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto ons = only (run (engine, s, 4 * samplesPerStep), noteOn);
+
+        int v[4] { -1, -1, -1, -1 };
+
+        for (const auto& e : ons)
+            if (e.number >= 48 && e.number <= 51)
+                v[e.number - 48] = e.value;
+
+        check (v[0] == 100, "an accent of 100% plays at the global velocity");
+        check (v[1] == 25,  "a quiet step is scaled down on its own");
+        check (v[2] == 60,  "each step scales independently of its neighbours");
+        check (v[3] == 1,   "a step at 0% clamps to 1, since velocity 0 would be a note-off");
+    }
+
+    //==========================================================================
+    section ("The lane trim can push a step above the global velocity");
+    {
+        // Per-step accent only attenuates, so boosting is the lane trim's job.
+        auto s = baseSnapshot();
+        s.scale = 0;
+        s.velocity = 100;
+        s.gatePercent = 40.0f;
+        s.lanes[0].length = 1;
+        s.lanes[0].values[0] = 0.0f;
+        s.lanes[0].velocityScale = 1.5f;
+        s.lanes[0].velocity[0]   = 1.0f;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto ons = only (run (engine, s, 2 * samplesPerStep), noteOn);
+
+        check (! ons.empty() && ons[0].value == 127,
+               "100 global x 150% lane clamps at 127 rather than wrapping");
+    }
+
+    //==========================================================================
+    section ("Step accent, lane trim and global velocity multiply");
+    {
+        auto s = baseSnapshot();
+        s.scale = 0;
+        s.velocity = 80;
+        s.gatePercent = 40.0f;
+        s.lanes[0].length = 1;
+        s.lanes[0].values[0] = 0.0f;
+        s.lanes[0].velocityScale = 0.5f;    // lane trim
+        s.lanes[0].velocity[0]   = 0.5f;    // step accent
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto ons = only (run (engine, s, 2 * samplesPerStep), noteOn);
+
+        check (! ons.empty() && ons[0].value == 20,
+               "80 global x 50% lane x 50% step gives 20");
+    }
+
+    //==========================================================================
+    section ("Depth still gates a poly lane, without setting its velocity");
     {
         auto s = baseSnapshot();
         s.polyMode = true;
@@ -1371,8 +1495,8 @@ int main()
             s.lanes[lane].values[0] = (float) lane / 12.0f;
         }
 
-        s.lanes[0].depth = 1.0f;    // full velocity
-        s.lanes[1].depth = 0.5f;    // half
+        s.lanes[0].depth = 1.0f;
+        s.lanes[1].depth = 0.05f;   // barely in the mix, but still a full-velocity note
         s.lanes[2].depth = 0.0f;    // silent
 
         SequencerEngine engine;
@@ -1380,19 +1504,62 @@ int main()
 
         const auto ons = only (run (engine, s, 2 * samplesPerStep), noteOn);
 
-        int velocityOfNote48 = -1, velocityOfNote49 = -1;
+        int v48 = -1, v49 = -1;
         bool sawSilentLane = false;
 
         for (const auto& e : ons)
         {
-            if (e.number == 48) velocityOfNote48 = e.value;
-            if (e.number == 49) velocityOfNote49 = e.value;
+            if (e.number == 48) v48 = e.value;
+            if (e.number == 49) v49 = e.value;
             if (e.number == 50) sawSilentLane = true;
         }
 
-        check (velocityOfNote48 == 100, "depth 1 plays at the full velocity");
-        check (velocityOfNote49 == 50,  "depth 0.5 halves the velocity");
-        check (! sawSilentLane,         "a lane at zero depth stays silent");
+        check (! sawSilentLane, "a lane at zero depth stays silent");
+        check (v48 == 100 && v49 == 100,
+               "depth no longer scales velocity, so a quiet mix share still plays full");
+    }
+
+    //==========================================================================
+    section ("In mixed mode the triggering lane supplies the velocity");
+    {
+        // Trigger = Any Lane, lane 2 on a slower division and trimmed down. Its notes
+        // should come out quieter than lane 1's.
+        auto s = baseSnapshot();
+        s.scale = 0;
+        s.velocity = 100;
+        s.gatePercent = 40.0f;
+        s.triggerSource = params::numLanes;    // Any Lane
+        s.voiceCount = 4;
+
+        s.lanes[0].length = 1;
+        s.lanes[0].division = params::divIndex_1_16;
+        s.lanes[0].velocityScale = 1.0f;
+
+        s.lanes[1].length = 1;
+        s.lanes[1].division = params::divIndex_1_4;
+        s.lanes[1].velocityScale = 0.3f;
+
+        // Under Any Lane every lane is a trigger lane and the last one to advance at a given
+        // sample wins, so lane 3 -- which runs at 1/16 by default -- has to be switched off
+        // or it would claim every trigger and supply its own velocity.
+        for (int i = 0; i < params::numSteps; ++i)
+            s.lanes[2].enabled[i] = false;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto ons = only (run (engine, s, 4 * samplesPerStep), noteOn);
+
+        bool sawFull = false, sawTrimmed = false;
+
+        for (const auto& e : ons)
+        {
+            if (e.value == 100) sawFull = true;
+            if (e.value == 30)  sawTrimmed = true;
+        }
+
+        check (sawFull,    "steps triggered by lane 1 play at its own velocity");
+        check (sawTrimmed, "steps triggered by lane 2 carry its trim instead");
     }
 
     //==========================================================================
