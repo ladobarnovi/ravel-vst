@@ -1300,6 +1300,187 @@ int main()
     }
 
     //==========================================================================
+    section ("Poly mode gives each lane its own voice");
+    {
+        // Three lanes, one step each so every lane repeats one pitch, and three different
+        // divisions so their triggers land on different grids.
+        auto s = baseSnapshot();
+        s.polyMode = true;
+        s.scale = 0;               // Chromatic: a degree is a semitone
+        s.rangeSteps = 12;
+        s.gatePercent = 50.0f;
+
+        for (int lane = 0; lane < params::numLanes; ++lane)
+        {
+            s.lanes[lane].length = 1;
+            s.lanes[lane].depth  = 1.0f;
+        }
+
+        s.lanes[0].values[0] = 0.0f;             // root, 48
+        s.lanes[1].values[0] = 4.0f / 12.0f;     // +4, 52
+        s.lanes[2].values[0] = 7.0f / 12.0f;     // +7, 55
+
+        s.lanes[0].division = params::divIndex_1_16;
+        s.lanes[1].division = params::divIndex_1_8;
+        s.lanes[2].division = params::divIndex_1_4;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto events = run (engine, s, 4 * samplesPerStep);
+        const auto ons    = only (events, noteOn);
+
+        bool saw48 = false, saw52 = false, saw55 = false;
+
+        for (const auto& e : ons)
+        {
+            if (e.number == 48) saw48 = true;
+            if (e.number == 52) saw52 = true;
+            if (e.number == 55) saw55 = true;
+        }
+
+        check (saw48 && saw52 && saw55, "all three lanes emit their own pitch");
+
+        // One 1/4 = four 1/16 steps, so over four 1/16 steps lane 1 fires four times,
+        // lane 2 twice and lane 3 once: seven note-ons in total.
+        check (ons.size() == 7, "each lane fires on its own division, not a shared one");
+
+        // At sample 0 every lane's first step begins together, so their note-ons must share
+        // that offset -- this is the simultaneous onset the mixed mode cannot produce.
+        int togetherAtZero = 0;
+
+        for (const auto& e : ons)
+            if (e.sample == 0)
+                ++togetherAtZero;
+
+        check (togetherAtZero == 3, "lanes starting together produce simultaneous note-ons");
+    }
+
+    //==========================================================================
+    section ("Poly mode reads Depth as the lane's velocity");
+    {
+        auto s = baseSnapshot();
+        s.polyMode = true;
+        s.scale = 0;
+        s.velocity = 100;
+        s.gatePercent = 50.0f;
+
+        for (int lane = 0; lane < params::numLanes; ++lane)
+        {
+            s.lanes[lane].length = 1;
+            s.lanes[lane].values[0] = (float) lane / 12.0f;
+        }
+
+        s.lanes[0].depth = 1.0f;    // full velocity
+        s.lanes[1].depth = 0.5f;    // half
+        s.lanes[2].depth = 0.0f;    // silent
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto ons = only (run (engine, s, 2 * samplesPerStep), noteOn);
+
+        int velocityOfNote48 = -1, velocityOfNote49 = -1;
+        bool sawSilentLane = false;
+
+        for (const auto& e : ons)
+        {
+            if (e.number == 48) velocityOfNote48 = e.value;
+            if (e.number == 49) velocityOfNote49 = e.value;
+            if (e.number == 50) sawSilentLane = true;
+        }
+
+        check (velocityOfNote48 == 100, "depth 1 plays at the full velocity");
+        check (velocityOfNote49 == 50,  "depth 0.5 halves the velocity");
+        check (! sawSilentLane,         "a lane at zero depth stays silent");
+    }
+
+    //==========================================================================
+    section ("Poly mode keeps each lane's voices to itself");
+    {
+        // Lane 1 holds a note far past its own step while lane 2 hammers away. With a shared
+        // voice pool lane 2 would steal lane 1's slot; with a block per lane it cannot.
+        auto s = baseSnapshot();
+        s.polyMode = true;
+        s.scale = 0;
+        s.voiceCount = 1;
+        s.gatePercent = 400.0f;      // four steps long
+
+        s.lanes[0].length = 1;
+        s.lanes[0].values[0] = 0.0f;             // note 48
+        s.lanes[0].division = params::divIndex_1_4;
+        s.lanes[0].depth = 1.0f;
+
+        s.lanes[1].length = 1;
+        s.lanes[1].values[0] = 9.0f / 12.0f;     // note 57
+        s.lanes[1].division = params::divIndex_1_16;
+        s.lanes[1].depth = 1.0f;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto events = run (engine, s, 4 * samplesPerStep);
+
+        // Lane 1's note 48 starts at 0 and its gate runs four 1/4 steps, so nothing should
+        // release it inside this run. Lane 2's note 57 retriggers throughout.
+        int offsOf48 = 0, onsOf57 = 0;
+
+        for (const auto& e : events)
+        {
+            if (e.type == noteOff && e.number == 48) ++offsOf48;
+            if (e.type == noteOn  && e.number == 57) ++onsOf57;
+        }
+
+        check (offsOf48 == 0, "a fast lane never steals a slow lane's held note");
+        check (onsOf57 > 1,   "the fast lane still retriggers inside its own block");
+    }
+
+    //==========================================================================
+    section ("Switching the poly switch releases what was sounding");
+    {
+        auto s = baseSnapshot();
+        s.scale = 0;
+        s.gatePercent = 400.0f;
+        s.voiceCount = 4;
+        s.lanes[0].length = 1;
+        s.lanes[0].values[0] = 0.0f;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        juce::MidiBuffer buffer;
+        int sounding = 0;
+
+        for (int pos = 0; pos < 2 * blockSize; pos += blockSize)
+        {
+            buffer.clear();
+            engine.process (s, buffer, blockSize, ppqPerSample * pos, ppqPerSample, true);
+
+            for (const auto metadata : buffer)
+            {
+                if (metadata.getMessage().isNoteOn())  ++sounding;
+                if (metadata.getMessage().isNoteOff()) --sounding;
+            }
+        }
+
+        check (sounding == 1, "a note is held in mixed mode");
+
+        // Flipping the switch moves voice ownership, so the held note has to be released
+        // rather than abandoned in a slot the new mode does not scan.
+        s.polyMode = true;
+        buffer.clear();
+        engine.process (s, buffer, blockSize, ppqPerSample * 2 * blockSize, ppqPerSample, true);
+
+        int released = 0;
+
+        for (const auto metadata : buffer)
+            if (metadata.getMessage().isNoteOff())
+                ++released;
+
+        check (released >= 1, "flipping the switch releases it instead of leaving it stuck");
+    }
+
+    //==========================================================================
     std::printf ("\n%d checks, %d failed\n", checksRun, checksFailed);
 
     return checksFailed == 0 ? 0 : 1;

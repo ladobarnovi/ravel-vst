@@ -55,7 +55,13 @@ TriLaneAudioProcessorEditor::TriLaneAudioProcessorEditor (TriLaneAudioProcessor&
 
     auto& state = processorRef.apvts;
 
+    // The two top-level mode switches: what the plugin emits, and whether the lanes are
+    // mixed into one voice or run as three.
     outputGroup.add (params::outputModeId, "Output");
+    outputGroup.add (params::polyModeId, "Poly")
+               ->setTooltip ("Each lane triggers its own note off its own clock, instead of "
+                             "the three mixing into one");
+    outputGroup.setColumns (2);
     addAndMakeVisible (outputGroup);
 
     theme::styleHeading (mixCaption, "Mix");
@@ -70,6 +76,7 @@ TriLaneAudioProcessorEditor::TriLaneAudioProcessorEditor (TriLaneAudioProcessor&
     // Polled on the timer rather than via a parameter listener, because listener
     // callbacks arrive on the audio thread and must not touch components.
     pitchModeParam = state.getRawParameterValue (params::pitchModeId);
+    polyModeParam  = state.getRawParameterValue (params::polyModeId);
 
     setSize (windowWidth, windowHeight);
     startTimerHz (30);
@@ -102,9 +109,9 @@ void TriLaneAudioProcessorEditor::buildTabs()
 
     //--------------------------------------------------------------------------
     auto& clock = timingPage.addColumn ("Clock");
-    clock.add (params::swingId,     "Swing");
-    clock.add (params::freeRunId,   "Free run");
-    clock.add (params::triggerSrcId, "Trigger");
+    clock.add (params::swingId,   "Swing");
+    clock.add (params::freeRunId, "Free run");
+    triggerRow = clock.add (params::triggerSrcId, "Trigger");
 
     auto& humanise = timingPage.addColumn ("Humanise");
 
@@ -161,8 +168,8 @@ void TriLaneAudioProcessorEditor::resized()
     titleLabel.setBounds (header.removeFromLeft (92));
     header.removeFromLeft (12);
 
-    outputGroup.setBounds (header.removeFromLeft (190)
-                                 .withSizeKeepingCentre (190, theme::rowHeight));
+    outputGroup.setBounds (header.removeFromLeft (370)
+                                 .withSizeKeepingCentre (370, theme::rowHeight));
 
     auto meterArea = header.removeFromRight (meterWidth).withSizeKeepingCentre (meterWidth, 10);
     mixCaption.setBounds (meterArea.removeFromLeft (28));
@@ -213,6 +220,21 @@ void TriLaneAudioProcessorEditor::timerCallback()
             scaleRow->setDimmed (params::isContinuousPitch (pitchMode));
             bendRangeRow->setDimmed (! params::isContinuousPitch (pitchMode));
             noteChannelRow->setDimmed (pitchMode == params::pitchMpe);
+        }
+    }
+
+    if (polyModeParam != nullptr)
+    {
+        const int poly = polyModeParam->load() > 0.5f ? 1 : 0;
+
+        if (poly != lastPolyMode)
+        {
+            lastPolyMode = poly;
+
+            // In poly mode every lane triggers itself, so there is nothing for Trigger to
+            // select. Mix mode and Depth are deliberately left alone: both still shape the
+            // mix that drives the CC output, and Depth additionally becomes note velocity.
+            triggerRow->setDimmed (poly != 0);
         }
     }
 }

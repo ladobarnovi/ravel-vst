@@ -58,6 +58,14 @@ public:
         float slewMs        = 0.0f;
         float swing         = 0.0f;
         int   voiceCount    = 1;
+
+        /** False: the three lanes are mixed into one value that drives one note.
+            True:  each lane triggers its own note off its own clock, so the three run as
+                   independent voices. Depth then sets the lane's note velocity as well as
+                   its share of the mix, and Trigger is unused because every lane triggers
+                   itself.
+        */
+        bool  polyMode      = false;
     };
 
     //==========================================================================
@@ -80,7 +88,12 @@ public:
     /** Releases every sounding note immediately -- used on transport stop and reset. */
     void releaseAllVoices (juce::MidiBuffer& out, int sampleOffset);
 
-    static constexpr int maxVoices = 8;
+    /** Voice slots each lane gets to itself in poly mode. This is the ceiling on Voices,
+        which is why the pool is a fixed block per lane rather than a shared free list:
+        a lane holding a long gate can then never have its note stolen by a faster lane.
+    */
+    static constexpr int voicesPerLane = 8;
+    static constexpr int maxVoices     = params::numLanes * voicesPerLane;
 
     //==========================================================================
     // Read by the editor's timer. Plain relaxed atomics: a torn read just means
@@ -148,13 +161,35 @@ private:
     /** Counts down each sounding voice and emits note-off as they expire. */
     void advanceVoices (juce::MidiBuffer& out, int sampleOffset);
 
-    /** Picks a slot for a new note, emitting a note-off first if it has to reuse or steal
-        one. Returns the index to fill in.
+    /** Picks a slot in [begin, end) for a new note, emitting a note-off first if it has to
+        reuse or steal one. Returns the index to fill in.
     */
-    int allocateVoice (juce::MidiBuffer& out, int sampleOffset, int note, int channel, int voiceLimit);
+    int allocateVoice (juce::MidiBuffer& out, int sampleOffset, int note, int channel,
+                       int begin, int end);
 
-    /** Retires voices that fall outside a reduced voice count. */
-    void retireVoicesAbove (juce::MidiBuffer& out, int sampleOffset, int voiceLimit);
+    /** Whether the current mode and voice count still own a slot. In poly mode a lane's
+        block always starts at the same index, so only the offset within it is checked --
+        which is what keeps a held note in slot 0 of lane 2 alive when Voices changes. */
+    static bool slotIsOwned (int slot, int voiceLimit, bool polyMode) noexcept;
+
+    /** Releases voices in slots the current mode and voice count no longer own. */
+    void retireUnownedVoices (juce::MidiBuffer& out, int sampleOffset, int voiceLimit, bool polyMode);
+
+    /** The note, channel and pitch bend a 0..1 value maps to under the current pitch mode.
+        Not const: MPE mode advances the member-channel rotation as a side effect.
+    */
+    struct PitchResult
+    {
+        int note    = 0;
+        int channel = 1;
+        int bend    = -1;   // -1 means no bend is needed
+    };
+
+    PitchResult pitchFor (float value, const Snapshot& s, int noteChannel, int bendRange);
+
+    /** Allocates a slot in [begin, end), emits the bend and note-on, and arms the gate. */
+    void startNote (juce::MidiBuffer& out, int sampleOffset, const PitchResult& pitch,
+                    int velocity, int gateSamples, int begin, int end);
 
     float slewedValue = 0.0f;
     int   lastCcValue = -1;
@@ -173,6 +208,10 @@ private:
     int   configuredBendRange = -1;
     int   configuredChannel   = -1;
     int   memberChannelIndex  = 0;
+
+    // Slot ownership differs between the two modes, so anything still sounding when the
+    // switch is flipped is released rather than left for the other mode to inherit.
+    int   configuredPolyMode  = -1;
 
     std::atomic<int>   uiStep[params::numLanes] { {}, {}, {} };
     std::atomic<float> uiMix { 0.0f };

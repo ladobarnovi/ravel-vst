@@ -157,6 +157,7 @@ inline constexpr auto slewId         = "slew";
 inline constexpr auto freeRunId      = "free_run";
 inline constexpr auto swingId        = "swing";
 inline constexpr auto voiceCountId   = "voices";
+inline constexpr auto polyModeId     = "poly_mode";
 
 juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 

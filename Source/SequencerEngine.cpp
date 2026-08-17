@@ -107,6 +107,7 @@ void SequencerEngine::reset()
     configuredBendRange = -1;
     configuredChannel   = -1;
     memberChannelIndex  = 0;
+    configuredPolyMode  = -1;
 
     for (int lane = 0; lane < params::numLanes; ++lane)
     {
@@ -239,11 +240,22 @@ void SequencerEngine::advanceVoices (juce::MidiBuffer& out, int sampleOffset)
     }
 }
 
-void SequencerEngine::retireVoicesAbove (juce::MidiBuffer& out, int sampleOffset, int voiceLimit)
+bool SequencerEngine::slotIsOwned (int slot, int voiceLimit, bool polyMode) noexcept
 {
-    for (int i = juce::jlimit (1, maxVoices, voiceLimit); i < maxVoices; ++i)
+    const int limit = juce::jlimit (1, voicesPerLane, voiceLimit);
+
+    // Poly gives every lane a fixed block of voicesPerLane slots and uses the first
+    // `limit` of each; mono only ever uses the first block.
+    return polyMode ? (slot % voicesPerLane) < limit
+                    : slot < limit;
+}
+
+void SequencerEngine::retireUnownedVoices (juce::MidiBuffer& out, int sampleOffset,
+                                           int voiceLimit, bool polyMode)
+{
+    for (int i = 0; i < maxVoices; ++i)
     {
-        if (voices[i].note < 0)
+        if (voices[i].note < 0 || slotIsOwned (i, voiceLimit, polyMode))
             continue;
 
         out.addEvent (juce::MidiMessage::noteOff (voices[i].channel, voices[i].note), sampleOffset);
@@ -253,13 +265,14 @@ void SequencerEngine::retireVoicesAbove (juce::MidiBuffer& out, int sampleOffset
 }
 
 int SequencerEngine::allocateVoice (juce::MidiBuffer& out, int sampleOffset,
-                                    int note, int channel, int voiceLimit)
+                                    int note, int channel, int begin, int end)
 {
-    const int limit = juce::jlimit (1, maxVoices, voiceLimit);
+    const int first = juce::jlimit (0, maxVoices - 1, begin);
+    const int last  = juce::jlimit (first + 1, maxVoices, end);
 
     // Same pitch already sounding on the same channel: MIDI cannot tell two identical
     // notes apart, so one note-off would silence both. Reuse that voice instead.
-    for (int i = 0; i < limit; ++i)
+    for (int i = first; i < last; ++i)
     {
         if (voices[i].note == note && voices[i].channel == channel)
         {
@@ -268,19 +281,86 @@ int SequencerEngine::allocateVoice (juce::MidiBuffer& out, int sampleOffset,
         }
     }
 
-    for (int i = 0; i < limit; ++i)
+    for (int i = first; i < last; ++i)
         if (voices[i].note < 0)
             return i;
 
     // All busy -- steal whichever is closest to finishing, as the least audible loss.
-    int stolen = 0;
+    int stolen = first;
 
-    for (int i = 1; i < limit; ++i)
+    for (int i = first + 1; i < last; ++i)
         if (voices[i].samplesRemaining < voices[stolen].samplesRemaining)
             stolen = i;
 
     out.addEvent (juce::MidiMessage::noteOff (voices[stolen].channel, voices[stolen].note), sampleOffset);
     return stolen;
+}
+
+//==============================================================================
+SequencerEngine::PitchResult SequencerEngine::pitchFor (float value, const Snapshot& s,
+                                                       int noteChannel, int bendRange)
+{
+    PitchResult result;
+
+    if (params::isContinuousPitch (s.pitchMode))
+    {
+        // Raw microtonal pitch: Range is semitones and the scale is bypassed. Nearest
+        // semitone carries the note number; the residual (at most half a semitone) is
+        // expressed as pitch bend.
+        const float absolute = (float) s.root + params::continuousSemitones (value, s.rangeSteps);
+
+        result.note = juce::jlimit (0, 127, (int) std::lround (absolute));
+
+        if (s.pitchMode == params::pitchMpe)
+        {
+            // Rotate member channels so a new note's bend can't pull the pitch of one that
+            // is still sounding. This is also what makes polyphonic microtonal pitch
+            // possible at all, in poly mode as much as with an overlapping gate.
+            result.channel = params::mpeMasterChannel + 1 + memberChannelIndex;
+            memberChannelIndex = (memberChannelIndex + 1) % params::mpeMemberChannels;
+        }
+        else
+        {
+            // Single channel: survives hosts that merge MIDI channels when routing between
+            // tracks, but the bend is shared by every voice on it, so overlapping notes --
+            // including three poly lanes at once -- cannot hold different microtones.
+            result.channel = noteChannel;
+        }
+
+        const float residual   = absolute - (float) result.note;
+        const float normalised = juce::jlimit (-1.0f, 1.0f, residual / (float) bendRange);
+
+        result.bend = juce::jlimit (0, 16383, 8192 + (int) std::lround (normalised * 8191.0f));
+    }
+    else
+    {
+        const int degree   = (int) std::lround (value * (float) s.rangeSteps);
+        const int semitone = params::scaleStepToSemitone (degree, s.scale);
+
+        result.note    = juce::jlimit (0, 127, s.root + semitone);
+        result.channel = noteChannel;
+    }
+
+    return result;
+}
+
+void SequencerEngine::startNote (juce::MidiBuffer& out, int sampleOffset, const PitchResult& pitch,
+                                 int velocity, int gateSamples, int begin, int end)
+{
+    // Allocate first: if this steals or reuses a voice, its note-off has to be ordered
+    // ahead of the bend and note-on that follow at this same sample.
+    const int slot = allocateVoice (out, sampleOffset, pitch.note, pitch.channel, begin, end);
+
+    if (pitch.bend >= 0)
+        out.addEvent (juce::MidiMessage::pitchWheel (pitch.channel, pitch.bend), sampleOffset);
+
+    out.addEvent (juce::MidiMessage::noteOn (pitch.channel, pitch.note,
+                                            (juce::uint8) juce::jlimit (1, 127, velocity)),
+                  sampleOffset);
+
+    voices[slot].note             = pitch.note;
+    voices[slot].channel          = pitch.channel;
+    voices[slot].samplesRemaining = juce::jmax (1, gateSamples);
 }
 
 //==============================================================================
@@ -299,11 +379,19 @@ void SequencerEngine::process (const Snapshot& s,
         return;
     }
 
-    const int voiceLimit = juce::jlimit (1, maxVoices, s.voiceCount);
+    const int voiceLimit = juce::jlimit (1, voicesPerLane, s.voiceCount);
+
+    // The two modes lay their voices out differently, so a note sounding across the switch
+    // would be left in a slot the new mode does not consider its own -- and never released.
+    if (const int polyFlag = s.polyMode ? 1 : 0; configuredPolyMode != polyFlag)
+    {
+        releaseAllVoices (out, 0);
+        configuredPolyMode = polyFlag;
+    }
 
     // If the voice count was turned down, anything sounding outside the new limit has to
     // be let go or it would hang forever.
-    retireVoicesAbove (out, 0, voiceLimit);
+    retireUnownedVoices (out, 0, voiceLimit, s.polyMode);
 
     const bool notesEnabled = (s.outputMode != params::outCC);
     const bool ccEnabled    = (s.outputMode != params::outNotes);
@@ -349,6 +437,13 @@ void SequencerEngine::process (const Snapshot& s,
         float accumulator   = 0.0f;
         bool  triggered     = false;
         double triggerStepPpq = params::divisionPpq[params::divIndex_1_16];
+
+        // Poly mode: each lane's own trigger, collected here rather than emitted inside the
+        // lane loop, because advanceVoices() below has to order its expiring note-offs
+        // ahead of any note-on landing on this same sample.
+        bool   laneTriggered[params::numLanes] {};
+        float  laneTriggerValue[params::numLanes] {};
+        double laneTriggerStepPpq[params::numLanes] {};
 
         //----------------------------------------------------------------------
         for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
@@ -427,14 +522,29 @@ void SequencerEngine::process (const Snapshot& s,
                 }
             }
 
-            // Trigger source: a specific lane, or any lane that just advanced.
-            const bool isTriggerLane = s.triggerSource >= params::numLanes
-                                         || laneIndex == s.triggerSource;
-
-            if (advanced && stepOn && isTriggerLane)
+            if (s.polyMode)
             {
-                triggered      = true;
-                triggerStepPpq = stepPpq;
+                // Every lane is its own voice, so Trigger has nothing to select and a lane
+                // at zero Depth is simply silent -- which keeps the stock preset, where only
+                // lane 1 has Depth, sounding as one voice until another is dialled up.
+                if (advanced && stepOn && std::abs (ln.depth) > 1.0e-6f)
+                {
+                    laneTriggered[laneIndex]      = true;
+                    laneTriggerValue[laneIndex]   = value;
+                    laneTriggerStepPpq[laneIndex] = stepPpq;
+                }
+            }
+            else
+            {
+                // Trigger source: a specific lane, or any lane that just advanced.
+                const bool isTriggerLane = s.triggerSource >= params::numLanes
+                                             || laneIndex == s.triggerSource;
+
+                if (advanced && stepOn && isTriggerLane)
+                {
+                    triggered      = true;
+                    triggerStepPpq = stepPpq;
+                }
             }
         }
 
@@ -453,70 +563,44 @@ void SequencerEngine::process (const Snapshot& s,
         {
             advanceVoices (out, n);
 
-            if (triggered)
+            const auto gateSamplesFor = [&] (double stepPpq)
             {
-                int note    = 0;
-                int channel = 1;
-                int bend    = -1;      // -1 means "no bend needed"
+                return (int) std::lround ((stepPpq / ppqPerSample) * (s.gatePercent * 0.01));
+            };
 
-                if (params::isContinuousPitch (s.pitchMode))
+            if (s.polyMode)
+            {
+                for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
                 {
-                    // Raw microtonal pitch: Range is semitones and the scale is bypassed.
-                    // Nearest semitone carries the note number; the residual (at most half
-                    // a semitone) is expressed as pitch bend.
-                    const float absolute = (float) s.root
-                                         + params::continuousSemitones (mix, s.rangeSteps);
+                    if (! laneTriggered[laneIndex])
+                        continue;
 
-                    note = juce::jlimit (0, 127, (int) std::lround (absolute));
+                    const auto& ln = s.lanes[laneIndex];
 
-                    if (s.pitchMode == params::pitchMpe)
-                    {
-                        // Rotate member channels so a new note's bend can't pull the pitch
-                        // of one that is still sounding. This is also what makes polyphonic
-                        // microtonal pitch possible at all.
-                        channel = params::mpeMasterChannel + 1 + memberChannelIndex;
-                        memberChannelIndex = (memberChannelIndex + 1) % params::mpeMemberChannels;
-                    }
-                    else
-                    {
-                        // Single channel: survives hosts that merge MIDI channels when
-                        // routing between tracks, but the bend is shared by every voice on
-                        // it, so overlapping notes cannot hold different microtones.
-                        channel = noteChannel;
-                    }
+                    // The lane's own value drives its pitch, and Offset applies to it the
+                    // same way it applies to the mix in the other mode.
+                    const float value = juce::jlimit (0.0f, 1.0f,
+                                                      laneTriggerValue[laneIndex] + s.offset);
 
-                    const float residual = absolute - (float) note;
-                    const float normalised = juce::jlimit (-1.0f, 1.0f,
-                                                           residual / (float) bendRange);
+                    const auto pitch = pitchFor (value, s, noteChannel, bendRange);
 
-                    bend = juce::jlimit (0, 16383,
-                                         8192 + (int) std::lround (normalised * 8191.0f));
+                    // Depth is the lane's contribution in both modes: its share of the mix
+                    // there, its note velocity here.
+                    const int velocity = (int) std::lround ((float) s.velocity * std::abs (ln.depth));
+
+                    const int begin = laneIndex * voicesPerLane;
+
+                    startNote (out, n, pitch, velocity,
+                               gateSamplesFor (laneTriggerStepPpq[laneIndex]),
+                               begin, begin + voiceLimit);
                 }
-                else
-                {
-                    const int degree   = (int) std::lround (mix * (float) s.rangeSteps);
-                    const int semitone = params::scaleStepToSemitone (degree, s.scale);
+            }
+            else if (triggered)
+            {
+                const auto pitch = pitchFor (mix, s, noteChannel, bendRange);
 
-                    note    = juce::jlimit (0, 127, s.root + semitone);
-                    channel = noteChannel;
-                }
-
-                // Allocate first: if this steals or reuses a voice, its note-off has to be
-                // ordered ahead of the bend and note-on that follow at this same sample.
-                const int slot = allocateVoice (out, n, note, channel, voiceLimit);
-
-                if (bend >= 0)
-                    out.addEvent (juce::MidiMessage::pitchWheel (channel, bend), n);
-
-                out.addEvent (juce::MidiMessage::noteOn (channel, note,
-                                                        (juce::uint8) juce::jlimit (1, 127, s.velocity)), n);
-
-                const double stepSamples = triggerStepPpq / ppqPerSample;
-
-                voices[slot].note    = note;
-                voices[slot].channel = channel;
-                voices[slot].samplesRemaining =
-                    juce::jmax (1, (int) std::lround (stepSamples * (s.gatePercent * 0.01)));
+                startNote (out, n, pitch, s.velocity, gateSamplesFor (triggerStepPpq),
+                           0, voiceLimit);
             }
         }
         else if (anyVoiceActive())

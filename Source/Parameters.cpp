@@ -205,6 +205,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f,
         juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
 
+    // Appended last, and defaulting to off, so a session saved before it existed loads
+    // with the mixed-lane behaviour it was written with.
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { polyModeId, versionHint }, "Poly", false));
+
     return layout;
 }
 

@@ -84,6 +84,7 @@ private:
     std::atomic<float>* pFreeRun     = nullptr;
     std::atomic<float>* pSwing       = nullptr;
     std::atomic<float>* pVoiceCount  = nullptr;
+    std::atomic<float>* pPolyMode    = nullptr;
 
     SequencerEngine engine;
 

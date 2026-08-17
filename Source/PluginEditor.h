@@ -53,13 +53,17 @@ private:
     TabPage pitchPage, timingPage, routingPage;
     TabStrip tabs;
 
-    // Non-owning; point into the tab pages. Dimmed when the pitch mode ignores them.
+    // Non-owning; point into the tab pages. Dimmed when the current mode ignores them.
     ControlRow* scaleRow = nullptr;
     ControlRow* bendRangeRow = nullptr;
     ControlRow* noteChannelRow = nullptr;
+    ControlRow* triggerRow = nullptr;
 
     std::atomic<float>* pitchModeParam = nullptr;
     int lastPitchMode = -1;
+
+    std::atomic<float>* polyModeParam = nullptr;
+    int lastPolyMode = -1;
 
     MixMeter mixMeter;
 
