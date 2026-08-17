@@ -135,12 +135,20 @@ namespace
                 lane.enabled[i] = true;
             }
 
+            for (int i = 0; i < params::numSteps; ++i)
+                lane.chance[i] = 1.0f;
+
             lane.length    = params::numSteps;
             lane.division  = params::divIndex_1_16;
             lane.direction = 0;
             lane.depth     = 0.0f;
             lane.mode      = params::modeAdd;
+            lane.nudge     = 0.0f;
+            lane.humanize  = 0.0f;
+            lane.ccOn      = false;
         }
+
+        s.swing = 0.0f;
 
         s.lanes[0].depth = 1.0f;
 
@@ -896,6 +904,217 @@ int main()
         }
 
         check (clearedZone, "leaving MPE sends RPN 6 with 0 member channels");
+    }
+
+    //==========================================================================
+    section ("Per-step probability");
+    {
+        const auto countNotesWithChance = [] (float chance)
+        {
+            auto s = baseSnapshot();
+            s.lanes[0].length = 8;
+
+            for (int i = 0; i < params::numSteps; ++i)
+                s.lanes[0].chance[i] = chance;
+
+            SequencerEngine engine;
+            engine.prepare (sampleRate);
+
+            return only (run (engine, s, 64 * samplesPerStep), noteOn).size();
+        };
+
+        check (countNotesWithChance (1.0f) == 64, "chance 100% fires every step");
+        check (countNotesWithChance (0.0f) == 0,  "chance 0% fires nothing");
+
+        const auto half = countNotesWithChance (0.5f);
+        check (half > 12 && half < 52, "chance 50% fires roughly half of 64 steps");
+    }
+
+    //==========================================================================
+    section ("Probability is locked to the timeline");
+    {
+        auto s = baseSnapshot();
+        s.lanes[0].length = 8;
+
+        for (int i = 0; i < params::numSteps; ++i)
+            s.lanes[0].chance[i] = 0.5f;
+
+        SequencerEngine engineA, engineB;
+        engineA.prepare (sampleRate);
+        engineB.prepare (sampleRate);
+
+        const auto first  = only (run (engineA, s, 16 * samplesPerStep), noteOn);
+        const auto second = only (run (engineB, s, 16 * samplesPerStep), noteOn);
+
+        bool identical = first.size() == second.size() && ! first.empty();
+
+        for (size_t i = 0; i < first.size() && i < second.size(); ++i)
+            identical = identical && first[i].sample == second[i].sample;
+
+        check (identical, "the same timeline span skips exactly the same steps");
+    }
+
+    //==========================================================================
+    section ("Probability makes a step transparent, like an off step");
+    {
+        // Lane 1 multiplies by zero, but with chance 0 it must not touch the mix at all.
+        auto s = baseSnapshot();
+        s.lanes[0].length = 4;
+        s.lanes[0].values[1] = 0.5f;     // -> note 54 with range 12, chromatic
+        s.scale = 0;
+        s.lanes[1].mode   = params::modeMultiply;
+        s.lanes[1].depth  = 1.0f;
+        s.lanes[1].chance[0] = 0.0f;
+        s.lanes[1].chance[1] = 0.0f;
+        s.lanes[1].chance[2] = 0.0f;
+        s.lanes[1].chance[3] = 0.0f;
+        s.lanes[1].chance[4] = 0.0f;
+        s.lanes[1].chance[5] = 0.0f;
+        s.lanes[1].chance[6] = 0.0f;
+        s.lanes[1].chance[7] = 0.0f;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto ons = only (run (engine, s, 4 * samplesPerStep), noteOn);
+
+        check (ons.size() == 4 && ons[1].number == 54,
+               "a lane whose steps all fail their roll leaves the mix untouched");
+    }
+
+    //==========================================================================
+    section ("Swing shifts alternate steps");
+    {
+        auto s = baseSnapshot();
+        s.lanes[0].length = 4;
+        s.swing = 0.5f;      // delay every other step by 25% of a step
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto ons = only (run (engine, s, 4 * samplesPerStep), noteOn);
+
+        check (ons.size() == 4, "swing does not change how many steps fire");
+
+        // Even steps stay put; odd steps move late by swing/2 of a step.
+        const int expectedShift = (int) std::lround (0.25 * samplesPerStep);
+
+        bool shifted = ons.size() == 4;
+
+        if (shifted)
+        {
+            shifted = ons[0].sample == 0
+                   && std::abs (ons[1].sample - (samplesPerStep + expectedShift)) <= 1
+                   && ons[2].sample == 2 * samplesPerStep
+                   && std::abs (ons[3].sample - (3 * samplesPerStep + expectedShift)) <= 1;
+        }
+
+        check (shifted, "odd steps land late by half the swing amount, even steps do not move");
+    }
+
+    //==========================================================================
+    section ("Zero swing and nudge reproduce the plain grid");
+    {
+        auto s = baseSnapshot();
+        s.lanes[0].length = 4;
+        s.swing = 0.0f;
+        s.lanes[0].nudge = 0.0f;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto ons = only (run (engine, s, 8 * samplesPerStep), noteOn);
+
+        bool onGrid = ons.size() == 8;
+
+        for (size_t i = 0; i < ons.size() && i < 8; ++i)
+            onGrid = onGrid && ons[i].sample == (int) i * samplesPerStep;
+
+        check (onGrid, "with no timing offsets the boundaries are exactly as before");
+    }
+
+    //==========================================================================
+    section ("Per-lane nudge shifts the whole lane");
+    {
+        auto s = baseSnapshot();
+        s.lanes[0].length = 4;
+        s.lanes[0].nudge = 0.4f;   // 20% of a step late
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto ons = only (run (engine, s, 4 * samplesPerStep), noteOn);
+        const int expectedShift = (int) std::lround (0.2 * samplesPerStep);
+
+        // Nudge moves step 0's boundary past sample 0, so the cold start (index changing
+        // from INT64_MIN) fires once at sample 0 before the shifted grid begins. That
+        // immediate first fire is deliberate -- it is what makes a transport jump
+        // retrigger straight away instead of waiting up to a whole step.
+        bool shiftedGrid = ons.size() >= 4 && ons[0].sample == 0;
+
+        for (size_t i = 1; i < ons.size() && shiftedGrid; ++i)
+        {
+            const int expected = expectedShift + (int) (i - 1) * samplesPerStep;
+            shiftedGrid = std::abs (ons[i].sample - expected) <= 1;
+        }
+
+        check (shiftedGrid, "every step in the lane moves late by the same amount");
+    }
+
+    //==========================================================================
+    section ("Per-lane CC output");
+    {
+        auto s = baseSnapshot();
+        s.lanes[0].length = 2;
+        s.lanes[0].values[0] = 0.0f;
+        s.lanes[0].values[1] = 1.0f;
+        s.lanes[0].depth = 0.0f;       // deliberately zero: lane CC ignores Depth
+        s.lanes[0].ccOn = true;
+        s.lanes[0].ccNumber = 20;
+        s.lanes[0].ccChannel = 3;
+        s.outputMode = params::outCC;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto ccs = only (run (engine, s, 4 * samplesPerStep), controller);
+
+        bool sawLaneCc = false;
+        int laneMax = -1;
+
+        for (const auto& e : ccs)
+            if (e.number == 20 && e.channel == 3)
+            {
+                sawLaneCc = true;
+                laneMax = juce::jmax (laneMax, e.value);
+            }
+
+        check (sawLaneCc, "an enabled lane sends CC on its own number and channel");
+        check (laneMax == 127, "lane CC reaches 127 despite Depth being zero");
+    }
+
+    //==========================================================================
+    section ("Lane CC stays silent when disabled");
+    {
+        auto s = baseSnapshot();
+        s.lanes[0].length = 2;
+        s.lanes[0].values[1] = 1.0f;
+        s.lanes[0].ccOn = false;
+        s.lanes[0].ccNumber = 20;
+        s.outputMode = params::outCC;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto ccs = only (run (engine, s, 4 * samplesPerStep), controller);
+
+        bool sawLaneCc = false;
+
+        for (const auto& e : ccs)
+            if (e.number == 20)
+                sawLaneCc = true;
+
+        check (! sawLaneCc, "a disabled lane sends no CC");
     }
 
     //==========================================================================

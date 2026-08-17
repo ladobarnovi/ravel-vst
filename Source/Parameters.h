@@ -125,13 +125,19 @@ inline float continuousSemitones (float mix, int rangeSemitones) noexcept
 //==============================================================================
 // Per-lane parameter IDs. Lanes and steps are 1-based in the ID strings so the
 // host's parameter list reads the same way the UI does.
-juce::String stepValueId  (int lane, int step);
-juce::String stepOnId     (int lane, int step);
-juce::String laneLengthId (int lane);
-juce::String laneDivId    (int lane);
-juce::String laneDirId    (int lane);
-juce::String laneDepthId  (int lane);
-juce::String laneModeId   (int lane);
+juce::String stepValueId    (int lane, int step);
+juce::String stepOnId       (int lane, int step);
+juce::String stepChanceId   (int lane, int step);
+juce::String laneLengthId   (int lane);
+juce::String laneDivId      (int lane);
+juce::String laneDirId      (int lane);
+juce::String laneDepthId    (int lane);
+juce::String laneModeId     (int lane);
+juce::String laneNudgeId    (int lane);
+juce::String laneHumanizeId (int lane);
+juce::String laneCcOnId     (int lane);
+juce::String laneCcNumId    (int lane);
+juce::String laneCcChanId   (int lane);
 
 // Global / output-section parameter IDs.
 inline constexpr auto outputModeId   = "out_mode";
@@ -149,7 +155,42 @@ inline constexpr auto ccChannelId    = "cc_ch";
 inline constexpr auto offsetId       = "offset";
 inline constexpr auto slewId         = "slew";
 inline constexpr auto freeRunId      = "free_run";
+inline constexpr auto swingId        = "swing";
 
 juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+
+//==============================================================================
+// Pattern actions. These live here rather than in the button callbacks so they go
+// through the host properly (change gestures, automation, undo) and can be tested
+// without a UI. Both touch step *values* only -- the on/off toggles are left alone,
+// so a lane's rhythm survives a re-roll.
+
+/** Gives every step in the lane a new random value. */
+void randomiseLaneValues (juce::AudioProcessorValueTreeState& state, int lane, juce::Random& random);
+
+/** Zeroes every step value in the lane. */
+void clearLaneValues (juce::AudioProcessorValueTreeState& state, int lane);
+
+/** Mirrors every step value about the midpoint (value -> 1 - value). */
+void invertLaneValues (juce::AudioProcessorValueTreeState& state, int lane);
+
+/** Shifts the lane's steps round by one. Negative rotates left, positive rotates right.
+
+    Value, gate and chance move together -- rotating only the values would slide a pattern
+    out from under its own rhythm.
+*/
+void rotateLane (juce::AudioProcessorValueTreeState& state, int lane, int direction);
+
+/** A whole lane's step data, for copy/paste between lanes. */
+struct LanePattern
+{
+    float values[numSteps] {};
+    bool  enabled[numSteps] {};
+    float chance[numSteps] {};
+    bool  valid = false;
+};
+
+LanePattern copyLane (juce::AudioProcessorValueTreeState& state, int lane);
+void pasteLane (juce::AudioProcessorValueTreeState& state, int lane, const LanePattern& pattern);
 
 } // namespace params

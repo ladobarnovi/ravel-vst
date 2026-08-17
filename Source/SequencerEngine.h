@@ -25,11 +25,17 @@ public:
     {
         float values[params::numSteps] {};
         bool  enabled[params::numSteps] {};
+        float chance[params::numSteps] {};
         int   length    = params::numSteps;
         int   division  = params::divIndex_1_16;
         int   direction = 0;
         float depth     = 0.0f;
         int   mode      = params::modeAdd;
+        float nudge     = 0.0f;
+        float humanize  = 0.0f;
+        bool  ccOn      = false;
+        int   ccNumber  = 20;
+        int   ccChannel = 1;
     };
 
     struct Snapshot
@@ -50,6 +56,7 @@ public:
         int   ccChannel     = 1;
         float offset        = 0.0f;
         float slewMs        = 0.0f;
+        float swing         = 0.0f;
     };
 
     //==========================================================================
@@ -82,6 +89,24 @@ private:
     //==========================================================================
     static int stepIndexFor (std::int64_t globalIndex, int length, int direction, int laneIndex) noexcept;
 
+    /** How far this step's boundary moves, as a fraction of a step, from swing + nudge +
+        humanize. Clamped to +/-0.49 so boundaries stay monotonically ordered: adjacent
+        offsets can then differ by at most 0.98 of a step, which keeps boundary(g+1)
+        strictly after boundary(g) and lets the stateless index search below work.
+    */
+    static float timingOffsetFor (std::int64_t globalIndex, const LaneSnapshot& lane,
+                                  float swing, int laneIndex) noexcept;
+
+    /** Resolves the current step index when boundaries have been shifted in time.
+
+        With no offsets this reduces exactly to floor(ppq / stepPpq). With offsets it picks
+        the largest candidate whose shifted boundary the timeline has passed, checking only
+        the adjacent candidates -- which is sufficient because offsets are bounded to half
+        a step.
+    */
+    static std::int64_t resolveGlobalIndex (double ppq, double stepPpq, const LaneSnapshot& lane,
+                                            float swing, int laneIndex) noexcept;
+
     /** Emits the MPE Configuration Message and per-note bend range. Written out as raw
         RPN controller messages rather than via juce::MPEMessages, because that returns a
         MidiBuffer by value and would allocate on the audio thread.
@@ -111,6 +136,12 @@ private:
     int   lastCcValue = -1;
     int   ccCountdown = 0;
     int   ccIntervalSamples = 32;
+
+    // Per-lane CC streams. heldValue latches on inactive steps so a skipped step holds
+    // its level rather than dropping to zero.
+    float laneHeldValue[params::numLanes] {};
+    float laneSlewedValue[params::numLanes] {};
+    int   laneLastCcValue[params::numLanes] { -1, -1, -1 };
 
     // What the receiving instrument has already been told, so the RPNs are re-sent only
     // when the mode, range or target channel actually changes.

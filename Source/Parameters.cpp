@@ -3,13 +3,25 @@
 namespace params
 {
 
-juce::String stepValueId  (int lane, int step) { return "l" + juce::String (lane + 1) + "_s" + juce::String (step + 1) + "_val"; }
-juce::String stepOnId     (int lane, int step) { return "l" + juce::String (lane + 1) + "_s" + juce::String (step + 1) + "_on"; }
-juce::String laneLengthId (int lane)           { return "l" + juce::String (lane + 1) + "_length"; }
-juce::String laneDivId    (int lane)           { return "l" + juce::String (lane + 1) + "_div"; }
-juce::String laneDirId    (int lane)           { return "l" + juce::String (lane + 1) + "_dir"; }
-juce::String laneDepthId  (int lane)           { return "l" + juce::String (lane + 1) + "_depth"; }
-juce::String laneModeId   (int lane)           { return "l" + juce::String (lane + 1) + "_mode"; }
+namespace
+{
+    juce::String lanePrefix (int lane)           { return "l" + juce::String (lane + 1); }
+    juce::String stepPrefix (int lane, int step) { return lanePrefix (lane) + "_s" + juce::String (step + 1); }
+}
+
+juce::String stepValueId    (int lane, int step) { return stepPrefix (lane, step) + "_val"; }
+juce::String stepOnId       (int lane, int step) { return stepPrefix (lane, step) + "_on"; }
+juce::String stepChanceId   (int lane, int step) { return stepPrefix (lane, step) + "_chance"; }
+juce::String laneLengthId   (int lane)           { return lanePrefix (lane) + "_length"; }
+juce::String laneDivId      (int lane)           { return lanePrefix (lane) + "_div"; }
+juce::String laneDirId      (int lane)           { return lanePrefix (lane) + "_dir"; }
+juce::String laneDepthId    (int lane)           { return lanePrefix (lane) + "_depth"; }
+juce::String laneModeId     (int lane)           { return lanePrefix (lane) + "_mode"; }
+juce::String laneNudgeId    (int lane)           { return lanePrefix (lane) + "_nudge"; }
+juce::String laneHumanizeId (int lane)           { return lanePrefix (lane) + "_humanize"; }
+juce::String laneCcOnId     (int lane)           { return lanePrefix (lane) + "_cc_on"; }
+juce::String laneCcNumId    (int lane)           { return lanePrefix (lane) + "_cc_num"; }
+juce::String laneCcChanId   (int lane)           { return lanePrefix (lane) + "_cc_chan"; }
 
 namespace
 {
@@ -63,6 +75,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
                 juce::ParameterID { stepOnId (lane, step), versionHint },
                 stepName + " On",
                 true));
+
+            layout.add (std::make_unique<juce::AudioParameterFloat> (
+                juce::ParameterID { stepChanceId (lane, step), versionHint },
+                stepName + " Chance",
+                juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f),
+                1.0f,
+                juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
         }
 
         layout.add (std::make_unique<juce::AudioParameterInt> (
@@ -87,6 +106,31 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         layout.add (std::make_unique<juce::AudioParameterChoice> (
             juce::ParameterID { laneModeId (lane), versionHint },
             laneName + "Mode", modeNames, modeAdd));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { laneNudgeId (lane), versionHint },
+            laneName + "Nudge",
+            juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
+
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { laneHumanizeId (lane), versionHint },
+            laneName + "Humanize",
+            juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.0f,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
+
+        layout.add (std::make_unique<juce::AudioParameterBool> (
+            juce::ParameterID { laneCcOnId (lane), versionHint },
+            laneName + "CC On", false));
+
+        // Sensible unused defaults: CC 20, 21, 22 for lanes 1-3.
+        layout.add (std::make_unique<juce::AudioParameterInt> (
+            juce::ParameterID { laneCcNumId (lane), versionHint },
+            laneName + "CC Number", 0, 127, 20 + lane));
+
+        layout.add (std::make_unique<juce::AudioParameterInt> (
+            juce::ParameterID { laneCcChanId (lane), versionHint },
+            laneName + "CC Channel", 1, 16, 1));
     }
 
     //==========================================================================
@@ -151,7 +195,102 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     layout.add (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { freeRunId, versionHint }, "Free Run", true));
 
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { swingId, versionHint }, "Swing",
+        juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f,
+        juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
+
     return layout;
+}
+
+//==============================================================================
+namespace
+{
+    void setParam (juce::AudioProcessorValueTreeState& state, const juce::String& paramID, float value)
+    {
+        if (auto* parameter = state.getParameter (paramID))
+        {
+            // Gestures so hosts treat each write as a deliberate automation edit.
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
+            parameter->endChangeGesture();
+        }
+    }
+
+    float getParam (juce::AudioProcessorValueTreeState& state, const juce::String& paramID)
+    {
+        if (auto* value = state.getRawParameterValue (paramID))
+            return value->load();
+
+        return 0.0f;
+    }
+}
+
+void randomiseLaneValues (juce::AudioProcessorValueTreeState& state, int lane, juce::Random& random)
+{
+    for (int step = 0; step < numSteps; ++step)
+        setParam (state, stepValueId (lane, step), random.nextFloat());
+}
+
+void clearLaneValues (juce::AudioProcessorValueTreeState& state, int lane)
+{
+    for (int step = 0; step < numSteps; ++step)
+        setParam (state, stepValueId (lane, step), 0.0f);
+}
+
+void invertLaneValues (juce::AudioProcessorValueTreeState& state, int lane)
+{
+    for (int step = 0; step < numSteps; ++step)
+        setParam (state, stepValueId (lane, step),
+                  1.0f - getParam (state, stepValueId (lane, step)));
+}
+
+void rotateLane (juce::AudioProcessorValueTreeState& state, int lane, int direction)
+{
+    if (direction == 0)
+        return;
+
+    // Snapshot first: writing in place would read values already overwritten.
+    const auto pattern = copyLane (state, lane);
+
+    const int shift = direction > 0 ? 1 : numSteps - 1;
+
+    for (int step = 0; step < numSteps; ++step)
+    {
+        const int source = (step + numSteps - shift) % numSteps;
+
+        setParam (state, stepValueId  (lane, step), pattern.values[source]);
+        setParam (state, stepOnId     (lane, step), pattern.enabled[source] ? 1.0f : 0.0f);
+        setParam (state, stepChanceId (lane, step), pattern.chance[source]);
+    }
+}
+
+LanePattern copyLane (juce::AudioProcessorValueTreeState& state, int lane)
+{
+    LanePattern pattern;
+
+    for (int step = 0; step < numSteps; ++step)
+    {
+        pattern.values[step]  = getParam (state, stepValueId (lane, step));
+        pattern.enabled[step] = getParam (state, stepOnId (lane, step)) > 0.5f;
+        pattern.chance[step]  = getParam (state, stepChanceId (lane, step));
+    }
+
+    pattern.valid = true;
+    return pattern;
+}
+
+void pasteLane (juce::AudioProcessorValueTreeState& state, int lane, const LanePattern& pattern)
+{
+    if (! pattern.valid)
+        return;
+
+    for (int step = 0; step < numSteps; ++step)
+    {
+        setParam (state, stepValueId  (lane, step), pattern.values[step]);
+        setParam (state, stepOnId     (lane, step), pattern.enabled[step] ? 1.0f : 0.0f);
+        setParam (state, stepChanceId (lane, step), pattern.chance[step]);
+    }
 }
 
 } // namespace params

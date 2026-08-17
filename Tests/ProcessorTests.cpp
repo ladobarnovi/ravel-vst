@@ -256,6 +256,166 @@ int main()
     }
 
     //==========================================================================
+    section ("Per-lane randomise and clear");
+    {
+        TriLaneAudioProcessor processor;
+        juce::Random random (0x5eed);
+
+        const auto stepValue = [&processor] (int lane, int step)
+        {
+            return processor.apvts.getRawParameterValue (params::stepValueId (lane, step))->load();
+        };
+
+        const auto stepEnabled = [&processor] (int lane, int step)
+        {
+            return processor.apvts.getRawParameterValue (params::stepOnId (lane, step))->load() > 0.5f;
+        };
+
+        //----------------------------------------------------------------------
+        params::clearLaneValues (processor.apvts, 0);
+
+        bool allZero = true;
+
+        for (int step = 0; step < params::numSteps; ++step)
+            allZero = allZero && std::abs (stepValue (0, step)) < 1.0e-6f;
+
+        check (allZero, "clear zeroes every step value in the lane");
+
+        // Lane 2's defaults include non-zero steps, so this catches a clear that
+        // reached across lanes.
+        bool otherLanesIntact = false;
+
+        for (int step = 0; step < params::numSteps; ++step)
+            if (stepValue (1, step) > 0.0f)
+                otherLanesIntact = true;
+
+        check (otherLanesIntact, "clear leaves the other lanes untouched");
+
+        //----------------------------------------------------------------------
+        params::randomiseLaneValues (processor.apvts, 0, random);
+
+        bool anyNonZero = false;
+        bool varied = false;
+
+        for (int step = 0; step < params::numSteps; ++step)
+        {
+            if (stepValue (0, step) > 0.0f)
+                anyNonZero = true;
+
+            if (std::abs (stepValue (0, step) - stepValue (0, 0)) > 1.0e-4f)
+                varied = true;
+        }
+
+        check (anyNonZero, "randomise writes non-zero values");
+        check (varied, "randomise gives the steps differing values");
+
+        bool inRange = true;
+
+        for (int step = 0; step < params::numSteps; ++step)
+            inRange = inRange && stepValue (0, step) >= 0.0f && stepValue (0, step) <= 1.0f;
+
+        check (inRange, "randomised values stay inside 0..1");
+
+        //----------------------------------------------------------------------
+        bool togglesIntact = true;
+
+        for (int step = 0; step < params::numSteps; ++step)
+            togglesIntact = togglesIntact && stepEnabled (0, step);
+
+        check (togglesIntact, "neither action disturbs the step on/off toggles");
+    }
+
+    //==========================================================================
+    section ("Pattern actions: invert, rotate, copy/paste");
+    {
+        TriLaneAudioProcessor processor;
+
+        const auto value = [&processor] (int lane, int step)
+        {
+            return processor.apvts.getRawParameterValue (params::stepValueId (lane, step))->load();
+        };
+
+        const auto setValue = [&processor] (int lane, int step, float v)
+        {
+            if (auto* p = processor.apvts.getParameter (params::stepValueId (lane, step)))
+                p->setValueNotifyingHost (p->convertTo0to1 (v));
+        };
+
+        const auto setEnabled = [&processor] (int lane, int step, bool on)
+        {
+            if (auto* p = processor.apvts.getParameter (params::stepOnId (lane, step)))
+                p->setValueNotifyingHost (on ? 1.0f : 0.0f);
+        };
+
+        //---------------------------------------------------------------------- invert
+        for (int step = 0; step < params::numSteps; ++step)
+            setValue (0, step, (float) step / 10.0f);
+
+        params::invertLaneValues (processor.apvts, 0);
+
+        bool inverted = true;
+
+        for (int step = 0; step < params::numSteps; ++step)
+            inverted = inverted && std::abs (value (0, step) - (1.0f - (float) step / 10.0f)) < 0.01f;
+
+        check (inverted, "invert mirrors every value about the midpoint");
+
+        //---------------------------------------------------------------------- rotate
+        for (int step = 0; step < params::numSteps; ++step)
+        {
+            setValue (0, step, (float) step / 10.0f);
+            setEnabled (0, step, step == 0);   // only step 0 enabled, so we can track it
+        }
+
+        params::rotateLane (processor.apvts, 0, 1);
+
+        // Rotating right by one: old step 0 is now step 1.
+        const bool valuesMoved = std::abs (value (0, 1) - 0.0f) < 0.01f
+                              && std::abs (value (0, 2) - 0.1f) < 0.01f
+                              && std::abs (value (0, 0) - 0.7f) < 0.01f;
+
+        check (valuesMoved, "rotate right shifts values round by one, wrapping");
+
+        const bool gateFollowed =
+            processor.apvts.getRawParameterValue (params::stepOnId (0, 1))->load() > 0.5f
+            && processor.apvts.getRawParameterValue (params::stepOnId (0, 0))->load() < 0.5f;
+
+        check (gateFollowed, "rotate moves the gate along with the value");
+
+        params::rotateLane (processor.apvts, 0, -1);
+
+        const bool roundTrip = std::abs (value (0, 0) - 0.0f) < 0.01f
+                            && std::abs (value (0, 7) - 0.7f) < 0.01f;
+
+        check (roundTrip, "rotating left then undoes rotating right");
+
+        //---------------------------------------------------------------------- copy/paste
+        for (int step = 0; step < params::numSteps; ++step)
+            setValue (1, step, 0.0f);
+
+        const auto pattern = params::copyLane (processor.apvts, 0);
+        check (pattern.valid, "copy produces a valid pattern");
+
+        params::pasteLane (processor.apvts, 1, pattern);
+
+        bool pasted = true;
+
+        for (int step = 0; step < params::numSteps; ++step)
+            pasted = pasted && std::abs (value (1, step) - value (0, step)) < 0.001f;
+
+        check (pasted, "paste reproduces the source lane onto another lane");
+
+        const params::LanePattern empty;
+        for (int step = 0; step < params::numSteps; ++step)
+            setValue (2, step, 0.25f);
+
+        params::pasteLane (processor.apvts, 2, empty);
+
+        check (std::abs (value (2, 0) - 0.25f) < 0.01f,
+               "pasting an empty clipboard is a no-op");
+    }
+
+    //==========================================================================
     section ("State round-trip");
     {
         TriLaneAudioProcessor a;

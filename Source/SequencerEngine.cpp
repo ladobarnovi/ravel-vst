@@ -24,6 +24,22 @@ namespace
         return x ^ (x >> 31);
     }
 
+    /** Deterministic 0..1 draw from a timeline position. Used for probability and
+        humanize, so both are functions of *where* you are rather than of a running RNG --
+        a loop replays identically instead of drifting.
+    */
+    float hashToUnitFloat (std::int64_t globalIndex, int laneIndex, std::uint64_t salt) noexcept
+    {
+        const auto h = splitmix64 ((std::uint64_t) globalIndex * 0x9E3779B97F4A7C15ull
+                                   + (std::uint64_t) (laneIndex + 1) * 0xD1B54A32D192ED03ull
+                                   + salt * 0xA24BAED4963EE407ull);
+
+        return (float) ((double) (h >> 11) / 9007199254740992.0);   // 2^53
+    }
+
+    constexpr std::uint64_t probabilitySalt = 31;
+    constexpr std::uint64_t humanizeSalt    = 97;
+
     /** One RPN as three controller messages, matching the byte order JUCE's
         MidiRPNGenerator produces: parameter LSB, parameter MSB, then data entry MSB.
         Data entry LSB is only required for 14-bit values, which none of these are.
@@ -87,6 +103,13 @@ void SequencerEngine::reset()
     configuredBendRange = -1;
     configuredChannel   = -1;
     memberChannelIndex  = 0;
+
+    for (int lane = 0; lane < params::numLanes; ++lane)
+    {
+        laneHeldValue[lane]   = 0.0f;
+        laneSlewedValue[lane] = 0.0f;
+        laneLastCcValue[lane] = -1;
+    }
 }
 
 //==============================================================================
@@ -120,6 +143,58 @@ int SequencerEngine::stepIndexFor (std::int64_t globalIndex, int length, int dir
         default:
             return (int) positiveMod (globalIndex, length);
     }
+}
+
+//==============================================================================
+float SequencerEngine::timingOffsetFor (std::int64_t globalIndex, const LaneSnapshot& lane,
+                                        float swing, int laneIndex) noexcept
+{
+    float offset = lane.nudge * 0.5f;
+
+    // Swing delays every other step of the absolute grid, so it stays anchored to the
+    // bar rather than to where a short pattern happens to have started.
+    if (positiveMod (globalIndex, 2) != 0)
+        offset += swing * 0.5f;
+
+    if (lane.humanize > 0.0f)
+    {
+        const auto draw = hashToUnitFloat (globalIndex, laneIndex, humanizeSalt);
+        offset += (draw * 2.0f - 1.0f) * lane.humanize * 0.5f;
+    }
+
+    return juce::jlimit (-0.49f, 0.49f, offset);
+}
+
+std::int64_t SequencerEngine::resolveGlobalIndex (double ppq, double stepPpq,
+                                                 const LaneSnapshot& lane,
+                                                 float swing, int laneIndex) noexcept
+{
+    // See the note on boundaryEpsilon below: ppq / stepPpq lands a hair under an integer
+    // when the numbers aren't exactly representable in binary.
+    constexpr double boundaryEpsilon = 1.0e-7;
+
+    const auto rawIndex = (std::int64_t) std::floor (ppq / stepPpq + boundaryEpsilon);
+
+    const bool shifted = lane.nudge != 0.0f || lane.humanize > 0.0f || swing != 0.0f;
+
+    if (! shifted)
+        return rawIndex;
+
+    const double tolerance = stepPpq * boundaryEpsilon;
+
+    // Largest candidate whose shifted boundary has been reached. Offsets are bounded to
+    // half a step, so the answer is always within one of the unshifted index.
+    for (auto candidate = rawIndex + 1; candidate >= rawIndex - 1; --candidate)
+    {
+        const double boundary = ((double) candidate
+                                 + (double) timingOffsetFor (candidate, lane, swing, laneIndex))
+                              * stepPpq;
+
+        if (ppq + tolerance >= boundary)
+            return candidate;
+    }
+
+    return rawIndex - 1;
 }
 
 //==============================================================================
@@ -205,22 +280,26 @@ void SequencerEngine::process (const Snapshot& s,
                 0, (int) params::divisionNames.size() - 1, ln.division)];
             const int length = juce::jlimit (1, params::numSteps, ln.length);
 
-            // ppq / stepPpq lands a hair under an integer whenever the numbers
-            // involved aren't exactly representable in binary -- ppqPerSample is
-            // 1/24000 at 120bpm/48kHz -- which pushes the boundary a sample late and
-            // makes step lengths alternate between 5999 and 6001 samples. The epsilon
-            // is ~1000x smaller than one sample's worth of PPQ, so it can only snap a
-            // value already within rounding noise of the boundary, never shift a step
-            // onto the wrong sample.
-            constexpr double boundaryEpsilon = 1.0e-7;
-
-            const auto globalIndex = (std::int64_t) std::floor (ppq / stepPpq + boundaryEpsilon);
+            // Note on the epsilon inside resolveGlobalIndex: ppq / stepPpq lands a hair
+            // under an integer whenever the numbers aren't exactly representable in binary
+            // -- ppqPerSample is 1/24000 at 120bpm/48kHz -- which pushed boundaries a
+            // sample late and made step lengths alternate between 5999 and 6001 samples.
+            const auto globalIndex = resolveGlobalIndex (ppq, stepPpq, ln, s.swing, laneIndex);
             const bool advanced    = (globalIndex != state.lastGlobalIndex);
 
             const int step = stepIndexFor (globalIndex, length, ln.direction, laneIndex);
 
-            const float value   = ln.values[(size_t) step];
-            const bool  stepOn  = ln.enabled[(size_t) step];
+            const float value  = ln.values[(size_t) step];
+            const float chance = ln.chance[(size_t) step];
+
+            // A step that loses its probability roll behaves exactly like a step that is
+            // switched off: transparent for the mix, and it fires nothing. The roll is a
+            // pure function of the timeline position, so it holds steady for the whole
+            // step and repeats identically next time round the loop.
+            bool stepOn = ln.enabled[(size_t) step];
+
+            if (stepOn && chance < 0.999f)
+                stepOn = hashToUnitFloat (globalIndex, laneIndex, probabilitySalt) < chance;
 
             if (advanced)
             {
@@ -231,6 +310,12 @@ void SequencerEngine::process (const Snapshot& s,
                 // clock, which is what lets a slow lane re-time faster ones.
                 if (ln.mode == params::modeSampleHold && stepOn)
                     state.held = accumulator;
+
+                // Per-lane CC follows the lane's own step value, independent of Depth --
+                // Depth governs the lane's share of the mix, not its own output. Inactive
+                // steps latch the previous level instead of dropping to zero.
+                if (stepOn)
+                    laneHeldValue[laneIndex] = value;
             }
 
             if (stepOn)
@@ -277,6 +362,11 @@ void SequencerEngine::process (const Snapshot& s,
         const float mix = juce::jlimit (0.0f, 1.0f, accumulator + s.offset);
 
         slewedValue += (mix - slewedValue) * slewCoeff;
+
+        if (ccEnabled)
+            for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
+                laneSlewedValue[laneIndex] += (laneHeldValue[laneIndex] - laneSlewedValue[laneIndex])
+                                            * slewCoeff;
 
         //----------------------------------------------------------------------
         if (notesEnabled)
@@ -363,6 +453,27 @@ void SequencerEngine::process (const Snapshot& s,
                 out.addEvent (juce::MidiMessage::controllerEvent (juce::jlimit (1, 16, s.ccChannel),
                                                                  juce::jlimit (0, 127, s.ccNumber),
                                                                  ccValue), n);
+            }
+
+            // Each lane can also drive its own destination, so one instance can modulate
+            // several parameters rather than only the combined mix.
+            for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
+            {
+                const auto& ln = s.lanes[laneIndex];
+
+                if (! ln.ccOn)
+                    continue;
+
+                const int laneCc = juce::jlimit (0, 127,
+                                                 (int) std::lround (laneSlewedValue[laneIndex] * 127.0f));
+
+                if (laneCc != laneLastCcValue[laneIndex])
+                {
+                    laneLastCcValue[laneIndex] = laneCc;
+                    out.addEvent (juce::MidiMessage::controllerEvent (juce::jlimit (1, 16, ln.ccChannel),
+                                                                     juce::jlimit (0, 127, ln.ccNumber),
+                                                                     laneCc), n);
+                }
             }
         }
 

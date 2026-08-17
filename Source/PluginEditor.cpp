@@ -2,7 +2,7 @@
 
 namespace
 {
-    constexpr int laneHeight   = 150;
+    constexpr int laneHeight   = 168;
     constexpr int headerHeight = 40;
     constexpr int gap          = 8;
     constexpr int margin       = 12;
@@ -127,6 +127,7 @@ TriLaneAudioProcessorEditor::TriLaneAudioProcessorEditor (TriLaneAudioProcessor&
 
     headerCells.add (new ParamCell (state, params::outputModeId, "Output"));
     headerCells.add (new ParamCell (state, params::triggerSrcId, "Trigger"));
+    headerCells.add (new ParamCell (state, params::swingId,      "Swing", 48));
     headerCells.add (new ParamCell (state, params::freeRunId,    "Free Run"));
 
     for (auto* cell : headerCells)
@@ -137,7 +138,7 @@ TriLaneAudioProcessorEditor::TriLaneAudioProcessorEditor (TriLaneAudioProcessor&
     addAndMakeVisible (mixMeter);
 
     for (int lane = 0; lane < params::numLanes; ++lane)
-        addAndMakeVisible (lanes.add (new LaneComponent (state, lane)));
+        addAndMakeVisible (lanes.add (new LaneComponent (state, lane, patternClipboard)));
 
     outputSectionLabel.setText ("OUTPUT", juce::dontSendNotification);
     outputSectionLabel.setFont (theme::titleFont());
@@ -156,8 +157,8 @@ TriLaneAudioProcessorEditor::TriLaneAudioProcessorEditor (TriLaneAudioProcessor&
 
     outputCells.add (new ParamCell (state, params::offsetId,      "Offset",     52));
     outputCells.add (new ParamCell (state, params::slewId,        "Slew",       58));
-    outputCells.add (new ParamCell (state, params::ccNumberId,    "CC Number",  38));
-    outputCells.add (new ParamCell (state, params::ccChannelId,   "CC Chan",    38));
+    outputCells.add (new ParamCell (state, params::ccNumberId,    "Mix CC",     38));
+    outputCells.add (new ParamCell (state, params::ccChannelId,   "Mix CC Chan", 38));
 
     for (auto* cell : outputCells)
         addAndMakeVisible (cell);
@@ -166,7 +167,7 @@ TriLaneAudioProcessorEditor::TriLaneAudioProcessorEditor (TriLaneAudioProcessor&
     // callbacks arrive on the audio thread and must not touch components.
     pitchModeParam = processorRef.apvts.getRawParameterValue (params::pitchModeId);
 
-    setSize (1010, 740);
+    setSize (1120, 794);
     startTimerHz (30);
 }
 
@@ -204,7 +205,8 @@ void TriLaneAudioProcessorEditor::resized()
 
     headerCells[0]->setBounds (header.removeFromLeft (160).reduced (6, 2));
     headerCells[1]->setBounds (header.removeFromLeft (140).reduced (6, 2));
-    headerCells[2]->setBounds (header.removeFromLeft (90).reduced (6, 2));
+    headerCells[2]->setBounds (header.removeFromLeft (150).reduced (6, 2));
+    headerCells[3]->setBounds (header.removeFromLeft (90).reduced (6, 2));
 
     auto meterArea = header.removeFromRight (200).reduced (6, 2);
     mixCaption.setBounds (meterArea.removeFromTop (13));

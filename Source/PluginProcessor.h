@@ -50,11 +50,17 @@ private:
     {
         std::atomic<float>* values[params::numSteps] {};
         std::atomic<float>* enabled[params::numSteps] {};
+        std::atomic<float>* chance[params::numSteps] {};
         std::atomic<float>* length    = nullptr;
         std::atomic<float>* division  = nullptr;
         std::atomic<float>* direction = nullptr;
         std::atomic<float>* depth     = nullptr;
         std::atomic<float>* mode      = nullptr;
+        std::atomic<float>* nudge     = nullptr;
+        std::atomic<float>* humanize  = nullptr;
+        std::atomic<float>* ccOn      = nullptr;
+        std::atomic<float>* ccNumber  = nullptr;
+        std::atomic<float>* ccChannel = nullptr;
     };
 
     SequencerEngine::Snapshot buildSnapshot() const;
@@ -76,6 +82,7 @@ private:
     std::atomic<float>* pOffset      = nullptr;
     std::atomic<float>* pSlew        = nullptr;
     std::atomic<float>* pFreeRun     = nullptr;
+    std::atomic<float>* pSwing       = nullptr;
 
     SequencerEngine engine;
 

@@ -14,12 +14,62 @@ value drives note pitch and/or a MIDI CC.
 
 | Control | Range | Notes |
 |---|---|---|
-| 8 step bars | 0–100 % | Each step also has an on/off toggle |
+| 8 step bars | 0–100 % | The lane's values |
+| 8 chance bars | 0–100 % | Per-step probability of firing (thin bar under each value) |
+| 8 step toggles | on/off | Hard mute for a step |
 | Length | 1–8 | Shorter lanes phase against longer ones |
 | Rate | 1/1 … 1/32, incl. triplets | Independent per lane — this is where the polyrhythm comes from |
 | Direction | Forward, Reverse, Ping-Pong, Random | |
 | Depth | −100 % … +100 % | How much this lane affects the mix |
 | Mix Mode | Add, Multiply, Max, S&H | How this lane folds into the running mix |
+| Nudge | −100 % … +100 % | Shifts the whole lane earlier/later, up to half a step |
+| Humanize | 0–100 % | Random timing jitter, repeatable per bar |
+| Lane CC | on/off + number/channel | This lane's own CC destination |
+| RND / CLR / ⋯ | — | Pattern actions |
+
+### Probability
+
+Each step has a **Chance**. A step that loses its roll behaves exactly like a step that's
+switched off: transparent for the mix, and it fires nothing. Chance 100 % always fires,
+0 % never does.
+
+The roll is a hash of the timeline position, not a draw from a running RNG — so it holds
+steady for the whole step, and **a loop skips exactly the same steps every time round**
+rather than drifting. Same design as Random direction, for the same reason.
+
+### Swing, Nudge and Humanize
+
+**Swing** (header, global) delays every other step of the absolute grid, so it stays anchored
+to the bar rather than to wherever a short pattern happened to start. **Nudge** shifts one
+lane wholesale. **Humanize** adds per-step jitter, also hash-based, so it's repeatable.
+
+All three move step *boundaries*, which meant reworking how the step index is derived. It's
+still stateless — rather than `floor(ppq / stepPpq)`, it picks the largest candidate index
+whose *shifted* boundary the timeline has passed, checking only the adjacent candidates.
+That's sufficient because offsets are clamped to ±0.49 of a step, which also guarantees
+boundaries stay monotonically ordered. With all three at zero it reduces exactly to the old
+`floor()`, and there's a test asserting that.
+
+### Per-lane CC outputs
+
+Each lane can send **its own CC** on its own number and channel, alongside the mix CC — so
+one instance can modulate up to four destinations. Lane CC follows the lane's raw step value
+and **ignores Depth**, since Depth governs the lane's share of the mix, not its own output.
+Inactive steps latch the previous level rather than dropping to zero. All CC streams share
+the global **Slew**.
+
+### Pattern actions
+
+**RND** re-rolls a lane's values, **CLR** zeroes them. Both touch values only — the toggles
+and chances are left alone, so a lane's rhythm survives a re-roll. The **⋯** menu has Rotate
+Left/Right, Invert Values, and Copy/Paste Pattern (the clipboard is shared, so you can paste
+one lane onto another). Rotate and paste move value, gate and chance together — rotating only
+the values would slide a pattern out from under its own rhythm.
+
+All of these go through the host as real parameter changes wrapped in change gestures, so they
+land in automation and undo instead of silently mutating state behind the host's back. The
+logic lives in `Parameters.cpp` rather than the button callbacks, which is what lets it be
+tested without a UI.
 
 **Mix modes.** Lanes are combined in order 1 → 2 → 3, starting from zero:
 
@@ -139,20 +189,20 @@ In Live: **Preferences → Plug-Ins → VST3 Plug-In Custom Folder**, point it a
 .\build\TriLaneProcessorTests_artefacts\Release\TriLaneProcessorTests.exe
 ```
 
-63 checks across two suites, neither needing a plugin host.
+88 checks across two suites, neither needing a plugin host.
 
-`Tests/EngineTests.cpp` (46 checks) drives `SequencerEngine` over a synthetic timeline. The
+`Tests/EngineTests.cpp` (58 checks) drives `SequencerEngine` over a synthetic timeline. The
 engine takes PPQ positions as plain arguments rather than reading a playhead itself, which is
 what makes that possible. Covers step timing, gate length, per-lane length and rate, disabled
 steps, the mix modes, transport jumps, stuck-note release on stop, CC output, directions, and
 the MPE continuous-pitch path — including that note number plus pitch bend reconstructs the
 intended fractional pitch, and that the bend range is actually transmitted.
 
-`Tests/ProcessorTests.cpp` (17 checks) drives the real `TriLaneAudioProcessor::processBlock`
+`Tests/ProcessorTests.cpp` (30 checks) drives the real `TriLaneAudioProcessor::processBlock`
 through a mock playhead. This covers the layer where the plugin could compile, load and still
 emit nothing: playhead handling, the free-run fallback, the parameter snapshot, state
-round-trip, and the MIDI capability flags a host reads to decide whether to offer the plugin
-as a MIDI source.
+round-trip, every pattern action, and the MIDI capability flags a host reads to decide whether
+to offer the plugin as a MIDI source.
 
 Worth keeping: these tests caught a real bug. Step boundaries were landing one sample late
 at some positions, because `ppqPerSample` is `1/24000` at 120 bpm / 48 kHz — not exactly

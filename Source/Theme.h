@@ -74,13 +74,27 @@ public:
 
         setColour (juce::ToggleButton::textColourId, theme::text);
         setColour (juce::ToggleButton::tickColourId, theme::laneAccent (0));
+
+        setColour (juce::TextButton::buttonColourId,   theme::panelLight);
+        setColour (juce::TextButton::buttonOnColourId, theme::track);
+        setColour (juce::TextButton::textColourOffId,  theme::text);
+        setColour (juce::TextButton::textColourOnId,   theme::text);
+    }
+
+    juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override
+    {
+        return juce::Font (juce::FontOptions ((float) juce::jmin (16, buttonHeight) * 0.62f,
+                                             juce::Font::bold));
     }
 
     void drawLinearSlider (juce::Graphics& g, int x, int y, int width, int height,
                            float sliderPos, float minSliderPos, float maxSliderPos,
                            juce::Slider::SliderStyle style, juce::Slider& slider) override
     {
-        if (style != juce::Slider::LinearBarVertical)
+        const bool isVerticalBar   = (style == juce::Slider::LinearBarVertical);
+        const bool isHorizontalBar = (style == juce::Slider::LinearBar);
+
+        if (! isVerticalBar && ! isHorizontalBar)
         {
             juce::LookAndFeel_V4::drawLinearSlider (g, x, y, width, height, sliderPos,
                                                     minSliderPos, maxSliderPos, style, slider);
@@ -88,18 +102,18 @@ public:
         }
 
         const auto bounds = juce::Rectangle<int> (x, y, width, height).toFloat();
-        const float corner = 3.0f;
+        const float corner = isHorizontalBar ? 2.0f : 3.0f;
 
         g.setColour (slider.findColour (juce::Slider::backgroundColourId));
         g.fillRoundedRectangle (bounds, corner);
 
-        // sliderPos is the y coordinate of the current value for vertical bars.
-        const float top = juce::jlimit (bounds.getY(), bounds.getBottom(), sliderPos);
+        // sliderPos is the y coordinate for vertical bars, the x coordinate for horizontal.
+        const auto fill = isVerticalBar
+                            ? bounds.withTop (juce::jlimit (bounds.getY(), bounds.getBottom(), sliderPos))
+                            : bounds.withRight (juce::jlimit (bounds.getX(), bounds.getRight(), sliderPos));
 
-        if (bounds.getBottom() - top > 0.5f)
+        if (fill.getWidth() > 0.5f && fill.getHeight() > 0.5f)
         {
-            const juce::Rectangle<float> fill (bounds.getX(), top, bounds.getWidth(),
-                                               bounds.getBottom() - top);
             g.setColour (slider.findColour (juce::Slider::trackColourId));
             g.fillRoundedRectangle (fill, corner);
         }

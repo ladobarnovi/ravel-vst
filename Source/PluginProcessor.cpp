@@ -15,6 +15,7 @@ TriLaneAudioProcessor::TriLaneAudioProcessor()
         {
             lp.values[step]  = apvts.getRawParameterValue (params::stepValueId (lane, step));
             lp.enabled[step] = apvts.getRawParameterValue (params::stepOnId (lane, step));
+            lp.chance[step]  = apvts.getRawParameterValue (params::stepChanceId (lane, step));
         }
 
         lp.length    = apvts.getRawParameterValue (params::laneLengthId (lane));
@@ -22,6 +23,11 @@ TriLaneAudioProcessor::TriLaneAudioProcessor()
         lp.direction = apvts.getRawParameterValue (params::laneDirId (lane));
         lp.depth     = apvts.getRawParameterValue (params::laneDepthId (lane));
         lp.mode      = apvts.getRawParameterValue (params::laneModeId (lane));
+        lp.nudge     = apvts.getRawParameterValue (params::laneNudgeId (lane));
+        lp.humanize  = apvts.getRawParameterValue (params::laneHumanizeId (lane));
+        lp.ccOn      = apvts.getRawParameterValue (params::laneCcOnId (lane));
+        lp.ccNumber  = apvts.getRawParameterValue (params::laneCcNumId (lane));
+        lp.ccChannel = apvts.getRawParameterValue (params::laneCcChanId (lane));
     }
 
     pOutputMode  = apvts.getRawParameterValue (params::outputModeId);
@@ -39,6 +45,7 @@ TriLaneAudioProcessor::TriLaneAudioProcessor()
     pOffset      = apvts.getRawParameterValue (params::offsetId);
     pSlew        = apvts.getRawParameterValue (params::slewId);
     pFreeRun     = apvts.getRawParameterValue (params::freeRunId);
+    pSwing       = apvts.getRawParameterValue (params::swingId);
 }
 
 //==============================================================================
@@ -78,6 +85,7 @@ SequencerEngine::Snapshot TriLaneAudioProcessor::buildSnapshot() const
         {
             ls.values[step]  = lp.values[step]->load();
             ls.enabled[step] = lp.enabled[step]->load() > 0.5f;
+            ls.chance[step]  = lp.chance[step]->load();
         }
 
         ls.length    = (int) std::lround (lp.length->load());
@@ -85,6 +93,11 @@ SequencerEngine::Snapshot TriLaneAudioProcessor::buildSnapshot() const
         ls.direction = (int) std::lround (lp.direction->load());
         ls.depth     = lp.depth->load();
         ls.mode      = (int) std::lround (lp.mode->load());
+        ls.nudge     = lp.nudge->load();
+        ls.humanize  = lp.humanize->load();
+        ls.ccOn      = lp.ccOn->load() > 0.5f;
+        ls.ccNumber  = (int) std::lround (lp.ccNumber->load());
+        ls.ccChannel = (int) std::lround (lp.ccChannel->load());
     }
 
     s.outputMode    = (int) std::lround (pOutputMode->load());
@@ -101,6 +114,7 @@ SequencerEngine::Snapshot TriLaneAudioProcessor::buildSnapshot() const
     s.ccChannel     = (int) std::lround (pCcChannel->load());
     s.offset        = pOffset->load();
     s.slewMs        = pSlew->load();
+    s.swing         = pSwing->load();
 
     return s;
 }

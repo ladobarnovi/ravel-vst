@@ -68,6 +68,9 @@ private:
 
     juce::Label titleLabel, outputSectionLabel, mixCaption;
 
+    // Shared by all three lanes, so a pattern can be copied from one and pasted onto another.
+    params::LanePattern patternClipboard;
+
     juce::OwnedArray<LaneComponent> lanes;
     juce::OwnedArray<ParamCell> headerCells, outputCells;
 
