@@ -1,0 +1,7 @@
+build/
+JUCE/
+
+# Visual Studio / CMake noise
+.vs/
+*.user
+CMakeUserPresets.json
