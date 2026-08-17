@@ -110,8 +110,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         juce::AudioParameterIntAttributes().withStringFromValueFunction (
             [] (int v, int) { return noteNameText (v); })));
 
+    // Measured in scale degrees, not semitones, so the octave span depends on the scale:
+    // 12 degrees is one octave on Chromatic but 12 octaves on a 5-note pentatonic.
+    // 60 covers five octaves chromatically; notes clamp to the MIDI range regardless.
     layout.add (std::make_unique<juce::AudioParameterInt> (
-        juce::ParameterID { rangeStepsId, versionHint }, "Range", 1, 36, 12));
+        juce::ParameterID { rangeStepsId, versionHint }, "Range", 1, 60, 12));
 
     layout.add (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { scaleId, versionHint }, "Scale", scaleNames, 4));
