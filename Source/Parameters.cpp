@@ -96,6 +96,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     layout.add (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { triggerSrcId, versionHint }, "Trigger", triggerNames, 0));
 
+    // Defaults to Semitone so existing sessions keep the behaviour they were saved with.
+    layout.add (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { pitchModeId, versionHint }, "Pitch", pitchModeNames, pitchSemitone));
+
+    layout.add (std::make_unique<juce::AudioParameterInt> (
+        juce::ParameterID { bendRangeId, versionHint }, "Bend Range", 1, 48, 2,
+        juce::AudioParameterIntAttributes().withStringFromValueFunction (
+            [] (int v, int) { return juce::String (v) + " st"; })));
+
     layout.add (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { rootNoteId, versionHint }, "Root", 0, 127, 48,
         juce::AudioParameterIntAttributes().withStringFromValueFunction (

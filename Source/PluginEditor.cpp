@@ -130,18 +130,22 @@ TriLaneAudioProcessorEditor::TriLaneAudioProcessorEditor (TriLaneAudioProcessor&
     outputCells.add (new ParamCell (state, params::rootNoteId,    "Root",       46));
     outputCells.add (new ParamCell (state, params::scaleId,       "Scale"));
     outputCells.add (new ParamCell (state, params::rangeStepsId,  "Range",      38));
+    outputCells.add (new ParamCell (state, params::pitchModeId,   "Pitch"));
+
+    outputCells.add (new ParamCell (state, params::bendRangeId,   "Bend Range", 44));
     outputCells.add (new ParamCell (state, params::velocityId,    "Velocity",   38));
     outputCells.add (new ParamCell (state, params::gateLengthId,  "Gate",       50));
+    outputCells.add (new ParamCell (state, params::midiChannelId, "Note Chan",  38));
+
     outputCells.add (new ParamCell (state, params::offsetId,      "Offset",     52));
     outputCells.add (new ParamCell (state, params::slewId,        "Slew",       58));
-    outputCells.add (new ParamCell (state, params::midiChannelId, "Note Chan",  38));
     outputCells.add (new ParamCell (state, params::ccNumberId,    "CC Number",  38));
     outputCells.add (new ParamCell (state, params::ccChannelId,   "CC Chan",    38));
 
     for (auto* cell : outputCells)
         addAndMakeVisible (cell);
 
-    setSize (1010, 704);
+    setSize (1010, 740);
     startTimerHz (30);
 }
 
@@ -202,20 +206,25 @@ void TriLaneAudioProcessorEditor::resized()
     outputSectionLabel.setBounds (panel.removeFromTop (18));
     panel.removeFromTop (4);
 
-    constexpr int columns = 5;
-    const int rowHeight = panel.getHeight() / 2;
+    constexpr int columns = 4;
+    const int rows = (outputCells.size() + columns - 1) / columns;
     const int cellWidth = panel.getWidth() / columns;
+    const int rowHeight = rows > 0 ? panel.getHeight() / rows : panel.getHeight();
 
-    auto topRow    = panel.removeFromTop (rowHeight);
-    auto bottomRow = panel;
-
-    for (int i = 0; i < outputCells.size(); ++i)
+    for (int row = 0; row < rows; ++row)
     {
-        auto& row = (i < columns) ? topRow : bottomRow;
-        const bool isLastInRow = ((i % columns) == columns - 1);
+        auto rowArea = (row == rows - 1) ? panel : panel.removeFromTop (rowHeight);
 
-        auto cell = isLastInRow ? row : row.removeFromLeft (cellWidth);
-        outputCells[i]->setBounds (cell.reduced (6, 4));
+        for (int column = 0; column < columns; ++column)
+        {
+            const int index = row * columns + column;
+
+            if (index >= outputCells.size())
+                break;
+
+            auto cell = (column == columns - 1) ? rowArea : rowArea.removeFromLeft (cellWidth);
+            outputCells[index]->setBounds (cell.reduced (6, 4));
+        }
     }
 }
 

@@ -79,13 +79,21 @@ In Live: **Preferences → Plug-Ins → VST3 Plug-In Custom Folder**, point it a
 ```powershell
 .\build.ps1
 .\build\TriLaneTests_artefacts\Release\TriLaneTests.exe
+.\build\TriLaneProcessorTests_artefacts\Release\TriLaneProcessorTests.exe
 ```
 
-`Tests/EngineTests.cpp` drives `SequencerEngine` over a synthetic timeline with no plugin
-host involved — the engine takes PPQ positions as plain arguments rather than reading a
-playhead itself, which is what makes that possible. 24 checks cover step timing, gate
-length, per-lane length and rate, disabled steps, the mix modes, transport jumps, stuck-note
-release on stop, CC output and the direction modes.
+41 checks across two suites, neither needing a plugin host.
+
+`Tests/EngineTests.cpp` (24 checks) drives `SequencerEngine` over a synthetic timeline. The
+engine takes PPQ positions as plain arguments rather than reading a playhead itself, which is
+what makes that possible. Covers step timing, gate length, per-lane length and rate, disabled
+steps, the mix modes, transport jumps, stuck-note release on stop, CC output and directions.
+
+`Tests/ProcessorTests.cpp` (17 checks) drives the real `TriLaneAudioProcessor::processBlock`
+through a mock playhead. This covers the layer where the plugin could compile, load and still
+emit nothing: playhead handling, the free-run fallback, the parameter snapshot, state
+round-trip, and the MIDI capability flags a host reads to decide whether to offer the plugin
+as a MIDI source.
 
 Worth keeping: these tests caught a real bug. Step boundaries were landing one sample late
 at some positions, because `ppqPerSample` is `1/24000` at 120 bpm / 48 kHz — not exactly

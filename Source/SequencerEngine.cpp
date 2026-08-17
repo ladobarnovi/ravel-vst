@@ -23,6 +23,31 @@ namespace
         x = (x ^ (x >> 27)) * 0x94D049BB133111EBull;
         return x ^ (x >> 31);
     }
+
+    /** One RPN as three controller messages, matching the byte order JUCE's
+        MidiRPNGenerator produces: parameter LSB, parameter MSB, then data entry MSB.
+        Data entry LSB is only required for 14-bit values, which none of these are.
+    */
+    void addRpn (juce::MidiBuffer& out, int sampleOffset, int channel, int rpnNumber, int value)
+    {
+        out.addEvent (juce::MidiMessage::controllerEvent (channel, 0x64, rpnNumber & 0x7f), sampleOffset);
+        out.addEvent (juce::MidiMessage::controllerEvent (channel, 0x65, rpnNumber >> 7),    sampleOffset);
+        out.addEvent (juce::MidiMessage::controllerEvent (channel, 0x06, value),             sampleOffset);
+    }
+}
+
+//==============================================================================
+void SequencerEngine::sendMpeConfiguration (juce::MidiBuffer& out, int sampleOffset, int bendRange)
+{
+    // Same three-part sequence as MPEMessages::setLowerZone().
+    addRpn (out, sampleOffset, params::mpeMasterChannel, params::mpeZoneRpn, params::mpeMemberChannels);
+    addRpn (out, sampleOffset, params::mpeMasterChannel + 1, params::pitchBendRangeRpn, bendRange);
+    addRpn (out, sampleOffset, params::mpeMasterChannel, params::pitchBendRangeRpn, 2);
+}
+
+void SequencerEngine::clearMpeZone (juce::MidiBuffer& out, int sampleOffset)
+{
+    addRpn (out, sampleOffset, params::mpeMasterChannel, params::mpeZoneRpn, 0);
 }
 
 //==============================================================================
@@ -51,6 +76,10 @@ void SequencerEngine::reset()
     slewedValue      = 0.0f;
     lastCcValue      = -1;
     ccCountdown      = 0;
+
+    mpeConfigured       = false;
+    configuredBendRange = -1;
+    memberChannelIndex  = 0;
 }
 
 //==============================================================================
@@ -116,6 +145,23 @@ void SequencerEngine::process (const Snapshot& s,
 
     const bool notesEnabled = (s.outputMode != params::outCC);
     const bool ccEnabled    = (s.outputMode != params::outNotes);
+
+    // The receiving instrument has to be told the zone and the per-note bend range --
+    // the MPE default is +/-48 semitones, so getting this wrong detunes by 24x.
+    if (notesEnabled && s.pitchMode == params::pitchContinuous
+        && (! mpeConfigured || configuredBendRange != s.bendRange))
+    {
+        sendMpeConfiguration (out, 0, juce::jlimit (1, 48, s.bendRange));
+        mpeConfigured       = true;
+        configuredBendRange = s.bendRange;
+    }
+    else if (s.pitchMode == params::pitchSemitone && mpeConfigured)
+    {
+        // Leave the instrument out of MPE mode when switching back.
+        clearMpeZone (out, 0);
+        mpeConfigured       = false;
+        configuredBendRange = -1;
+    }
 
     // One-pole slew coefficient, computed per block rather than per sample.
     const float slewCoeff = s.slewMs <= 0.01f
@@ -224,14 +270,45 @@ void SequencerEngine::process (const Snapshot& s,
                 // Monophonic: retrigger always closes the previous note first.
                 releaseHeldNote (out, n);
 
-                const int degree   = (int) std::lround (mix * (float) s.rangeSteps);
-                const int semitone = params::scaleStepToSemitone (degree, s.scale);
-                const int note     = juce::jlimit (0, 127, s.root + semitone);
+                int note    = 0;
+                int channel = 1;
 
-                activeChannel = juce::jlimit (1, 16, s.midiChannel);
+                if (s.pitchMode == params::pitchContinuous)
+                {
+                    // Nearest semitone carries the note number; the residual (at most
+                    // half a semitone) is expressed as per-note pitch bend.
+                    const float degree   = mix * (float) s.rangeSteps;
+                    const float semitone = params::scaleStepToSemitoneContinuous (degree, s.scale);
+                    const float absolute = (float) s.root + semitone;
+
+                    note = juce::jlimit (0, 127, (int) std::lround (absolute));
+
+                    channel = params::mpeMasterChannel + 1 + memberChannelIndex;
+                    memberChannelIndex = (memberChannelIndex + 1) % params::mpeMemberChannels;
+
+                    const float residual = absolute - (float) note;
+                    const float normalised = juce::jlimit (-1.0f, 1.0f,
+                                                           residual / (float) juce::jmax (1, s.bendRange));
+
+                    const int bend = juce::jlimit (0, 16383,
+                                                   8192 + (int) std::lround (normalised * 8191.0f));
+
+                    // Bend first, so the note starts already at the right pitch.
+                    out.addEvent (juce::MidiMessage::pitchWheel (channel, bend), n);
+                }
+                else
+                {
+                    const int degree   = (int) std::lround (mix * (float) s.rangeSteps);
+                    const int semitone = params::scaleStepToSemitone (degree, s.scale);
+
+                    note    = juce::jlimit (0, 127, s.root + semitone);
+                    channel = juce::jlimit (1, 16, s.midiChannel);
+                }
+
+                activeChannel = channel;
                 activeNote    = note;
 
-                out.addEvent (juce::MidiMessage::noteOn (activeChannel, note,
+                out.addEvent (juce::MidiMessage::noteOn (channel, note,
                                                         (juce::uint8) juce::jlimit (1, 127, s.velocity)), n);
 
                 const double stepSamples = triggerStepPpq / ppqPerSample;

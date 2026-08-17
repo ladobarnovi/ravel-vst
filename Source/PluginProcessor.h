@@ -63,6 +63,8 @@ private:
 
     std::atomic<float>* pOutputMode  = nullptr;
     std::atomic<float>* pTriggerSrc  = nullptr;
+    std::atomic<float>* pPitchMode   = nullptr;
+    std::atomic<float>* pBendRange   = nullptr;
     std::atomic<float>* pRootNote    = nullptr;
     std::atomic<float>* pRangeSteps  = nullptr;
     std::atomic<float>* pScale       = nullptr;

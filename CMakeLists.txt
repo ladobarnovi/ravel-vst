@@ -95,6 +95,39 @@ if(TRILANE_BUILD_TESTS)
             juce::juce_recommended_warning_flags
     )
 
+    # Drives the real processor through a mock playhead, covering the layer above the
+    # engine: playhead handling, free-run, the parameter snapshot and MIDI capabilities.
+    # JucePlugin_Name is normally a compile definition on the plugin target, so it has
+    # to be supplied by hand here.
+    juce_add_console_app(TriLaneProcessorTests PRODUCT_NAME "TriLaneProcessorTests")
+
+    target_sources(TriLaneProcessorTests PRIVATE
+        Tests/ProcessorTests.cpp
+        Source/PluginProcessor.cpp
+        Source/PluginEditor.cpp
+        Source/LaneComponent.cpp
+        Source/Parameters.cpp
+        Source/SequencerEngine.cpp
+    )
+
+    target_include_directories(TriLaneProcessorTests PRIVATE Source)
+
+    target_compile_definitions(TriLaneProcessorTests PRIVATE
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JucePlugin_Name="TriLane"
+    )
+
+    target_link_libraries(TriLaneProcessorTests
+        PRIVATE
+            juce::juce_audio_utils
+            juce::juce_audio_processors
+        PUBLIC
+            juce::juce_recommended_config_flags
+            juce::juce_recommended_warning_flags
+    )
+
     enable_testing()
-    add_test(NAME engine COMMAND TriLaneTests)
+    add_test(NAME engine    COMMAND TriLaneTests)
+    add_test(NAME processor COMMAND TriLaneProcessorTests)
 endif()

@@ -38,6 +38,8 @@ public:
 
         int   outputMode    = params::outNotes;
         int   triggerSource = 0;
+        int   pitchMode     = params::pitchSemitone;
+        int   bendRange     = 2;
         int   root          = 48;
         int   rangeSteps    = 12;
         int   scale         = 4;
@@ -80,6 +82,13 @@ private:
     //==========================================================================
     static int stepIndexFor (std::int64_t globalIndex, int length, int direction, int laneIndex) noexcept;
 
+    /** Emits the MPE Configuration Message and per-note bend range. Written out as raw
+        RPN controller messages rather than via juce::MPEMessages, because that returns a
+        MidiBuffer by value and would allocate on the audio thread.
+    */
+    void sendMpeConfiguration (juce::MidiBuffer& out, int sampleOffset, int bendRange);
+    void clearMpeZone (juce::MidiBuffer& out, int sampleOffset);
+
     struct LaneState
     {
         std::int64_t lastGlobalIndex = std::numeric_limits<std::int64_t>::min();
@@ -99,6 +108,10 @@ private:
     int   lastCcValue = -1;
     int   ccCountdown = 0;
     int   ccIntervalSamples = 32;
+
+    bool  mpeConfigured       = false;
+    int   configuredBendRange = -1;
+    int   memberChannelIndex  = 0;
 
     std::atomic<int>   uiStep[params::numLanes] { {}, {}, {} };
     std::atomic<float> uiMix { 0.0f };

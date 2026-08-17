@@ -26,6 +26,8 @@ TriLaneAudioProcessor::TriLaneAudioProcessor()
 
     pOutputMode  = apvts.getRawParameterValue (params::outputModeId);
     pTriggerSrc  = apvts.getRawParameterValue (params::triggerSrcId);
+    pPitchMode   = apvts.getRawParameterValue (params::pitchModeId);
+    pBendRange   = apvts.getRawParameterValue (params::bendRangeId);
     pRootNote    = apvts.getRawParameterValue (params::rootNoteId);
     pRangeSteps  = apvts.getRawParameterValue (params::rangeStepsId);
     pScale       = apvts.getRawParameterValue (params::scaleId);
@@ -87,6 +89,8 @@ SequencerEngine::Snapshot TriLaneAudioProcessor::buildSnapshot() const
 
     s.outputMode    = (int) std::lround (pOutputMode->load());
     s.triggerSource = (int) std::lround (pTriggerSrc->load());
+    s.pitchMode     = (int) std::lround (pPitchMode->load());
+    s.bendRange     = (int) std::lround (pBendRange->load());
     s.root          = (int) std::lround (pRootNote->load());
     s.rangeSteps    = (int) std::lround (pRangeSteps->load());
     s.scale         = (int) std::lround (pScale->load());

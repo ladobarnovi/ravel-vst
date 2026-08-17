@@ -48,14 +48,15 @@ namespace
 
 
     //==========================================================================
-    enum EventType { noteOn, noteOff, controller };
+    enum EventType { noteOn, noteOff, controller, pitchBend };
 
     struct Event
     {
         int sample;
         EventType type;
+        int channel;
         int number;   // note number, or CC number
-        int value;    // velocity, or CC value
+        int value;    // velocity, CC value, or bend position
     };
 
     /** Runs the engine over a timeline in blocks, flattening MIDI into absolute
@@ -82,12 +83,16 @@ namespace
                 const auto message = metadata.getMessage();
                 const int at = pos + metadata.samplePosition;
 
+                const int channel = message.getChannel();
+
                 if (message.isNoteOn())
-                    events.push_back ({ at, noteOn, message.getNoteNumber(), message.getVelocity() });
+                    events.push_back ({ at, noteOn, channel, message.getNoteNumber(), message.getVelocity() });
                 else if (message.isNoteOff())
-                    events.push_back ({ at, noteOff, message.getNoteNumber(), 0 });
+                    events.push_back ({ at, noteOff, channel, message.getNoteNumber(), 0 });
                 else if (message.isController())
-                    events.push_back ({ at, controller, message.getControllerNumber(), message.getControllerValue() });
+                    events.push_back ({ at, controller, channel, message.getControllerNumber(), message.getControllerValue() });
+                else if (message.isPitchWheel())
+                    events.push_back ({ at, pitchBend, channel, 0, message.getPitchWheelValue() });
             }
         }
 
@@ -151,6 +156,8 @@ namespace
         s.ccChannel     = 1;
         s.offset        = 0.0f;
         s.slewMs        = 0.0f;
+        s.pitchMode     = params::pitchSemitone;
+        s.bendRange     = 2;
 
         return s;
     }
@@ -474,6 +481,189 @@ int main()
                 varied = true;
 
         check (varied, "random actually varies across steps");
+    }
+
+    //==========================================================================
+    section ("Semitone pitch mode (default)");
+    {
+        auto s = baseSnapshot();
+        s.lanes[0].length = 4;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto events = run (engine, s, 4 * samplesPerStep);
+        const auto ons = only (events, noteOn);
+
+        check (only (events, pitchBend).empty(), "semitone mode sends no pitch bend");
+
+        bool onNoteChannel = ! ons.empty();
+
+        for (const auto& e : ons)
+            onNoteChannel = onNoteChannel && (e.channel == 1);
+
+        check (onNoteChannel, "semitone mode uses the Note Channel parameter");
+    }
+
+    //==========================================================================
+    section ("Continuous pitch via MPE");
+    {
+        auto s = baseSnapshot();
+        s.lanes[0].length = 1;
+        s.lanes[0].values[0] = 0.3f;   // 0.3 * 12 = 3.6 semitones above root 48 -> 51.6
+        s.scale      = 0;              // Chromatic, so degrees are plain semitones
+        s.rangeSteps = 12;
+        s.root       = 48;
+        s.pitchMode  = params::pitchContinuous;
+        s.bendRange  = 2;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto events = run (engine, s, 4 * samplesPerStep);
+        const auto ons   = only (events, noteOn);
+        const auto bends = only (events, pitchBend);
+
+        check (! ons.empty(), "continuous mode still fires notes");
+        check (bends.size() >= ons.size(), "every note is preceded by a pitch bend");
+
+        // The real invariant: note number plus bend must reconstruct the fractional pitch.
+        bool reconstructs = false;
+
+        if (! ons.empty())
+        {
+            for (const auto& bend : bends)
+            {
+                if (bend.sample == ons[0].sample && bend.channel == ons[0].channel)
+                {
+                    const double pitch = (double) ons[0].number
+                                       + ((double) bend.value - 8192.0) / 8191.0 * (double) s.bendRange;
+
+                    reconstructs = std::abs (pitch - 51.6) < 0.01;
+                }
+            }
+        }
+
+        check (reconstructs, "note + bend reconstructs 51.6 semitones");
+
+        bool onMemberChannels = ! ons.empty();
+
+        for (const auto& e : ons)
+            onMemberChannels = onMemberChannels && e.channel >= 2 && e.channel <= 16;
+
+        check (onMemberChannels, "notes are sent on MPE member channels (2-16)");
+        check (ons.size() >= 2 && ons[0].channel != ons[1].channel,
+               "consecutive notes rotate across member channels");
+    }
+
+    //==========================================================================
+    section ("Continuous pitch lands exactly on a degree");
+    {
+        auto s = baseSnapshot();
+        s.lanes[0].length = 1;
+        s.lanes[0].values[0] = 0.25f;   // 0.25 * 12 = exactly 3 semitones
+        s.scale      = 0;
+        s.rangeSteps = 12;
+        s.root       = 48;
+        s.pitchMode  = params::pitchContinuous;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto events = run (engine, s, 2 * samplesPerStep);
+        const auto ons   = only (events, noteOn);
+        const auto bends = only (events, pitchBend);
+
+        check (! ons.empty() && ons[0].number == 51, "exact degree gives note 51");
+
+        bool centred = false;
+
+        for (const auto& bend : bends)
+            if (! ons.empty() && bend.sample == ons[0].sample && bend.channel == ons[0].channel)
+                centred = std::abs (bend.value - 8192) <= 1;
+
+        check (centred, "bend is centred when no fractional part is needed");
+    }
+
+    //==========================================================================
+    section ("MPE configuration message");
+    {
+        auto s = baseSnapshot();
+        s.pitchMode = params::pitchContinuous;
+        s.bendRange = 12;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        juce::MidiBuffer buffer;
+        engine.process (s, buffer, 512, 0.0, ppqPerSample, true);
+
+        bool sawZone = false;
+        bool sawBendRange = false;
+        int currentRpn = -1;
+
+        for (const auto metadata : buffer)
+        {
+            const auto message = metadata.getMessage();
+
+            if (! message.isController())
+                continue;
+
+            if (message.getControllerNumber() == 0x64)
+                currentRpn = message.getControllerValue();
+
+            if (message.getControllerNumber() == 0x06)
+            {
+                if (currentRpn == params::mpeZoneRpn
+                    && message.getControllerValue() == params::mpeMemberChannels
+                    && message.getChannel() == 1)
+                    sawZone = true;
+
+                if (currentRpn == params::pitchBendRangeRpn
+                    && message.getControllerValue() == 12
+                    && message.getChannel() == 2)
+                    sawBendRange = true;
+            }
+        }
+
+        check (sawZone, "RPN 6 declares 15 member channels on the master channel");
+        check (sawBendRange, "RPN 0 transmits the 12-semitone per-note bend range on channel 2");
+    }
+
+    //==========================================================================
+    section ("Scale contour is followed in continuous mode");
+    {
+        // Pentatonic minor: degree 1 is 3 semitones up, so a half-degree is 1.5.
+        auto s = baseSnapshot();
+        s.lanes[0].length = 1;
+        s.scale      = 4;      // Pentatonic Minor {0,3,5,7,10}
+        s.rangeSteps = 2;
+        s.root       = 48;
+        s.pitchMode  = params::pitchContinuous;
+        s.bendRange  = 2;
+        s.lanes[0].values[0] = 0.25f;   // 0.25 * 2 = degree 0.5 -> 1.5 semitones
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto events = run (engine, s, 2 * samplesPerStep);
+        const auto ons   = only (events, noteOn);
+        const auto bends = only (events, pitchBend);
+
+        bool interpolated = false;
+
+        for (const auto& bend : bends)
+        {
+            if (! ons.empty() && bend.sample == ons[0].sample && bend.channel == ons[0].channel)
+            {
+                const double pitch = (double) ons[0].number
+                                   + ((double) bend.value - 8192.0) / 8191.0 * (double) s.bendRange;
+
+                interpolated = std::abs (pitch - 49.5) < 0.01;
+            }
+        }
+
+        check (interpolated, "half a pentatonic degree interpolates to 1.5 semitones, not 0.5");
     }
 
     //==========================================================================

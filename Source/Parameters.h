@@ -32,6 +32,20 @@ inline const juce::StringArray directionNames  { "Forward", "Reverse", "Ping-Pon
 inline const juce::StringArray modeNames       { "Add", "Multiply", "Max", "S&H" };
 inline const juce::StringArray outputModeNames { "Notes", "CC", "Notes + CC" };
 inline const juce::StringArray triggerNames    { "Lane 1", "Lane 2", "Lane 3", "Any Lane" };
+inline const juce::StringArray pitchModeNames  { "Semitone", "Continuous (MPE)" };
+
+enum PitchMode { pitchSemitone = 0, pitchContinuous = 1 };
+
+//==============================================================================
+// MPE lower zone: channel 1 is the master, 2..16 are member channels. Notes are
+// rotated across the member channels so per-note pitch bend on a new note can't
+// pull the pitch of one still releasing.
+inline constexpr int mpeMasterChannel  = 1;
+inline constexpr int mpeMemberChannels = 15;
+
+// RPN 6 is the MPE Configuration Message; RPN 0 is pitch bend sensitivity.
+inline constexpr int mpeZoneRpn         = 6;
+inline constexpr int pitchBendRangeRpn  = 0;
 
 // Combine-mode indices, used by the engine's switch.
 enum CombineMode { modeAdd = 0, modeMultiply = 1, modeMax = 2, modeSampleHold = 3 };
@@ -87,6 +101,24 @@ inline int scaleStepToSemitone (int step, int scaleIndex) noexcept
     return octave * 12 + s.intervals[(size_t) degree];
 }
 
+/** Fractional counterpart of scaleStepToSemitone().
+
+    Interpolates between adjacent scale degrees, so a continuous value glides along
+    the scale's own contour instead of a straight semitone ramp. On Chromatic the
+    degrees are evenly spaced and this reduces to plain linear semitones.
+*/
+inline float scaleStepToSemitoneContinuous (float step, int scaleIndex) noexcept
+{
+    const float lowerEdge = std::floor (step);
+    const int   lower     = (int) lowerEdge;
+    const float fraction  = step - lowerEdge;
+
+    const auto a = (float) scaleStepToSemitone (lower,     scaleIndex);
+    const auto b = (float) scaleStepToSemitone (lower + 1, scaleIndex);
+
+    return a + (b - a) * fraction;
+}
+
 //==============================================================================
 // Per-lane parameter IDs. Lanes and steps are 1-based in the ID strings so the
 // host's parameter list reads the same way the UI does.
@@ -101,6 +133,8 @@ juce::String laneModeId   (int lane);
 // Global / output-section parameter IDs.
 inline constexpr auto outputModeId   = "out_mode";
 inline constexpr auto triggerSrcId   = "trig_src";
+inline constexpr auto pitchModeId    = "pitch_mode";
+inline constexpr auto bendRangeId    = "bend_range";
 inline constexpr auto rootNoteId     = "root_note";
 inline constexpr auto rangeStepsId   = "range_steps";
 inline constexpr auto scaleId         = "scale";
