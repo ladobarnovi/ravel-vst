@@ -20,9 +20,13 @@ public:
 
     void resized() override;
 
+    /** Greys out and disables the cell, for parameters the current mode ignores. */
+    void setDimmed (bool shouldBeDimmed);
+
 private:
     juce::Label captionLabel;
     std::unique_ptr<juce::Component> control;
+    bool dimmed = false;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>   sliderAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> comboAttachment;
@@ -66,6 +70,13 @@ private:
 
     juce::OwnedArray<LaneComponent> lanes;
     juce::OwnedArray<ParamCell> headerCells, outputCells;
+
+    // Non-owning; point into outputCells. Dimmed when the pitch mode ignores them.
+    ParamCell* scaleCell = nullptr;
+    ParamCell* noteChannelCell = nullptr;
+
+    std::atomic<float>* pitchModeParam = nullptr;
+    int lastPitchMode = -1;
 
     MixMeter mixMeter;
 

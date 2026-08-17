@@ -39,41 +39,59 @@ or held — and it fires no note if that lane is the trigger source.
 Root, Scale, Range, Pitch, Bend Range, Velocity, Gate, Offset, Slew, and separate MIDI
 channels for notes and CC.
 
-**Range is measured in scale degrees, not semitones.** How many octaves that spans depends
-on the Scale: 12 degrees is exactly one octave on Chromatic, but 12 degrees on a five-note
-pentatonic is nearly two and a half. Maximum is 60 — five octaves chromatically — and notes
-clamp to the MIDI range regardless. Mapping onto degrees rather than raw semitones is
-deliberate: it means every step lands on a usable note instead of several steps snapping
-onto the same pitch.
+**What Range means depends on the Pitch mode:**
 
-### Continuous pitch (MPE)
+| Pitch mode | Range unit | Scale |
+|---|---|---|
+| Semitone | scale degrees | applied |
+| Continuous (MPE / Pitch Bend) | **semitones** | **bypassed** |
 
-**Pitch** switches between two modes:
+Maximum is 60 either way — five octaves in semitones — and notes clamp to the MIDI range
+regardless. In Semitone mode, mapping onto degrees rather than raw semitones is deliberate:
+it means every step lands on a usable note instead of several steps snapping onto the same
+pitch. On a five-note pentatonic, 12 degrees is nearly two and a half octaves.
 
-- **Semitone** (default) — the mixed value quantizes to the nearest scale degree, and notes
-  go out on the **Note Chan** channel.
-- **Continuous (MPE)** — pitch is not quantized to semitones at all. The nearest semitone
-  carries the note number and the residual (at most half a semitone) is sent as per-note
-  pitch bend, so a lane can glide between pitches.
+### Continuous (unquantized) pitch
 
-In MPE mode the **Note Chan** parameter is ignored. Notes go out on MPE member channels
-2–16, rotating, with channel 1 as the zone master — so a long gate overlapping the next note
-can't have its pitch pulled by the new note's bend.
+**Pitch** switches between three modes:
+
+- **Semitone** (default) — the mixed value quantizes to the nearest scale degree.
+- **Continuous (MPE)** — unquantized, with the bend sent per-note on rotating MPE member
+  channels 2–16 (channel 1 is the zone master). Polyphony-safe: a long gate overlapping the
+  next note can't have its pitch pulled by the new note's bend. **`Note Chan` is ignored.**
+- **Continuous (Pitch Bend)** — unquantized, with plain channel pitch bend on the single
+  `Note Chan`. Monophonic, but it survives hosts that merge MIDI channels when routing
+  between tracks, which Ableton is reported to do. Start here if MPE comes through flat.
+
+Both continuous modes use the same maths: the nearest semitone carries the note number and
+the residual — never more than half a semitone — goes out as pitch bend, sent just before the
+note-on so the note starts already in tune.
+
+**The scale is bypassed entirely in continuous modes.** These are raw microtonal values, so
+the mapping is a straight ramp and the Scale setting has no effect at all:
+
+```
+pitch = Root + mix × Range      (semitones)
+```
+
+There is no glide or portamento anywhere. Each step is one discrete microtonal pitch, held
+for the step and jumping at the next boundary — exactly one pitch bend per note, not a stream
+of them. `Slew` smooths the **CC** output only and never touches pitch, so a repeated step
+always plays the identical pitch no matter how high Slew is set.
 
 **Bend Range** is transmitted, not assumed. The MPE default per-note range is ±48 semitones,
 so an instrument left at that default while the plugin scaled for ±2 would play 24× the
-intended interval. TriLane sends the MPE Configuration Message (RPN 6) and the per-note bend
-range (RPN 0) whenever the mode is entered or the range changes, and clears the zone when you
-switch back to Semitone. Smaller Bend Range means finer pitch resolution; ±2 is the default
-and is plenty, since the residual never exceeds half a semitone.
+intended interval. Whenever the mode, range or target channel changes, TriLane sends:
 
-Interpolation follows the scale's own contour rather than a straight semitone ramp — half a
-degree in Pentatonic Minor is 1.5 semitones, not 0.5, because that scale's first interval is
-a minor third. On Chromatic it reduces to plain linear semitones.
+- MPE mode — the MPE Configuration Message (RPN 6) plus the per-note bend range (RPN 0)
+- Pitch Bend mode — pitch bend sensitivity (RPN 0) on `Note Chan`, and no zone message
 
-Those RPN messages are written out as raw controller events rather than via
-`juce::MPEMessages`, which returns a `MidiBuffer` by value and would allocate on the audio
-thread.
+Switching away from MPE tears the zone down (RPN 6 with zero member channels) so the
+instrument isn't left in MPE mode. Smaller Bend Range means finer resolution; ±2 is the
+default and is plenty, since the residual never exceeds half a semitone.
+
+Those RPNs are written out as raw controller events rather than via `juce::MPEMessages`,
+which returns a `MidiBuffer` by value and would allocate on the audio thread.
 
 **Free Run** keeps the sequencer moving while the transport is stopped, so you can
 audition patterns without pressing play.
@@ -117,9 +135,9 @@ In Live: **Preferences → Plug-Ins → VST3 Plug-In Custom Folder**, point it a
 .\build\TriLaneProcessorTests_artefacts\Release\TriLaneProcessorTests.exe
 ```
 
-53 checks across two suites, neither needing a plugin host.
+63 checks across two suites, neither needing a plugin host.
 
-`Tests/EngineTests.cpp` (36 checks) drives `SequencerEngine` over a synthetic timeline. The
+`Tests/EngineTests.cpp` (46 checks) drives `SequencerEngine` over a synthetic timeline. The
 engine takes PPQ positions as plain arguments rather than reading a playhead itself, which is
 what makes that possible. Covers step timing, gate length, per-lane length and rate, disabled
 steps, the mix modes, transport jumps, stuck-note release on stop, CC output, directions, and

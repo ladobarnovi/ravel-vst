@@ -89,6 +89,9 @@ private:
     void sendMpeConfiguration (juce::MidiBuffer& out, int sampleOffset, int bendRange);
     void clearMpeZone (juce::MidiBuffer& out, int sampleOffset);
 
+    /** Pitch bend sensitivity (RPN 0) for a single channel -- the non-MPE equivalent. */
+    void sendPitchBendRange (juce::MidiBuffer& out, int sampleOffset, int channel, int bendRange);
+
     struct LaneState
     {
         std::int64_t lastGlobalIndex = std::numeric_limits<std::int64_t>::min();
@@ -109,8 +112,11 @@ private:
     int   ccCountdown = 0;
     int   ccIntervalSamples = 32;
 
-    bool  mpeConfigured       = false;
+    // What the receiving instrument has already been told, so the RPNs are re-sent only
+    // when the mode, range or target channel actually changes.
+    int   configuredMode      = -1;
     int   configuredBendRange = -1;
+    int   configuredChannel   = -1;
     int   memberChannelIndex  = 0;
 
     std::atomic<int>   uiStep[params::numLanes] { {}, {}, {} };

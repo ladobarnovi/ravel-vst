@@ -66,6 +66,23 @@ void ParamCell::resized()
         control->setBounds (r.removeFromTop (juce::jmin (22, r.getHeight())));
 }
 
+void ParamCell::setDimmed (bool shouldBeDimmed)
+{
+    if (dimmed == shouldBeDimmed)
+        return;
+
+    dimmed = shouldBeDimmed;
+
+    const float alpha = dimmed ? 0.35f : 1.0f;
+    captionLabel.setAlpha (alpha);
+
+    if (control != nullptr)
+    {
+        control->setAlpha (alpha);
+        control->setEnabled (! dimmed);
+    }
+}
+
 //==============================================================================
 void MixMeter::setValue (float newValue)
 {
@@ -128,14 +145,14 @@ TriLaneAudioProcessorEditor::TriLaneAudioProcessorEditor (TriLaneAudioProcessor&
     addAndMakeVisible (outputSectionLabel);
 
     outputCells.add (new ParamCell (state, params::rootNoteId,    "Root",       46));
-    outputCells.add (new ParamCell (state, params::scaleId,       "Scale"));
+    scaleCell = outputCells.add (new ParamCell (state, params::scaleId, "Scale"));
     outputCells.add (new ParamCell (state, params::rangeStepsId,  "Range",      38));
     outputCells.add (new ParamCell (state, params::pitchModeId,   "Pitch"));
 
     outputCells.add (new ParamCell (state, params::bendRangeId,   "Bend Range", 44));
     outputCells.add (new ParamCell (state, params::velocityId,    "Velocity",   38));
     outputCells.add (new ParamCell (state, params::gateLengthId,  "Gate",       50));
-    outputCells.add (new ParamCell (state, params::midiChannelId, "Note Chan",  38));
+    noteChannelCell = outputCells.add (new ParamCell (state, params::midiChannelId, "Note Chan", 38));
 
     outputCells.add (new ParamCell (state, params::offsetId,      "Offset",     52));
     outputCells.add (new ParamCell (state, params::slewId,        "Slew",       58));
@@ -144,6 +161,10 @@ TriLaneAudioProcessorEditor::TriLaneAudioProcessorEditor (TriLaneAudioProcessor&
 
     for (auto* cell : outputCells)
         addAndMakeVisible (cell);
+
+    // Polled on the timer rather than via a parameter listener, because listener
+    // callbacks arrive on the audio thread and must not touch components.
+    pitchModeParam = processorRef.apvts.getRawParameterValue (params::pitchModeId);
 
     setSize (1010, 740);
     startTimerHz (30);
@@ -237,4 +258,19 @@ void TriLaneAudioProcessorEditor::timerCallback()
         lanes[lane]->setPlayingStep (engine.getCurrentStep (lane));
 
     mixMeter.setValue (engine.getMixValue());
+
+    if (pitchModeParam != nullptr)
+    {
+        const auto pitchMode = (int) std::lround (pitchModeParam->load());
+
+        if (pitchMode != lastPitchMode)
+        {
+            lastPitchMode = pitchMode;
+
+            // Scale is bypassed by the continuous modes, and MPE allocates its own
+            // channels rather than using Note Chan.
+            scaleCell->setDimmed (params::isContinuousPitch (pitchMode));
+            noteChannelCell->setDimmed (pitchMode == params::pitchMpe);
+        }
+    }
 }

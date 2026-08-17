@@ -50,6 +50,12 @@ void SequencerEngine::clearMpeZone (juce::MidiBuffer& out, int sampleOffset)
     addRpn (out, sampleOffset, params::mpeMasterChannel, params::mpeZoneRpn, 0);
 }
 
+void SequencerEngine::sendPitchBendRange (juce::MidiBuffer& out, int sampleOffset,
+                                          int channel, int bendRange)
+{
+    addRpn (out, sampleOffset, channel, params::pitchBendRangeRpn, bendRange);
+}
+
 //==============================================================================
 void SequencerEngine::prepare (double sampleRate)
 {
@@ -77,8 +83,9 @@ void SequencerEngine::reset()
     lastCcValue      = -1;
     ccCountdown      = 0;
 
-    mpeConfigured       = false;
+    configuredMode      = -1;
     configuredBendRange = -1;
+    configuredChannel   = -1;
     memberChannelIndex  = 0;
 }
 
@@ -146,21 +153,33 @@ void SequencerEngine::process (const Snapshot& s,
     const bool notesEnabled = (s.outputMode != params::outCC);
     const bool ccEnabled    = (s.outputMode != params::outNotes);
 
-    // The receiving instrument has to be told the zone and the per-note bend range --
-    // the MPE default is +/-48 semitones, so getting this wrong detunes by 24x.
-    if (notesEnabled && s.pitchMode == params::pitchContinuous
-        && (! mpeConfigured || configuredBendRange != s.bendRange))
+    const int noteChannel = juce::jlimit (1, 16, s.midiChannel);
+    const int bendRange   = juce::jlimit (1, 48, s.bendRange);
+
+    // The receiving instrument has to be told the bend range -- the MPE default is +/-48
+    // semitones, so an instrument left at that default while we scale for +/-2 plays 24x
+    // the intended interval.
+    if (notesEnabled)
     {
-        sendMpeConfiguration (out, 0, juce::jlimit (1, 48, s.bendRange));
-        mpeConfigured       = true;
-        configuredBendRange = s.bendRange;
-    }
-    else if (s.pitchMode == params::pitchSemitone && mpeConfigured)
-    {
-        // Leave the instrument out of MPE mode when switching back.
-        clearMpeZone (out, 0);
-        mpeConfigured       = false;
-        configuredBendRange = -1;
+        const bool changed = configuredMode != s.pitchMode
+                          || configuredBendRange != bendRange
+                          || (s.pitchMode == params::pitchBend && configuredChannel != noteChannel);
+
+        if (changed)
+        {
+            // Don't leave the instrument stuck in MPE mode after switching away from it.
+            if (configuredMode == params::pitchMpe && s.pitchMode != params::pitchMpe)
+                clearMpeZone (out, 0);
+
+            if (s.pitchMode == params::pitchMpe)
+                sendMpeConfiguration (out, 0, bendRange);
+            else if (s.pitchMode == params::pitchBend)
+                sendPitchBendRange (out, 0, noteChannel, bendRange);
+
+            configuredMode      = s.pitchMode;
+            configuredBendRange = bendRange;
+            configuredChannel   = noteChannel;
+        }
     }
 
     // One-pole slew coefficient, computed per block rather than per sample.
@@ -273,22 +292,33 @@ void SequencerEngine::process (const Snapshot& s,
                 int note    = 0;
                 int channel = 1;
 
-                if (s.pitchMode == params::pitchContinuous)
+                if (params::isContinuousPitch (s.pitchMode))
                 {
-                    // Nearest semitone carries the note number; the residual (at most
-                    // half a semitone) is expressed as per-note pitch bend.
-                    const float degree   = mix * (float) s.rangeSteps;
-                    const float semitone = params::scaleStepToSemitoneContinuous (degree, s.scale);
-                    const float absolute = (float) s.root + semitone;
+                    // Raw microtonal pitch: Range is semitones and the scale is bypassed.
+                    // Nearest semitone carries the note number; the residual (at most half
+                    // a semitone) is expressed as pitch bend.
+                    const float absolute = (float) s.root
+                                         + params::continuousSemitones (mix, s.rangeSteps);
 
                     note = juce::jlimit (0, 127, (int) std::lround (absolute));
 
-                    channel = params::mpeMasterChannel + 1 + memberChannelIndex;
-                    memberChannelIndex = (memberChannelIndex + 1) % params::mpeMemberChannels;
+                    if (s.pitchMode == params::pitchMpe)
+                    {
+                        // Rotate member channels so a new note's bend can't pull the pitch
+                        // of one that is still releasing.
+                        channel = params::mpeMasterChannel + 1 + memberChannelIndex;
+                        memberChannelIndex = (memberChannelIndex + 1) % params::mpeMemberChannels;
+                    }
+                    else
+                    {
+                        // Single channel: survives hosts that merge MIDI channels when
+                        // routing between tracks, at the cost of being monophonic.
+                        channel = noteChannel;
+                    }
 
                     const float residual = absolute - (float) note;
                     const float normalised = juce::jlimit (-1.0f, 1.0f,
-                                                           residual / (float) juce::jmax (1, s.bendRange));
+                                                           residual / (float) bendRange);
 
                     const int bend = juce::jlimit (0, 16383,
                                                    8192 + (int) std::lround (normalised * 8191.0f));
@@ -302,7 +332,7 @@ void SequencerEngine::process (const Snapshot& s,
                     const int semitone = params::scaleStepToSemitone (degree, s.scale);
 
                     note    = juce::jlimit (0, 127, s.root + semitone);
-                    channel = juce::jlimit (1, 16, s.midiChannel);
+                    channel = noteChannel;
                 }
 
                 activeChannel = channel;

@@ -514,7 +514,7 @@ int main()
         s.scale      = 0;              // Chromatic, so degrees are plain semitones
         s.rangeSteps = 12;
         s.root       = 48;
-        s.pitchMode  = params::pitchContinuous;
+        s.pitchMode  = params::pitchMpe;
         s.bendRange  = 2;
 
         SequencerEngine engine;
@@ -565,7 +565,7 @@ int main()
         s.scale      = 0;
         s.rangeSteps = 12;
         s.root       = 48;
-        s.pitchMode  = params::pitchContinuous;
+        s.pitchMode  = params::pitchMpe;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -589,7 +589,7 @@ int main()
     section ("MPE configuration message");
     {
         auto s = baseSnapshot();
-        s.pitchMode = params::pitchContinuous;
+        s.pitchMode = params::pitchMpe;
         s.bendRange = 12;
 
         SequencerEngine engine;
@@ -631,39 +631,271 @@ int main()
     }
 
     //==========================================================================
-    section ("Scale contour is followed in continuous mode");
+    section ("Scale is bypassed in continuous modes");
     {
-        // Pentatonic minor: degree 1 is 3 semitones up, so a half-degree is 1.5.
+        // The same pattern under a pentatonic scale and under chromatic must produce
+        // identical pitches: continuous mode is raw semitones, the scale only applies
+        // in Semitone mode.
+        const auto pitchesForScale = [] (int scaleIndex)
+        {
+            auto s = baseSnapshot();
+            s.lanes[0].length = 4;
+            s.scale      = scaleIndex;
+            s.rangeSteps = 12;
+            s.root       = 48;
+            s.pitchMode  = params::pitchBend;
+            s.bendRange  = 2;
+
+            for (int i = 0; i < 4; ++i)
+                s.lanes[0].values[i] = (float) i * 0.1f;
+
+            SequencerEngine engine;
+            engine.prepare (sampleRate);
+
+            const auto events = run (engine, s, 4 * samplesPerStep);
+            const auto ons   = only (events, noteOn);
+            const auto bends = only (events, pitchBend);
+
+            std::vector<double> pitches;
+
+            for (const auto& on : ons)
+                for (const auto& bend : bends)
+                    if (bend.sample == on.sample)
+                        pitches.push_back ((double) on.number
+                                           + ((double) bend.value - 8192.0) / 8191.0 * 2.0);
+
+            return pitches;
+        };
+
+        const auto pentatonic = pitchesForScale (4);   // Pentatonic Minor
+        const auto chromatic  = pitchesForScale (0);
+
+        bool identical = ! pentatonic.empty() && pentatonic.size() == chromatic.size();
+
+        for (size_t i = 0; i < pentatonic.size() && i < chromatic.size(); ++i)
+            identical = identical && std::abs (pentatonic[i] - chromatic[i]) < 1.0e-6;
+
+        check (identical, "pentatonic and chromatic give identical continuous pitch");
+
+        bool linear = pentatonic.size() == 4;
+
+        for (size_t i = 0; i < pentatonic.size() && i < 4; ++i)
+        {
+            const float  value    = (float) i * 0.1f;
+            const double expected = 48.0 + (double) (value * 12.0f);
+
+            linear = linear && std::abs (pentatonic[i] - expected) < 0.01;
+        }
+
+        check (linear, "continuous pitch is root + mix * range, in semitones");
+    }
+
+    //==========================================================================
+    section ("Pitch is static for the duration of a step (no glide)");
+    {
         auto s = baseSnapshot();
-        s.lanes[0].length = 1;
-        s.scale      = 4;      // Pentatonic Minor {0,3,5,7,10}
-        s.rangeSteps = 2;
-        s.root       = 48;
-        s.pitchMode  = params::pitchContinuous;
-        s.bendRange  = 2;
-        s.lanes[0].values[0] = 0.25f;   // 0.25 * 2 = degree 0.5 -> 1.5 semitones
+        s.lanes[0].length = 2;
+        s.lanes[0].values[0] = 0.17f;
+        s.lanes[0].values[1] = 0.61f;
+        s.scale      = 0;
+        s.rangeSteps = 12;
+        s.pitchMode  = params::pitchBend;
+        s.slewMs     = 400.0f;   // heavy slew: must affect CC only, never pitch
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
 
-        const auto events = run (engine, s, 2 * samplesPerStep);
+        const auto events = run (engine, s, 4 * samplesPerStep);
         const auto ons   = only (events, noteOn);
         const auto bends = only (events, pitchBend);
 
-        bool interpolated = false;
+        check (bends.size() == ons.size(),
+               "exactly one bend per note -- no stream of bends between steps");
 
-        for (const auto& bend : bends)
+        // Step 0 recurs at index 2, and must land on the identical pitch despite the slew.
+        bool repeatable = ons.size() >= 3;
+
+        if (repeatable)
+            repeatable = (ons[0].number == ons[2].number)
+                       && (bends[0].value == bends[2].value);
+
+        check (repeatable, "slew does not bleed into pitch: a repeated step is identical");
+    }
+
+    //==========================================================================
+    section ("Continuous pitch via mono pitch bend");
+    {
+        auto s = baseSnapshot();
+        s.lanes[0].length = 1;
+        s.lanes[0].values[0] = 0.3f;   // -> 51.6 semitones with Chromatic, range 12, root 48
+        s.scale       = 0;
+        s.rangeSteps  = 12;
+        s.root        = 48;
+        s.pitchMode   = params::pitchBend;
+        s.bendRange   = 2;
+        s.midiChannel = 5;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto events = run (engine, s, 4 * samplesPerStep);
+        const auto ons   = only (events, noteOn);
+        const auto bends = only (events, pitchBend);
+
+        check (! ons.empty(), "pitch bend mode fires notes");
+
+        bool allOnNoteChannel = ! ons.empty() && ! bends.empty();
+
+        for (const auto& e : ons)
+            allOnNoteChannel = allOnNoteChannel && (e.channel == 5);
+
+        for (const auto& e : bends)
+            allOnNoteChannel = allOnNoteChannel && (e.channel == 5);
+
+        check (allOnNoteChannel,
+               "notes AND bends stay on the single Note Chan (survives channel merging)");
+
+        bool reconstructs = false;
+
+        if (! ons.empty())
         {
-            if (! ons.empty() && bend.sample == ons[0].sample && bend.channel == ons[0].channel)
+            for (const auto& bend : bends)
             {
-                const double pitch = (double) ons[0].number
-                                   + ((double) bend.value - 8192.0) / 8191.0 * (double) s.bendRange;
+                if (bend.sample == ons[0].sample)
+                {
+                    const double pitch = (double) ons[0].number
+                                       + ((double) bend.value - 8192.0) / 8191.0 * (double) s.bendRange;
 
-                interpolated = std::abs (pitch - 49.5) < 0.01;
+                    reconstructs = std::abs (pitch - 51.6) < 0.01;
+                }
             }
         }
 
-        check (interpolated, "half a pentatonic degree interpolates to 1.5 semitones, not 0.5");
+        check (reconstructs, "note + bend reconstructs 51.6 semitones");
+    }
+
+    //==========================================================================
+    section ("Pitch bend mode sends no MPE zone message");
+    {
+        auto s = baseSnapshot();
+        s.pitchMode   = params::pitchBend;
+        s.bendRange   = 7;
+        s.midiChannel = 3;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        juce::MidiBuffer buffer;
+        engine.process (s, buffer, 512, 0.0, ppqPerSample, true);
+
+        bool sawZoneRpn = false;
+        bool sawRangeOnNoteChannel = false;
+        int currentRpn = -1;
+
+        for (const auto metadata : buffer)
+        {
+            const auto message = metadata.getMessage();
+
+            if (! message.isController())
+                continue;
+
+            if (message.getControllerNumber() == 0x64)
+                currentRpn = message.getControllerValue();
+
+            if (message.getControllerNumber() == 0x06)
+            {
+                if (currentRpn == params::mpeZoneRpn)
+                    sawZoneRpn = true;
+
+                if (currentRpn == params::pitchBendRangeRpn
+                    && message.getControllerValue() == 7
+                    && message.getChannel() == 3)
+                    sawRangeOnNoteChannel = true;
+            }
+        }
+
+        check (! sawZoneRpn, "no MPE configuration message is sent in pitch bend mode");
+        check (sawRangeOnNoteChannel, "bend range RPN 0 goes to the Note Chan");
+    }
+
+    //==========================================================================
+    section ("Continuous mapping is linear across a range of values");
+    {
+        auto s = baseSnapshot();
+        s.lanes[0].length = 4;
+        s.scale      = 0;      // Chromatic
+        s.rangeSteps = 24;
+        s.root       = 36;
+        s.pitchMode  = params::pitchBend;
+        s.bendRange  = 2;
+
+        for (int i = 0; i < 4; ++i)
+            s.lanes[0].values[i] = (float) i * 0.1f;   // 0.0, 0.1, 0.2, 0.3
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto events = run (engine, s, 4 * samplesPerStep);
+        const auto ons   = only (events, noteOn);
+        const auto bends = only (events, pitchBend);
+
+        // Expected absolute pitches: 36 + value*24 -> 36.0, 38.4, 40.8, 43.2
+        const double expected[] { 36.0, 38.4, 40.8, 43.2 };
+
+        bool linear = ons.size() == 4;
+
+        for (size_t i = 0; i < ons.size() && i < 4; ++i)
+        {
+            double pitch = -1.0;
+
+            for (const auto& bend : bends)
+                if (bend.sample == ons[i].sample)
+                    pitch = (double) ons[i].number
+                          + ((double) bend.value - 8192.0) / 8191.0 * (double) s.bendRange;
+
+            linear = linear && (pitch > 0.0) && std::abs (pitch - expected[i]) < 0.01;
+        }
+
+        check (linear, "pitch = root + mix * range holds across the whole pattern");
+    }
+
+    //==========================================================================
+    section ("Switching away from MPE clears the zone");
+    {
+        auto s = baseSnapshot();
+        s.pitchMode = params::pitchMpe;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        juce::MidiBuffer buffer;
+        engine.process (s, buffer, 512, 0.0, ppqPerSample, true);
+
+        // Now switch to pitch bend mode and check the zone gets torn down.
+        s.pitchMode = params::pitchBend;
+        buffer.clear();
+        engine.process (s, buffer, 512, ppqPerSample * 512, ppqPerSample, true);
+
+        bool clearedZone = false;
+        int currentRpn = -1;
+
+        for (const auto metadata : buffer)
+        {
+            const auto message = metadata.getMessage();
+
+            if (! message.isController())
+                continue;
+
+            if (message.getControllerNumber() == 0x64)
+                currentRpn = message.getControllerValue();
+
+            if (message.getControllerNumber() == 0x06
+                && currentRpn == params::mpeZoneRpn
+                && message.getControllerValue() == 0)
+                clearedZone = true;
+        }
+
+        check (clearedZone, "leaving MPE sends RPN 6 with 0 member channels");
     }
 
     //==========================================================================

@@ -32,9 +32,19 @@ inline const juce::StringArray directionNames  { "Forward", "Reverse", "Ping-Pon
 inline const juce::StringArray modeNames       { "Add", "Multiply", "Max", "S&H" };
 inline const juce::StringArray outputModeNames { "Notes", "CC", "Notes + CC" };
 inline const juce::StringArray triggerNames    { "Lane 1", "Lane 2", "Lane 3", "Any Lane" };
-inline const juce::StringArray pitchModeNames  { "Semitone", "Continuous (MPE)" };
+// Appended rather than reordered so a saved session's stored index keeps its meaning.
+inline const juce::StringArray pitchModeNames
+    { "Semitone", "Continuous (MPE)", "Continuous (Pitch Bend)" };
 
-enum PitchMode { pitchSemitone = 0, pitchContinuous = 1 };
+enum PitchMode { pitchSemitone = 0, pitchMpe = 1, pitchBend = 2 };
+
+/** True for the modes where pitch is not quantized to semitones. Both continuous modes
+    share the note-plus-bend maths and differ only in how the bend is channelled.
+*/
+inline bool isContinuousPitch (int pitchMode) noexcept
+{
+    return pitchMode == pitchMpe || pitchMode == pitchBend;
+}
 
 //==============================================================================
 // MPE lower zone: channel 1 is the master, 2..16 are member channels. Notes are
@@ -101,22 +111,15 @@ inline int scaleStepToSemitone (int step, int scaleIndex) noexcept
     return octave * 12 + s.intervals[(size_t) degree];
 }
 
-/** Fractional counterpart of scaleStepToSemitone().
+/** Linear mix-to-pitch mapping used by the continuous pitch modes.
 
-    Interpolates between adjacent scale degrees, so a continuous value glides along
-    the scale's own contour instead of a straight semitone ramp. On Chromatic the
-    degrees are evenly spaced and this reduces to plain linear semitones.
+    The scale is deliberately not consulted here. Continuous pitch is meant to be raw
+    microtonal values, so Range is read as semitones and the mapping is a straight ramp.
+    Scale quantisation applies only in Semitone mode.
 */
-inline float scaleStepToSemitoneContinuous (float step, int scaleIndex) noexcept
+inline float continuousSemitones (float mix, int rangeSemitones) noexcept
 {
-    const float lowerEdge = std::floor (step);
-    const int   lower     = (int) lowerEdge;
-    const float fraction  = step - lowerEdge;
-
-    const auto a = (float) scaleStepToSemitone (lower,     scaleIndex);
-    const auto b = (float) scaleStepToSemitone (lower + 1, scaleIndex);
-
-    return a + (b - a) * fraction;
+    return mix * (float) rangeSemitones;
 }
 
 //==============================================================================
