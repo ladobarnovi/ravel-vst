@@ -27,7 +27,7 @@ public:
         bool  enabled[params::numSteps] {};
         float chance[params::numSteps] {};
 
-        /** Per-step accent, as a trim like velocityScale below. 1 is unity. */
+        /** Per-step accent, as a trim on the global Velocity. 1 is unity. */
         float velocity[params::numSteps] {};
 
         /** The lane's mute. False makes every one of its steps behave as if switched off:
@@ -41,8 +41,6 @@ public:
         float nudge     = 0.0f;
         float humanize  = 0.0f;
 
-        /** Trim on the global Velocity, applied to notes this lane fires. 1 is unity. */
-        float velocityScale = 1.0f;
         bool  ccOn      = false;
         int   ccNumber  = 20;
         int   ccChannel = 1;
@@ -190,8 +188,8 @@ private:
 
     static PitchResult pitchFor (float value, const Snapshot& s, int noteChannel, int bendRange) noexcept;
 
-    /** The MIDI velocity for a note fired by a given step: the global Velocity scaled by the
-        lane's trim and then by that step's own accent. */
+    /** The MIDI velocity for a note fired by a given step: the global Velocity scaled by
+        that step's own accent. */
     static int velocityFor (const Snapshot& s, int laneIndex, int stepIndex) noexcept;
 
     /** Allocates a slot in [begin, end), emits the bend and note-on, and arms the gate. */

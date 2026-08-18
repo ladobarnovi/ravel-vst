@@ -238,7 +238,6 @@ juce::String laneDepthId    (int lane);
 juce::String laneModeId     (int lane);
 juce::String laneNudgeId    (int lane);
 juce::String laneHumanizeId (int lane);
-juce::String laneVelocityId (int lane);
 juce::String laneCcOnId     (int lane);
 juce::String laneCcNumId    (int lane);
 juce::String laneCcChanId   (int lane);

@@ -60,7 +60,6 @@ private:
         std::atomic<float>* mode      = nullptr;
         std::atomic<float>* nudge     = nullptr;
         std::atomic<float>* humanize  = nullptr;
-        std::atomic<float>* velocity  = nullptr;
         std::atomic<float>* ccOn      = nullptr;
         std::atomic<float>* ccNumber  = nullptr;
         std::atomic<float>* ccChannel = nullptr;

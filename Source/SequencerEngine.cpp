@@ -331,10 +331,10 @@ int SequencerEngine::velocityFor (const Snapshot& s, int laneIndex, int stepInde
     const auto& ln = s.lanes[(size_t) juce::jlimit (0, params::numLanes - 1, laneIndex)];
     const float step = ln.velocity[(size_t) juce::jlimit (0, params::numSteps - 1, stepIndex)];
 
-    // Three multiplied trims: the global Velocity is the master, the lane balances against
-    // its neighbours, and the step carries the accent. All default to unity, so the whole
-    // chain collapses to the bare global value.
-    const float scaled = (float) s.velocity * ln.velocityScale * step;
+    // The global Velocity is the master and the step carries the accent, which defaults to
+    // unity -- so an untouched pattern plays at the bare global value, and the accent can
+    // only ever pull a step below it.
+    const float scaled = (float) s.velocity * step;
 
     // Clamped to 1 rather than 0: a MIDI note-on at velocity 0 is a note-off, so a step
     // pulled to 0% plays as quietly as MIDI allows instead of silently retiring itself.

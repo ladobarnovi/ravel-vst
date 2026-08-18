@@ -160,7 +160,6 @@ namespace
             lane.mode      = params::modeAdd;
             lane.nudge     = 0.0f;
             lane.humanize  = 0.0f;
-            lane.velocityScale = 1.0f;
             lane.ccOn      = false;
         }
 
@@ -1534,45 +1533,6 @@ int main()
     }
 
     //==========================================================================
-    section ("Per-lane velocity trims the global velocity");
-    {
-        auto s = baseSnapshot();
-        s.polyMode = true;
-        s.scale = 0;
-        s.velocity = 80;
-        s.gatePercent = 50.0f;
-
-        for (int lane = 0; lane < params::numLanes; ++lane)
-        {
-            s.lanes[lane].length = 1;
-            s.lanes[lane].values[0] = (float) lane / 12.0f;
-            s.lanes[lane].depth = 1.0f;
-        }
-
-        s.lanes[0].velocityScale = 1.0f;    // unity: the global value
-        s.lanes[1].velocityScale = 0.5f;    // half
-        s.lanes[2].velocityScale = 2.0f;    // double, clamped into range
-
-        SequencerEngine engine;
-        engine.prepare (sampleRate);
-
-        const auto ons = only (run (engine, s, 2 * samplesPerStep), noteOn);
-
-        int v48 = -1, v49 = -1, v50 = -1;
-
-        for (const auto& e : ons)
-        {
-            if (e.number == 48) v48 = e.value;
-            if (e.number == 49) v49 = e.value;
-            if (e.number == 50) v50 = e.value;
-        }
-
-        check (v48 == 80,  "a trim of 100% plays at the global velocity");
-        check (v49 == 40,  "a trim of 50% halves it");
-        check (v50 == 127, "a trim that would exceed 127 clamps instead of wrapping");
-    }
-
-    //==========================================================================
     section ("Per-step velocity accents individual steps");
     {
         // One lane, four steps at distinct pitches so each note is identifiable, with a
@@ -1609,46 +1569,35 @@ int main()
     }
 
     //==========================================================================
-    section ("The lane trim can push a step above the global velocity");
+    section ("The global velocity is the ceiling");
     {
-        // Per-step accent only attenuates, so boosting is the lane trim's job.
-        auto s = baseSnapshot();
-        s.scale = 0;
-        s.velocity = 100;
-        s.gatePercent = 40.0f;
-        s.lanes[0].length = 1;
-        s.lanes[0].values[0] = 0.0f;
-        s.lanes[0].velocityScale = 1.5f;
-        s.lanes[0].velocity[0]   = 1.0f;
-
-        SequencerEngine engine;
-        engine.prepare (sampleRate);
-
-        const auto ons = only (run (engine, s, 2 * samplesPerStep), noteOn);
-
-        check (! ons.empty() && ons[0].value == 127,
-               "100 global x 150% lane clamps at 127 rather than wrapping");
-    }
-
-    //==========================================================================
-    section ("Step accent, lane trim and global velocity multiply");
-    {
+        // The step accent only ever attenuates, so with no lane trim left there is nothing
+        // that can push a note above the global value.
         auto s = baseSnapshot();
         s.scale = 0;
         s.velocity = 80;
         s.gatePercent = 40.0f;
         s.lanes[0].length = 1;
         s.lanes[0].values[0] = 0.0f;
-        s.lanes[0].velocityScale = 0.5f;    // lane trim
-        s.lanes[0].velocity[0]   = 0.5f;    // step accent
+        s.lanes[0].velocity[0] = 1.0f;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
 
         const auto ons = only (run (engine, s, 2 * samplesPerStep), noteOn);
 
-        check (! ons.empty() && ons[0].value == 20,
-               "80 global x 50% lane x 50% step gives 20");
+        check (! ons.empty() && ons[0].value == 80,
+               "a step at full accent plays at exactly the global velocity");
+
+        s.lanes[0].velocity[0] = 0.5f;      // step accent
+
+        SequencerEngine scaled;
+        scaled.prepare (sampleRate);
+
+        const auto quieter = only (run (scaled, s, 2 * samplesPerStep), noteOn);
+
+        check (! quieter.empty() && quieter[0].value == 40,
+               "80 global x 50% step gives 40");
     }
 
     //==========================================================================
@@ -1691,10 +1640,11 @@ int main()
     }
 
     //==========================================================================
-    section ("In mixed mode the triggering lane supplies the velocity");
+    section ("In mixed mode the triggering step supplies the velocity");
     {
-        // Trigger = Any Lane, lane 2 on a slower division and trimmed down. Its notes
-        // should come out quieter than lane 1's.
+        // Trigger = Any Lane, lane 2 on a slower division with its steps accented down. Its
+        // notes should come out quieter than lane 1's, even though the pitch they play comes
+        // from the combined mix.
         auto s = baseSnapshot();
         s.scale = 0;
         s.velocity = 100;
@@ -1704,11 +1654,11 @@ int main()
 
         s.lanes[0].length = 1;
         s.lanes[0].division = params::divIndex_1_16;
-        s.lanes[0].velocityScale = 1.0f;
+        s.lanes[0].velocity[0] = 1.0f;
 
         s.lanes[1].length = 1;
         s.lanes[1].division = params::divIndex_1_4;
-        s.lanes[1].velocityScale = 0.3f;
+        s.lanes[1].velocity[0] = 0.3f;
 
         // Under Any Lane every lane is a trigger lane and the last one to advance at a given
         // sample wins, so lane 3 -- which runs at 1/16 by default -- has to be switched off
@@ -1732,8 +1682,8 @@ int main()
             if (e.value == 30)  sawTrimmed = true;
         }
 
-        check (sawFull,    "steps triggered by lane 1 play at its own velocity");
-        check (sawTrimmed, "steps triggered by lane 2 carry its trim instead");
+        check (sawFull,    "steps triggered by lane 1 play at its own accent");
+        check (sawTrimmed, "steps triggered by lane 2 carry that step's accent instead");
     }
 
     //==========================================================================

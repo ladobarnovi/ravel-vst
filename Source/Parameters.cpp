@@ -21,7 +21,6 @@ juce::String laneDepthId    (int lane)           { return lanePrefix (lane) + "_
 juce::String laneModeId     (int lane)           { return lanePrefix (lane) + "_mode"; }
 juce::String laneNudgeId    (int lane)           { return lanePrefix (lane) + "_nudge"; }
 juce::String laneHumanizeId (int lane)           { return lanePrefix (lane) + "_humanize"; }
-juce::String laneVelocityId (int lane)           { return lanePrefix (lane) + "_vel"; }
 juce::String laneCcOnId     (int lane)           { return lanePrefix (lane) + "_cc_on"; }
 juce::String laneCcNumId    (int lane)           { return lanePrefix (lane) + "_cc_num"; }
 juce::String laneCcChanId   (int lane)           { return lanePrefix (lane) + "_cc_chan"; }
@@ -89,15 +88,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
                 1.0f,
                 juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
 
-            // The step's own accent, as a trim on the lane's velocity rather than an absolute
-            // number, so a pattern keeps its shape when the lane or the global Velocity is
-            // moved. 100% is unity, which is what makes this addition silent for a session
-            // saved before it existed.
+            // The step's own accent, as a trim on the global Velocity rather than an absolute
+            // number, so a pattern keeps its shape when the global is moved. 100% is unity.
             //
-            // Attenuate-only, unlike the per-lane trim: the global and the lane already set
-            // the ceiling, and a range that went above unity would draw every untouched step
-            // as a half-height bar in the editor's velocity layer -- reading as "half" when
-            // it means "unchanged".
+            // Attenuate-only: the global sets the ceiling for every note the plugin fires,
+            // and a range that went above unity would draw every untouched step as a
+            // half-height bar in the editor's velocity layer -- reading as "half" when it
+            // means "unchanged".
             layout.add (std::make_unique<juce::AudioParameterFloat> (
                 juce::ParameterID { stepVelocityId (lane, step), versionHint },
                 stepName + " Velocity",
@@ -146,15 +143,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
             juce::ParameterID { laneHumanizeId (lane), versionHint },
             laneName + "Humanize",
             juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.0f,
-            juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
-
-        // A trim on the global Velocity rather than an absolute value, so the global stays
-        // the master control and a session saved before this existed sounds identical at
-        // the 100% default.
-        layout.add (std::make_unique<juce::AudioParameterFloat> (
-            juce::ParameterID { laneVelocityId (lane), versionHint },
-            laneName + "Velocity",
-            juce::NormalisableRange<float> (0.0f, 2.0f, 0.01f), 1.0f,
             juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
 
         layout.add (std::make_unique<juce::AudioParameterBool> (

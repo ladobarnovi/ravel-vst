@@ -34,7 +34,7 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
     const LayerSetup setups[]
     {
         { valueSlider,    params::stepValueId (laneIndex, stepIndex),    0.0, "Step value -- drives pitch" },
-        { velocitySlider, params::stepVelocityId (laneIndex, stepIndex), 1.0, "This step's accent, as a trim on the lane's velocity" },
+        { velocitySlider, params::stepVelocityId (laneIndex, stepIndex), 1.0, "This step's accent, as a trim on the global Velocity" },
         { chanceSlider,   params::stepChanceId (laneIndex, stepIndex),   1.0, "Probability this step fires" },
     };
 
@@ -254,8 +254,6 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
     paramGroup.add (params::laneModeId (laneIndex),   "Mix mode");
     paramGroup.add (params::laneNudgeId (laneIndex),  "Nudge")
               ->setTooltip ("Shift this whole lane earlier or later, up to half a step");
-    paramGroup.add (params::laneVelocityId (laneIndex), "Velocity")
-              ->setTooltip ("Trim on the global Velocity, for notes this lane fires");
     paramGroup.add (params::laneHumanizeId (laneIndex), "Humanise")
               ->setTooltip ("Random timing jitter, repeatable per bar");
     paramGroup.setColumns (2);
@@ -447,7 +445,7 @@ void LaneComponent::resized()
 
     //--------------------------------------------------------------------------
     // Parameter rows plus the pattern buttons, as one block centred against the steps.
-    const int groupHeight  = ControlGroup::heightForRows (4, false);
+    const int groupHeight  = paramGroup.getPreferredHeight();
     const int buttonHeight = theme::rowHeight;
     const int blockHeight  = groupHeight + theme::rowGap * 2 + buttonHeight;
 
