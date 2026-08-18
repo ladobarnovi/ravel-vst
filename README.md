@@ -5,7 +5,7 @@ with one lane and goes up to four, added one at a time.
 
 Each lane is an independent 8-step sequencer with its own **length**, **clock rate**,
 **direction** and **depth**. The lanes are folded together into one value, and that value
-drives note pitch and/or a MIDI CC -- or, in **Poly** mode, each lane triggers its own note
+drives either note pitch or a MIDI CC -- or, in **Poly** mode, each lane triggers its own note
 off its own clock.
 
 ---
@@ -17,6 +17,7 @@ off its own clock.
 | Control | Range | Notes |
 |---|---|---|
 | 8 step bars | 0–100 % | The lane's values |
+| 8 velocity bars | 0–100 % | Per-step accent, as a trim on the global Velocity (100 % is unity) |
 | 8 chance bars | 0–100 % | Per-step probability of firing (thin bar under each value) |
 | 8 gate bars | 5–200 % | How long each step's note is held, as % of the step. Above 100 % overlaps into the next step (see Polyphony) |
 | 8 step toggles | on/off | Hard mute for a step |
@@ -43,7 +44,7 @@ rather than drifting. Same design as Random direction, for the same reason.
 
 ### Swing, Nudge and Humanize
 
-**Swing** (header, global) delays every other step of the absolute grid, so it stays anchored
+**Swing** (Timing tab, global) delays every other step of the absolute grid, so it stays anchored
 to the bar rather than to wherever a short pattern happened to start. **Nudge** shifts one
 lane wholesale. **Humanize** adds per-step jitter, also hash-based, so it's repeatable.
 
@@ -99,17 +100,23 @@ All four lanes' parameters exist from the moment the plugin is loaded, because a
 add parameters later. The lane count only decides which of them are heard and shown, which is
 what makes it automatable and undoable like any other control.
 
-**Output section**
+**Header and tabs**
 
-Root, Scale, Range, Pitch, Bend Range, Velocity, Offset, Slew, and separate MIDI
-channels for notes and CC. Gate is per-step now — see the **Per lane** table above.
+The header carries **Output** (Notes or CC — mutually exclusive) and **Poly**. Everything
+else global lives in three tabs:
 
-**What Range means depends on the Pitch mode:**
+- **Pitch** — Root, Scale, Range, Quantize / Bend range, Offset, Slew / Velocity, Voices
+- **Timing** — Swing, Free run, Trigger
+- **Routing** — Note channel, Mix CC, Mix CC channel, and each lane's own CC destination
 
-| Pitch mode | Range unit | Scale |
+Gate and per-step Velocity are per-step now — see the **Per lane** table above.
+
+**What Range means depends on Quantize:**
+
+| Quantize | Range unit | Scale |
 |---|---|---|
-| Semitone | scale degrees | applied |
-| Continuous (MPE / Pitch Bend) | **semitones** | **bypassed** |
+| On | scale degrees | applied |
+| Off | **semitones** | **bypassed** |
 
 A scale degree is not always a whole semitone — see [Scales and tunings](#scales-and-tunings)
 below.
@@ -119,7 +126,7 @@ reachable depends on **Root** — from the default Root of 48 (C3) there are onl
 of headroom, so a Range above that flattens out at the top. Drop Root to 12 or 24 to use the
 full span.
 
-In Semitone mode, mapping onto degrees rather than raw semitones is deliberate: it means
+With Quantize on, mapping onto degrees rather than raw semitones is deliberate: it means
 every step lands on a usable note instead of several steps snapping onto the same pitch. On a
 five-note pentatonic, 12 degrees is nearly two and a half octaves.
 
@@ -141,7 +148,7 @@ session. Only the degrees *within* an octave fall between the keys.
 
 **Those in-between degrees play as a note plus pitch bend**, the same mechanism continuous
 pitch uses — so with Quantize on, a non-12 scale is subject to the same limit: **one microtone
-at a time per channel.** Overlapping notes (a step's Gate over 100 %, Voices above 1, or three
+at a time per channel.** Overlapping notes (a step's Gate over 100 %, Voices above 1, or four
 poly lanes at once) share the channel's wheel, so they can't hold different microtones. Keep to one
 voice for microtonal work, or give the lanes separate instances. `Bend range` becomes live and
 is announced by RPN just as it is in continuous mode; the residual never exceeds half a
@@ -150,53 +157,42 @@ semitone, so the ±2 default is plenty.
 Remember that **Range is counted in degrees**. 53-EDO chromatic spends them fast — at the
 default Range of 12 it covers a quarter of an octave — so turn Range up for the larger EDOs.
 
-### Continuous (unquantized) pitch
+### Quantize and continuous pitch
 
-**Pitch** switches between three modes:
+**Quantize** (on by default) is the pitch mode switch:
 
-- **Semitone** (default) — the mixed value quantizes to the nearest scale degree.
-- **Continuous (MPE)** — unquantized, with the bend sent per-note on rotating MPE member
-  channels 2–16 (channel 1 is the zone master). Polyphony-safe: a long gate overlapping the
-  next note can't have its pitch pulled by the new note's bend. **`Note Chan` is ignored.**
-- **Continuous (Pitch Bend)** — unquantized, with plain channel pitch bend on the single
-  `Note Chan`. Monophonic, but it survives hosts that merge MIDI channels when routing
-  between tracks, which Ableton is reported to do. Start here if MPE comes through flat.
+- **On** — the mixed value snaps to the nearest degree of the selected **Scale**.
+- **Off** — continuous, unquantized pitch. The **Scale** setting has no effect at all, and
+  Range is read directly as semitones:
 
-Both continuous modes use the same maths: the nearest semitone carries the note number and
-the residual — never more than half a semitone — goes out as pitch bend, sent just before the
-note-on so the note starts already in tune.
+  ```
+  pitch = Root + mix × Range      (semitones)
+  ```
 
-**The scale is bypassed entirely in continuous modes.** These are raw microtonal values, so
-the mapping is a straight ramp and the Scale setting has no effect at all:
+Either way, pitch goes out as a note plus pitch bend, both on the single **Note channel**
+(Routing tab) — the nearest semitone carries the note number, and the residual — never more
+than half a semitone — goes out as pitch bend, sent just before the note-on so the note starts
+already in tune. With Quantize on and a 12-EDO scale the residual is always exactly zero, so
+no bend is sent at all; a 19-, 23- or 53-EDO scale needs one even with Quantize on, for the
+same reason continuous pitch does (see [Scales and tunings](#scales-and-tunings)).
 
-```
-pitch = Root + mix × Range      (semitones)
-```
+There is no glide or portamento anywhere. Each step is one discrete pitch, held for the step
+and jumping at the next boundary — exactly one pitch bend per note, not a stream of them.
+`Slew` smooths the **CC** output only and never touches pitch, so a repeated step always
+plays the identical pitch no matter how high Slew is set.
 
-There is no glide or portamento anywhere. Each step is one discrete microtonal pitch, held
-for the step and jumping at the next boundary — exactly one pitch bend per note, not a stream
-of them. `Slew` smooths the **CC** output only and never touches pitch, so a repeated step
-always plays the identical pitch no matter how high Slew is set.
+**Bend Range** is transmitted, not assumed: whenever the range, the target channel, or
+*whether pitch bends at all* changes — Quantize, or switching to or from a non-12 scale —
+TriLane sends pitch bend sensitivity (RPN 0) on the Note channel. Smaller Bend Range means
+finer resolution; ±2 is the default and is plenty, since the residual never exceeds half a
+semitone.
 
-**Bend Range** is transmitted, not assumed. The MPE default per-note range is ±48 semitones,
-so an instrument left at that default while the plugin scaled for ±2 would play 24× the
-intended interval. Whenever the range, the target channel, or *whether pitch bends at all*
-changes — that last one covers Quantize and switching to or from a non-12 scale — TriLane
-sends:
+Turning bending off again — Quantize back on with a 12-EDO scale — explicitly recentres the
+wheel. Nothing in that mode ever writes the wheel again, so the bend the last note left on
+the channel would otherwise detune every note that followed.
 
-- MPE mode — the MPE Configuration Message (RPN 6) plus the per-note bend range (RPN 0)
-- Pitch Bend mode — pitch bend sensitivity (RPN 0) on `Note Chan`, and no zone message
-
-Switching away from MPE tears the zone down (RPN 6 with zero member channels) so the
-instrument isn't left in MPE mode. Smaller Bend Range means finer resolution; ±2 is the
-default and is plenty, since the residual never exceeds half a semitone.
-
-Going the other way — Quantize back on, or a non-12 scale back to a 12-EDO one — the wheel is
-explicitly recentred. Nothing in that mode ever writes the wheel again, so the bend the last
-note left on the channel would otherwise detune every note that followed.
-
-Those RPNs are written out as raw controller events rather than via `juce::MPEMessages`,
-which returns a `MidiBuffer` by value and would allocate on the audio thread.
+That RPN is written out as a raw controller event rather than via a JUCE helper that returns
+a `MidiBuffer` by value and would allocate on the audio thread.
 
 **Free Run** (off by default) keeps the sequencer moving while the transport is stopped, so
 you can audition patterns without pressing play. Off, the sequencer follows the host
@@ -204,7 +200,7 @@ transport and a freshly loaded instance stays silent until you press play.
 
 ### Polyphony
 
-**Voices** (header, 1–8) is the ceiling on notes sounding at once. At **1** the behaviour is
+**Voices** (Pitch tab, 1–8) is the ceiling on notes sounding at once. At **1** the behaviour is
 the original monophonic one — a retrigger always closes the previous note, so a step's Gate
 over 100 % simply cuts itself off. Above 1, a step with a long Gate **overlaps into the
 following step**.
@@ -219,11 +215,11 @@ Two details the engine has to get right:
   would hang forever. Same pitch + same channel retriggers in place.
 - **Turning Voices down releases anything outside the new limit**, rather than orphaning it.
 
-In **Continuous (MPE)** mode each voice gets its own member channel and therefore its own
-bend, so polyphonic microtonal pitch works properly. In **Continuous (Pitch Bend)** mode all
-voices share one channel and one bend, so overlapping notes cannot hold different microtones —
-the most recent bend applies to all of them. That's a MIDI limitation, not a bug; use MPE if
-you need poly *and* microtonality.
+Every voice shares the single **Note channel** and its one pitch bend register, mono or poly —
+so overlapping notes that need different microtones (Quantize off, or a non-12-EDO scale)
+can't have them; the most recent bend applies to all of them. That's a MIDI limitation of a
+single channel, not a bug — keep Voices at 1 for clean microtonal work, or spread lanes
+across separate instances on separate channels if you need both poly and microtonality.
 
 ---
 
@@ -264,16 +260,16 @@ In Live: **Preferences → Plug-Ins → VST3 Plug-In Custom Folder**, point it a
 .\build\TriLaneProcessorTests_artefacts\Release\TriLaneProcessorTests.exe
 ```
 
-95 checks across two suites, neither needing a plugin host.
+134 checks across two suites, neither needing a plugin host.
 
-`Tests/EngineTests.cpp` (65 checks) drives `SequencerEngine` over a synthetic timeline. The
+`Tests/EngineTests.cpp` (96 checks) drives `SequencerEngine` over a synthetic timeline. The
 engine takes PPQ positions as plain arguments rather than reading a playhead itself, which is
 what makes that possible. Covers step timing, gate length, per-lane length and rate, disabled
 steps, the mix modes, transport jumps, stuck-note release on stop, CC output, directions, and
-the MPE continuous-pitch path — including that note number plus pitch bend reconstructs the
+the continuous-pitch path — including that note number plus pitch bend reconstructs the
 intended fractional pitch, and that the bend range is actually transmitted.
 
-`Tests/ProcessorTests.cpp` (30 checks) drives the real `TriLaneAudioProcessor::processBlock`
+`Tests/ProcessorTests.cpp` (38 checks) drives the real `TriLaneAudioProcessor::processBlock`
 through a mock playhead. This covers the layer where the plugin could compile, load and still
 emit nothing: playhead handling, the free-run fallback, the parameter snapshot, state
 round-trip, every pattern action, and the MIDI capability flags a host reads to decide whether
@@ -310,7 +306,7 @@ There is no such mechanism in the plugin format. What works is a MIDI CC loopbac
 1. Install [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html) and create a port.
 2. **Preferences → Link/Tempo/MIDI**: enable that port as an **Input**, with both
    **Track** and **Remote** switched on.
-3. Set TriLane's **Output** to `CC` or `Notes + CC`, and pick a **CC Number**.
+3. Set TriLane's **Output** to `CC`, and pick a **CC Number**.
 4. On the track receiving TriLane's MIDI, set **MIDI To → loopMIDI Port**.
 5. Start playback so CC is flowing, press **Ctrl+M**, click the parameter you want to
    modulate, and Live latches onto the incoming CC.
@@ -330,10 +326,12 @@ already includes M4L, and its modulation API can target any parameter directly.
 | `Source/Parameters.*` | Parameter IDs, choice lists, scale tables |
 | `Source/SequencerEngine.*` | The sequencer core and MIDI generation |
 | `Source/PluginProcessor.*` | Plugin plumbing, playhead handling, state save/load |
-| `Source/PluginEditor.*` | Window layout, output section |
+| `Source/PluginEditor.*` | Window layout, header, and the Pitch/Timing/Routing tabs |
 | `Source/LaneComponent.*` | One lane: 8 steps plus its controls |
+| `Source/Controls.*` | Shared row/column/tab building blocks the editor and lanes are built from |
 | `Source/Theme.h` | Colours and custom widget drawing |
 | `Tests/EngineTests.cpp` | Engine tests, run as a standalone console app |
+| `Tests/ProcessorTests.cpp` | Processor tests, driven through a mock playhead |
 
 ### How timing works
 

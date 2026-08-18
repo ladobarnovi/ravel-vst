@@ -280,24 +280,6 @@ int main()
     }
 
     //==========================================================================
-    section ("Output mode: Notes + CC");
-    {
-        TriLaneAudioProcessor processor;
-        processor.setPlayConfigDetails (0, 2, 48000.0, 512);
-        processor.prepareToPlay (48000.0, 512);
-
-        setChoice (processor, params::outputModeId, params::outBoth);
-
-        MockPlayHead playHead;
-        processor.setPlayHead (&playHead);
-
-        const auto counts = runProcessor (processor, playHead, true, 48000);
-
-        check (counts.noteOns == 8, "Notes + CC still emits the notes");
-        check (counts.controllers > 0, "Notes + CC also emits controller events");
-    }
-
-    //==========================================================================
     section ("Per-lane randomise and clear");
     {
         TriLaneAudioProcessor processor;
@@ -543,7 +525,7 @@ int main()
     section ("State round-trip");
     {
         TriLaneAudioProcessor a;
-        setChoice (a, params::outputModeId, params::outBoth);
+        setChoice (a, params::outputModeId, params::outCC);
 
         juce::MemoryBlock state;
         a.getStateInformation (state);
@@ -553,7 +535,7 @@ int main()
 
         const auto* param = b.apvts.getRawParameterValue (params::outputModeId);
 
-        check (param != nullptr && (int) std::lround (param->load()) == params::outBoth,
+        check (param != nullptr && (int) std::lround (param->load()) == params::outCC,
                "output mode survives save/load");
     }
 

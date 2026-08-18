@@ -34,7 +34,7 @@ inline constexpr int divIndex_1_16 = 6;
 
 inline const juce::StringArray directionNames  { "Forward", "Reverse", "Ping-Pong", "Random" };
 inline const juce::StringArray modeNames       { "Add", "Multiply", "Max", "S&H" };
-inline const juce::StringArray outputModeNames { "Notes", "CC", "Notes + CC" };
+inline const juce::StringArray outputModeNames { "Notes", "CC" };
 inline const juce::StringArray triggerNames    { "Lane 1", "Lane 2", "Lane 3", "Lane 4", "Any Lane" };
 
 //==============================================================================
@@ -66,9 +66,8 @@ inline int pitchBendForSemitones (float semitones, int bendRange) noexcept
 // Combine-mode indices, used by the engine's switch.
 enum CombineMode { modeAdd = 0, modeMultiply = 1, modeMax = 2, modeSampleHold = 3 };
 
-// Output-mode indices. Notes are active unless the mode is CC-only, and CC is
-// active unless the mode is Notes-only.
-enum OutputMode { outNotes = 0, outCC = 1, outBoth = 2 };
+// Output-mode indices: the two are mutually exclusive.
+enum OutputMode { outNotes = 0, outCC = 1 };
 
 //==============================================================================
 // Scales are stored as steps of an equal division of the octave rather than as semitones,
