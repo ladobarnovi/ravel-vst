@@ -30,20 +30,15 @@ namespace
 {
     constexpr int versionHint = 1;
 
-    // Starting patterns. Lane 1 drives at full depth; lanes 2 and 3 start at zero
-    // depth so the plugin is immediately understandable, and dialling either one up
-    // folds it into the mix.
-    constexpr float defaultValues[numLanes][numSteps]
-    {
-        { 0.00f, 0.42f, 0.17f, 0.58f, 0.25f, 0.83f, 0.33f, 0.50f },
-        { 0.00f, 0.50f, 1.00f, 0.50f, 0.00f, 0.50f, 1.00f, 0.50f },
-        { 1.00f, 0.66f, 0.33f, 0.00f, 0.33f, 0.66f, 1.00f, 0.50f },
-        { 0.25f, 0.75f, 0.50f, 1.00f, 0.00f, 0.75f, 0.25f, 0.50f },
-    };
+    // Every lane starts as eight steps of zero: a flat pattern on the root, which is a blank
+    // sheet to draw on rather than a demo to clear away first. A canned pattern would also
+    // make the second lane you add sound like it came with an opinion.
+    constexpr float defaultValues[numLanes][numSteps] {};
 
-    // Lengths and rates that do not divide into each other, so a lane added on top of the
-    // ones already running lands somewhere new rather than doubling one of them.
-    constexpr int   defaultLength[numLanes]   { 8, 5, 3, 7 };
+    constexpr int   defaultLength[numLanes]   { 8, 8, 8, 8 };
+
+    // Rates do differ per lane, because a stack of lanes all running at 1/16 is the one
+    // starting point that cannot demonstrate what the plugin is for.
     constexpr int   defaultDivision[numLanes] { divIndex_1_16, divIndex_1_8, divIndex_1_4, divIndex_1_8 };
 
     // Every lane starts at full depth. Adding a lane is now a deliberate act, so it has to
@@ -246,8 +241,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         juce::AudioParameterFloatAttributes().withStringFromValueFunction (
             [] (float v, int) { return juce::String (juce::roundToInt (v)) + " ms"; })));
 
+    // Off by default: the sequencer follows the host transport, and a plugin that starts
+    // emitting notes the moment it is loaded -- before anything has been pressed -- is a
+    // surprise rather than a convenience.
     layout.add (std::make_unique<juce::AudioParameterBool> (
-        juce::ParameterID { freeRunId, versionHint }, "Free Run", true));
+        juce::ParameterID { freeRunId, versionHint }, "Free Run", false));
 
     // 1 is the historical monophonic behaviour: a retrigger always closes the previous
     // note. Above 1, a Gate over 100% overlaps into the following step instead.

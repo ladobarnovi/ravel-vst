@@ -142,6 +142,44 @@ int main()
     }
 
     //==========================================================================
+    section ("What a freshly loaded instance starts as");
+    {
+        TriLaneAudioProcessor processor;
+
+        const auto value = [&processor] (const juce::String& id)
+        {
+            const auto* p = processor.apvts.getRawParameterValue (id);
+            return p != nullptr ? p->load() : -1.0f;
+        };
+
+        check ((int) std::lround (value (params::laneCountId)) == 1, "one lane");
+        check (value (params::freeRunId) < 0.5f, "Free Run off, so it follows the transport");
+
+        bool flat = true, fullLength = true;
+
+        for (int lane = 0; lane < params::numLanes; ++lane)
+        {
+            fullLength = fullLength
+                          && (int) std::lround (value (params::laneLengthId (lane))) == params::numSteps;
+
+            for (int step = 0; step < params::numSteps; ++step)
+                flat = flat && std::abs (value (params::stepValueId (lane, step))) < 1.0e-6f;
+        }
+
+        check (flat, "every lane is eight steps of zero");
+        check (fullLength, "and eight steps long");
+
+        MockPlayHead playHead;
+        processor.setPlayConfigDetails (0, 2, 48000.0, 512);
+        processor.prepareToPlay (48000.0, 512);
+        processor.setPlayHead (&playHead);
+
+        const auto counts = runProcessor (processor, playHead, false, 48000);
+
+        check (counts.noteOns == 0, "and it stays silent until the host starts playing");
+    }
+
+    //==========================================================================
     section ("Host transport running");
     {
         TriLaneAudioProcessor processor;
@@ -167,6 +205,10 @@ int main()
         processor.setPlayConfigDetails (0, 2, 48000.0, 512);
         processor.prepareToPlay (48000.0, 512);
 
+        // Free Run is off by default, so this is the one place that has to switch it on.
+        if (auto* freeRun = processor.apvts.getParameter (params::freeRunId))
+            freeRun->setValueNotifyingHost (1.0f);
+
         MockPlayHead playHead;
         processor.setPlayHead (&playHead);
 
@@ -182,9 +224,6 @@ int main()
         processor.setPlayConfigDetails (0, 2, 48000.0, 512);
         processor.prepareToPlay (48000.0, 512);
 
-        if (auto* freeRun = processor.apvts.getParameter (params::freeRunId))
-            freeRun->setValueNotifyingHost (0.0f);
-
         MockPlayHead playHead;
         processor.setPlayHead (&playHead);
 
@@ -199,6 +238,9 @@ int main()
         TriLaneAudioProcessor processor;
         processor.setPlayConfigDetails (0, 2, 48000.0, 512);
         processor.prepareToPlay (48000.0, 512);
+
+        if (auto* freeRun = processor.apvts.getParameter (params::freeRunId))
+            freeRun->setValueNotifyingHost (1.0f);
 
         juce::AudioBuffer<float> audio (2, 512);
         juce::MidiBuffer midi;
@@ -272,6 +314,13 @@ int main()
         };
 
         //----------------------------------------------------------------------
+        // Every lane starts at zero now, so lane 2 is given something to lose before lane 1
+        // is cleared -- otherwise a clear that reached across lanes would look like a pass.
+        for (int step = 0; step < params::numSteps; ++step)
+            if (auto* p = processor.apvts.getParameter (params::stepValueId (1, step)))
+                p->setValueNotifyingHost (p->convertTo0to1 (0.5f));
+
+        params::randomiseLaneValues (processor.apvts, 0, random);
         params::clearLaneValues (processor.apvts, 0);
 
         bool allZero = true;
@@ -281,8 +330,6 @@ int main()
 
         check (allZero, "clear zeroes every step value in the lane");
 
-        // Lane 2's defaults include non-zero steps, so this catches a clear that
-        // reached across lanes.
         bool otherLanesIntact = false;
 
         for (int step = 0; step < params::numSteps; ++step)

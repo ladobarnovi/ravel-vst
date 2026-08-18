@@ -87,8 +87,9 @@ tested without a UI.
 A step that is toggled **off** is transparent for its lane — nothing is added, multiplied
 or held — and it fires no note if that lane is the trigger source.
 
-**Lanes.** *+ Add lane* and *Remove lane N* sit under the last lane, and the window grows and
-shrinks to fit. Lanes are added and removed at the bottom, and a removed lane keeps its
+**Lanes.** Every lane starts as eight steps of zero — a flat pattern on the root, not a demo
+to clear away — and lanes differ only in their default rate. *+ Add lane* and *Remove lane N*
+sit under the last lane, and the window grows and shrinks to fit. Lanes are added and removed at the bottom, and a removed lane keeps its
 pattern: bringing it back restores it exactly. Muting a lane with its own toggle is the same
 thing as switching every one of its steps off at once, so a muted lane is transparent for the
 mix in every mix mode and triggers nothing in either mode.
@@ -196,8 +197,9 @@ note left on the channel would otherwise detune every note that followed.
 Those RPNs are written out as raw controller events rather than via `juce::MPEMessages`,
 which returns a `MidiBuffer` by value and would allocate on the audio thread.
 
-**Free Run** keeps the sequencer moving while the transport is stopped, so you can
-audition patterns without pressing play.
+**Free Run** (off by default) keeps the sequencer moving while the transport is stopped, so
+you can audition patterns without pressing play. Off, the sequencer follows the host
+transport and a freshly loaded instance stays silent until you press play.
 
 ### Polyphony
 
