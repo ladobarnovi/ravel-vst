@@ -123,9 +123,9 @@ void TriLaneAudioProcessorEditor::buildTabs()
     auto& notes = pitchPage.addColumn ("Notes");
     notes.add (params::rootNoteId,   "Root");
     scaleRow = notes.add (params::scaleId, "Scale");
-    scaleRow->setTooltip ("Scales named 19, 23 or 53 divide the octave into that many equal "
-                          "steps. Their degrees land between the keys, so they play as a note "
-                          "plus pitch bend -- one microtone at a time per channel");
+    scaleRow->setTooltip ("Scales named 19, 23, 31, 41 or 53 divide the octave into that many "
+                          "equal steps. Their degrees land between the keys, so they play as a "
+                          "note plus pitch bend -- one microtone at a time per channel");
     notes.add (params::rangeStepsId, "Range");
     quantizeRow = notes.add (params::quantizeId, "Quantize");
     quantizeRow->setTooltip ("On: pitch snaps to the selected scale. Off: continuous "

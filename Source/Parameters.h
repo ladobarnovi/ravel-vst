@@ -71,8 +71,8 @@ enum OutputMode { outNotes = 0, outCC = 1 };
 
 //==============================================================================
 // Scales are stored as steps of an equal division of the octave rather than as semitones,
-// so 19-, 23- and 53-EDO sit in the same table as the familiar 12-EDO ones and the engine
-// needs one code path for all of them. Every tuning here keeps a 2:1 octave, which is what
+// so 19-, 23-, 31-, 41- and 53-EDO sit in the same table as the familiar 12-EDO ones and the
+// engine needs one code path for all of them. Every tuning here keeps a 2:1 octave, which is what
 // makes the mapping onto MIDI note numbers tractable: a full scale-octave is always exactly
 // 12 semitones however many degrees it took to climb, so only the degrees *within* an octave
 // ever fall between the keys.
@@ -112,6 +112,12 @@ inline const juce::StringArray scaleNames
     "19 Pentatonic Minor", "19 Blues",
 
     "23 Chromatic", "23 Pentatonic", "23 Mavila 7", "23 Mavila 9",
+
+    "31 Chromatic", "31 Major", "31 Natural Minor", "31 Harmonic Minor",
+    "31 Pentatonic Minor", "31 Blues",
+
+    "41 Chromatic", "41 Major", "41 Natural Minor", "41 Harmonic Minor",
+    "41 Pentatonic Minor",
 
     "53 Chromatic", "53 Just Major", "53 Just Minor", "53 Pythagorean Major",
     "53 Just Pentatonic", "53 Rast", "53 Hicaz"
@@ -155,6 +161,33 @@ inline constexpr ScaleDef scales[]
     { { 0, 3, 6, 13, 16 },              5, 23 },    // 23 Pentatonic  (2L 3s)
     { { 0, 3, 6, 9, 13, 16, 19 },       7, 23 },    // 23 Mavila 7    (2L 5s, antidiatonic)
     { { 0, 3, 6, 9, 12, 13, 16, 19, 22 }, 9, 23 },  // 23 Mavila 9    (7L 2s)
+
+    //--------------------------------------------------------------------------
+    // 31-EDO. Step 38.7 cents. The best meantone in this table: its fifth (18 steps, 696.8
+    // cents) is close to quarter-comma meantone, which makes its major third (10 steps, 387.1
+    // cents) fall within a cent and a half of just (386.3) -- closer than 19-EDO manages. The
+    // diatonic scales are the ordinary ones respelled 5-5-3-5-5-5-3, same idea as 19-EDO's
+    // 3-3-2-3-3-3-2, just with two more degrees of room, so sharps and flats separate further
+    // (the chromatic semitone is 2 steps here, versus 19-EDO's 1).
+    edoChromatic (31),                              // 31 Chromatic
+    { { 0, 5, 10, 13, 18, 23, 28 }, 7, 31 },        // 31 Major
+    { { 0, 5, 8, 13, 18, 21, 26 },  7, 31 },        // 31 Natural Minor
+    { { 0, 5, 8, 13, 18, 21, 28 },  7, 31 },        // 31 Harmonic Minor
+    { { 0, 8, 13, 18, 26 },         5, 31 },        // 31 Pentatonic Minor
+    { { 0, 8, 13, 15, 18, 26 },     6, 31 },        // 31 Blues (adds the flat-5 blue note)
+
+    //--------------------------------------------------------------------------
+    // 41-EDO. Step 29.3 cents. The opposite trade from 31: its fifth (24 steps, 702.4 cents)
+    // is within half a cent of pure 3/2, better than 12-EDO's own, so it's the one to reach for
+    // when what matters is Pythagorean-accurate fifths rather than sweeter thirds (its major
+    // third, 13 steps at 380.5 cents, is a passable 5/4 but not a standout). The diatonic
+    // scales are the ordinary ones respelled 7-7-3-7-7-7-3 -- the same construction as 12-EDO's
+    // 2-2-1-2-2-2-1 and 19-EDO's 3-3-2-3-3-3-2, just carried on a near-pure chain of fifths.
+    edoChromatic (41),                              // 41 Chromatic
+    { { 0, 7, 14, 17, 24, 31, 38 }, 7, 41 },        // 41 Major
+    { { 0, 7, 10, 17, 24, 27, 34 }, 7, 41 },        // 41 Natural Minor
+    { { 0, 7, 10, 17, 24, 27, 38 }, 7, 41 },        // 41 Harmonic Minor
+    { { 0, 10, 17, 24, 34 },        5, 41 },        // 41 Pentatonic Minor
 
     //--------------------------------------------------------------------------
     // 53-EDO. Step 22.6 cents, the Holdrian comma. Its fifth is 31 steps (701.9 cents,

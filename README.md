@@ -132,7 +132,7 @@ five-note pentatonic, 12 degrees is nearly two and a half octaves.
 
 ### Scales and tunings
 
-The **Scale** list holds the familiar 12-tone scales plus scales in three other equal
+The **Scale** list holds the familiar 12-tone scales plus scales in five other equal
 divisions of the octave. Scales prefixed with a number are in that EDO:
 
 | Tuning | Step | Scales | Why it's there |
@@ -140,6 +140,8 @@ divisions of the octave. Scales prefixed with a number are in that EDO:
 | 12-EDO | 100 ¢ | Chromatic, Major, Natural/Harmonic Minor, both Pentatonics, Dorian, Mixolydian, Whole Tone | The usual |
 | **19-EDO** | 63.2 ¢ | Chromatic, Major, Natural/Harmonic Minor, Pentatonic Minor, Blues | A meantone. The diatonic scales are the ordinary ones respelled 3-3-2-3-3-3-2, so they still sound major and minor, with thirds nearer just than 12-EDO manages. Sharps and flats separate: C♯ sits a step *below* D♭ |
 | **23-EDO** | 52.2 ¢ | Chromatic, Pentatonic, Mavila 7, Mavila 9 | The awkward one — its best fifth is a quarter-tone flat, so diatonic harmony doesn't survive the trip. What it has instead is **mavila**, where that flat fifth turns the diatonic scale inside out: the major-scale-shaped scale comes out with two large steps and five small ones, and its third degree is minor-sized |
+| **31-EDO** | 38.7 ¢ | Chromatic, Major, Natural/Harmonic Minor, Pentatonic Minor, Blues | The best meantone here. Fifth 696.8 ¢, major third 387.1 ¢ — within a cent and a half of just, closer than 19-EDO gets. Same 5-3-5-5-3-5-3-style respelling as 19-EDO, with more room between sharps and flats |
+| **41-EDO** | 29.3 ¢ | Chromatic, Major, Natural/Harmonic Minor, Pentatonic Minor | The opposite trade from 31: fifth 702.4 ¢, under half a cent from pure 3/2 — better than 12-EDO's own — at the cost of a merely passable major third (380.5 ¢). Reach for it when the fifths need to be exact rather than the thirds |
 | **53-EDO** | 22.6 ¢ (the Holdrian comma) | Chromatic, Just Major, Just Minor, Pythagorean Major, Just Pentatonic, Rast, Hicaz | Fifth 701.9 ¢, major third 384.9 ¢ — it renders 5-limit just intonation to within a couple of cents, and Pythagorean tuning separately, which is why the two major scales differ at all. It's also the grid Turkish makam theory is written on |
 
 Every tuning keeps a 2:1 octave, so a full scale-octave is always exactly 12 semitones however
@@ -173,8 +175,8 @@ Either way, pitch goes out as a note plus pitch bend, both on the single **Note 
 (Routing tab) — the nearest semitone carries the note number, and the residual — never more
 than half a semitone — goes out as pitch bend, sent just before the note-on so the note starts
 already in tune. With Quantize on and a 12-EDO scale the residual is always exactly zero, so
-no bend is sent at all; a 19-, 23- or 53-EDO scale needs one even with Quantize on, for the
-same reason continuous pitch does (see [Scales and tunings](#scales-and-tunings)).
+no bend is sent at all; a 19-, 23-, 31-, 41- or 53-EDO scale needs one even with Quantize on,
+for the same reason continuous pitch does (see [Scales and tunings](#scales-and-tunings)).
 
 There is no glide or portamento anywhere. Each step is one discrete pitch, held for the step
 and jumping at the next boundary — exactly one pitch bend per note, not a stream of them.

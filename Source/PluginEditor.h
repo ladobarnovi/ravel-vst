@@ -81,7 +81,7 @@ private:
     int lastQuantize = -1;
 
     // Watched alongside Quantize because the scale decides whether Bend Range is in play:
-    // a 19-, 23- or 53-EDO scale rides on the wheel even with Quantize on.
+    // a 19-, 23-, 31-, 41- or 53-EDO scale rides on the wheel even with Quantize on.
     std::atomic<float>* scaleParam = nullptr;
     int lastScale = -1;
 
