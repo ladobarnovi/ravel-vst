@@ -2,6 +2,7 @@
 
 #include "Parameters.h"
 #include "SequencerEngine.h"
+#include "UndoHistory.h"
 
 class RavelAudioProcessor final : public juce::AudioProcessor
 {
@@ -38,6 +39,13 @@ public:
 
     //==========================================================================
     juce::AudioProcessorValueTreeState apvts;
+
+    /** Declared after apvts, because it takes its parameter list from the processor and the
+        parameters are not there until apvts has finished constructing.
+
+        It lives on the processor rather than the editor so that closing the plugin window
+        does not throw the history away. */
+    UndoHistory undoHistory { *this };
 
     const SequencerEngine& getEngine() const noexcept { return engine; }
 

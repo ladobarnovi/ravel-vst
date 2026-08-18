@@ -61,6 +61,10 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
 {
     setLookAndFeel (&lookAndFeel);
 
+    // Key presses bubble up from whichever child has focus, so this is what puts the editor
+    // at the end of that chain for the undo shortcuts.
+    setWantsKeyboardFocus (true);
+
     titleLabel.setText ("RAVEL", juce::dontSendNotification);
     titleLabel.setFont (theme::titleFont());
     titleLabel.setColour (juce::Label::textColourId, theme::text);
@@ -172,6 +176,39 @@ void RavelAudioProcessorEditor::buildTabs()
     tabs.addTab ("Timing",  timingPage);
     tabs.addTab ("Routing", routingPage);
     addAndMakeVisible (tabs);
+}
+
+//==============================================================================
+void RavelAudioProcessorEditor::parentHierarchyChanged()
+{
+    if (isShowing() && ! hasKeyboardFocus (true))
+        grabKeyboardFocus();
+}
+
+bool RavelAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
+{
+    // commandModifier is Ctrl on Windows and Cmd on macOS, which is what each platform's
+    // users reach for.
+    if (! key.getModifiers().isCommandDown())
+        return false;
+
+    const bool undoKey = key.isKeyCode ('Z');
+    const bool redoKey = key.isKeyCode ('Y');
+
+    if (! undoKey && ! redoKey)
+        return false;
+
+    // Ctrl+Shift+Z is the other redo binding in wide use; both are accepted rather than
+    // picking a side.
+    if (redoKey || key.getModifiers().isShiftDown())
+        processorRef.undoHistory.redo();
+    else
+        processorRef.undoHistory.undo();
+
+    // Swallowed even with an empty history. Letting it fall through would hand the keystroke
+    // to the host, so running out of steps in the plugin would silently start undoing the
+    // arrangement instead -- a much worse surprise than a key that does nothing.
+    return true;
 }
 
 //==============================================================================

@@ -40,7 +40,9 @@ juce_add_plugin(Ravel
     NEEDS_MIDI_INPUT            TRUE
     NEEDS_MIDI_OUTPUT           TRUE
     IS_MIDI_EFFECT              FALSE
-    EDITOR_WANTS_KEYBOARD_FOCUS FALSE
+    # TRUE so the VST3 wrapper asks the host for keyboard focus. Without it the editor never
+    # sees a keystroke and the Ctrl+Z undo shortcut cannot fire at all.
+    EDITOR_WANTS_KEYBOARD_FOCUS TRUE
     COPY_PLUGIN_AFTER_BUILD     TRUE
     VST3_CATEGORIES             "Instrument" "Tools"
 )
@@ -52,6 +54,7 @@ target_sources(Ravel PRIVATE
     Source/PluginEditor.cpp
     Source/LaneComponent.cpp
     Source/Controls.cpp
+    Source/UndoHistory.cpp
 )
 
 target_compile_definitions(Ravel PUBLIC
@@ -113,6 +116,7 @@ if(RAVEL_BUILD_TESTS)
         Source/Controls.cpp
         Source/Parameters.cpp
         Source/SequencerEngine.cpp
+        Source/UndoHistory.cpp
     )
 
     target_include_directories(RavelProcessorTests PRIVATE Source)
@@ -141,7 +145,8 @@ if(RAVEL_SNAPSHOT_SOURCE)
     juce_add_console_app(RavelSnapshot PRODUCT_NAME "RavelSnapshot")
     target_sources(RavelSnapshot PRIVATE ${RAVEL_SNAPSHOT_SOURCE}
         Source/PluginProcessor.cpp Source/PluginEditor.cpp Source/LaneComponent.cpp
-        Source/Controls.cpp Source/Parameters.cpp Source/SequencerEngine.cpp)
+        Source/Controls.cpp Source/Parameters.cpp Source/SequencerEngine.cpp
+        Source/UndoHistory.cpp)
     target_include_directories(RavelSnapshot PRIVATE Source)
     target_compile_definitions(RavelSnapshot PRIVATE
         JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Ravel")

@@ -27,6 +27,14 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
+    /** Ctrl+Z / Ctrl+Shift+Z (Cmd on macOS), plus Ctrl+Y for the hosts whose users expect it. */
+    bool keyPressed (const juce::KeyPress& key) override;
+
+    /** Nothing holds keyboard focus when the window first opens, and key presses only reach a
+        component that does -- so without this the shortcuts would stay dead until something
+        in the editor had been clicked. */
+    void parentHierarchyChanged() override;
+
 private:
     void timerCallback() override;
 

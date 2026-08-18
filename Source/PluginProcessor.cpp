@@ -215,6 +215,10 @@ void RavelAudioProcessor::setStateInformation (const void* data, int sizeInBytes
             auto tree = juce::ValueTree::fromXml (*xml);
             migrateFixedThreeLaneState (tree);
             apvts.replaceState (tree);
+
+            // Whatever this instance held before the host handed it a session is not a state
+            // the user chose, so it is not one Ctrl+Z should be able to walk back into.
+            undoHistory.clear();
         }
     }
 }

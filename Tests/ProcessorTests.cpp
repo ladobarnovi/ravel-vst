@@ -522,6 +522,180 @@ int main()
     }
 
     //==========================================================================
+    // There is no message loop in a console app, so the window that coalesces one user action
+    // into one undo step never reopens on its own. closeCurrentEdit() stands in for the loop
+    // turning over, which is also what lets a test say exactly where it expects the seam
+    // between two edits to fall.
+    section ("Undo steps back through single edits");
+    {
+        RavelAudioProcessor processor;
+
+        const auto value = [&processor] (int lane, int step)
+        {
+            return processor.apvts.getRawParameterValue (params::stepValueId (lane, step))->load();
+        };
+
+        const auto setValue = [&processor] (int lane, int step, float v)
+        {
+            if (auto* p = processor.apvts.getParameter (params::stepValueId (lane, step)))
+            {
+                p->beginChangeGesture();
+                p->setValueNotifyingHost (p->convertTo0to1 (v));
+                p->endChangeGesture();
+            }
+        };
+
+        check (! processor.undoHistory.canUndo(), "a fresh instance has nothing to undo");
+
+        setValue (0, 0, 0.25f);
+        processor.undoHistory.closeCurrentEdit();
+
+        setValue (0, 0, 0.75f);
+        processor.undoHistory.closeCurrentEdit();
+
+        check (processor.undoHistory.getUndoDepth() == 2, "two separate edits are two steps");
+
+        check (processor.undoHistory.undo(), "undo reports that it moved");
+        check (std::abs (value (0, 0) - 0.25f) < 0.01f, "the first undo restores the previous value");
+
+        check (processor.undoHistory.undo(), "undo moves again");
+        check (std::abs (value (0, 0)) < 0.01f, "the second undo reaches the value it started at");
+
+        check (! processor.undoHistory.undo(), "undo stops at the beginning rather than wrapping");
+    }
+
+    //==========================================================================
+    section ("Redo retraces what undo walked back");
+    {
+        RavelAudioProcessor processor;
+
+        const auto value = [&processor] ()
+        {
+            return processor.apvts.getRawParameterValue (params::stepValueId (0, 0))->load();
+        };
+
+        if (auto* p = processor.apvts.getParameter (params::stepValueId (0, 0)))
+        {
+            p->beginChangeGesture();
+            p->setValueNotifyingHost (p->convertTo0to1 (0.5f));
+            p->endChangeGesture();
+        }
+
+        processor.undoHistory.closeCurrentEdit();
+        processor.undoHistory.undo();
+
+        check (std::abs (value()) < 0.01f, "undo took the value back");
+        check (processor.undoHistory.canRedo(), "and left something to redo");
+
+        check (processor.undoHistory.redo(), "redo reports that it moved");
+        check (std::abs (value() - 0.5f) < 0.01f, "redo puts the value back");
+
+        check (! processor.undoHistory.redo(), "redo stops at the top of the stack");
+
+        //----------------------------------------------------------------------
+        // Editing after an undo is a new branch: the states that were undone are no longer
+        // anywhere the user can get back to, so holding them would be a trap.
+        processor.undoHistory.undo();
+        processor.undoHistory.closeCurrentEdit();
+
+        if (auto* p = processor.apvts.getParameter (params::stepValueId (0, 0)))
+        {
+            p->beginChangeGesture();
+            p->setValueNotifyingHost (p->convertTo0to1 (0.9f));
+            p->endChangeGesture();
+        }
+
+        check (! processor.undoHistory.canRedo(), "a fresh edit discards the redo branch");
+    }
+
+    //==========================================================================
+    section ("A pattern action is one undo step, not eight");
+    {
+        RavelAudioProcessor processor;
+        juce::Random random (0x5eed);
+
+        params::randomiseLaneValues (processor.apvts, 0, random);
+
+        check (processor.undoHistory.getUndoDepth() == 1,
+               "randomising eight steps in one go records a single step");
+
+        processor.undoHistory.undo();
+
+        bool allZero = true;
+
+        for (int step = 0; step < params::numSteps; ++step)
+            allZero = allZero
+                   && std::abs (processor.apvts.getRawParameterValue (params::stepValueId (0, step))->load()) < 1.0e-6f;
+
+        check (allZero, "and one undo takes the whole lane back");
+
+        //----------------------------------------------------------------------
+        // Paste writes five parameters per step across the lane, which is the widest single
+        // action the editor has.
+        processor.undoHistory.closeCurrentEdit();
+
+        params::randomiseLaneValues (processor.apvts, 1, random);
+        processor.undoHistory.closeCurrentEdit();
+
+        const auto pattern = params::copyLane (processor.apvts, 1);
+
+        // Measured either side of the paste rather than against a running total, so the check
+        // says "the paste added one step" instead of restating the whole section's arithmetic.
+        const int depthBeforePaste = processor.undoHistory.getUndoDepth();
+        params::pasteLane (processor.apvts, 0, pattern);
+
+        check (processor.undoHistory.getUndoDepth() == depthBeforePaste + 1,
+               "a paste over a lane is also a single step");
+
+        processor.undoHistory.undo();
+
+        bool pasteUndone = true;
+
+        for (int step = 0; step < params::numSteps; ++step)
+            pasteUndone = pasteUndone
+                       && std::abs (processor.apvts.getRawParameterValue (params::stepValueId (0, step))->load()) < 1.0e-6f;
+
+        check (pasteUndone, "and undoing it leaves the target lane as it was");
+    }
+
+    //==========================================================================
+    section ("Host automation does not enter the history");
+    {
+        RavelAudioProcessor processor;
+
+        // No gestures: this is what a host moving an automation lane looks like, as opposed
+        // to a user dragging the control in the editor.
+        if (auto* p = processor.apvts.getParameter (params::stepValueId (0, 0)))
+            for (int i = 1; i <= 20; ++i)
+                p->setValueNotifyingHost ((float) i / 20.0f);
+
+        check (! processor.undoHistory.canUndo(),
+               "twenty automated writes leave the history empty");
+    }
+
+    //==========================================================================
+    section ("Loading a session clears the history");
+    {
+        RavelAudioProcessor a;
+
+        if (auto* p = a.apvts.getParameter (params::stepValueId (0, 0)))
+        {
+            p->beginChangeGesture();
+            p->setValueNotifyingHost (p->convertTo0to1 (0.4f));
+            p->endChangeGesture();
+        }
+
+        check (a.undoHistory.canUndo(), "the edit is in the history before the load");
+
+        juce::MemoryBlock state;
+        a.getStateInformation (state);
+        a.setStateInformation (state.getData(), (int) state.getSize());
+
+        check (! a.undoHistory.canUndo(),
+               "loading a session leaves nothing to step back into");
+    }
+
+    //==========================================================================
     section ("State round-trip");
     {
         RavelAudioProcessor a;
