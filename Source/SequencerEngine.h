@@ -70,8 +70,8 @@ public:
         float swing         = 0.0f;
         int   voiceCount    = 1;
 
-        /** False: the three lanes are mixed into one value that drives one note.
-            True:  each lane triggers its own note off its own clock, so the three run as
+        /** False: the lanes are mixed into one value that drives one note.
+            True:  each lane triggers its own note off its own clock, so the lanes run as
                    independent voices. A lane at zero Depth stays silent, and Trigger is
                    unused because every lane triggers itself.
         */

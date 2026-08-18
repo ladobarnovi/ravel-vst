@@ -41,7 +41,7 @@ private:
 
     juce::Label titleLabel, mixCaption;
 
-    // Shared by all three lanes, so a pattern can be copied from one and pasted onto another.
+    // Shared by all lanes, so a pattern can be copied from one and pasted onto another.
     params::LanePattern patternClipboard;
 
     // Every lane is built up front, because their parameters exist up front; the count only
