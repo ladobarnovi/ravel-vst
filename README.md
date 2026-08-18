@@ -18,6 +18,7 @@ off its own clock.
 |---|---|---|
 | 8 step bars | 0–100 % | The lane's values |
 | 8 chance bars | 0–100 % | Per-step probability of firing (thin bar under each value) |
+| 8 gate bars | 5–200 % | How long each step's note is held, as % of the step. Above 100 % overlaps into the next step (see Polyphony) |
 | 8 step toggles | on/off | Hard mute for a step |
 | Lane toggle | on/off | Mutes the whole lane: transparent for the mix, triggers nothing |
 | Length | 1–8 | Shorter lanes phase against longer ones. Steps past the length grey out, and stay editable |
@@ -66,8 +67,8 @@ the global **Slew**.
 **RND** re-rolls a lane's values, **CLR** zeroes them. Both touch values only — the toggles
 and chances are left alone, so a lane's rhythm survives a re-roll. The **⋯** menu has Rotate
 Left/Right, Invert Values, and Copy/Paste Pattern (the clipboard is shared, so you can paste
-one lane onto another). Rotate and paste move value, gate and chance together — rotating only
-the values would slide a pattern out from under its own rhythm.
+one lane onto another). Rotate and paste move value, on/off, chance, velocity and gate
+together — rotating only the values would slide a pattern out from under its own rhythm.
 
 All of these go through the host as real parameter changes wrapped in change gestures, so they
 land in automation and undo instead of silently mutating state behind the host's back. The
@@ -100,8 +101,8 @@ what makes it automatable and undoable like any other control.
 
 **Output section**
 
-Root, Scale, Range, Pitch, Bend Range, Velocity, Gate, Offset, Slew, and separate MIDI
-channels for notes and CC.
+Root, Scale, Range, Pitch, Bend Range, Velocity, Offset, Slew, and separate MIDI
+channels for notes and CC. Gate is per-step now — see the **Per lane** table above.
 
 **What Range means depends on the Pitch mode:**
 
@@ -140,8 +141,8 @@ session. Only the degrees *within* an octave fall between the keys.
 
 **Those in-between degrees play as a note plus pitch bend**, the same mechanism continuous
 pitch uses — so with Quantize on, a non-12 scale is subject to the same limit: **one microtone
-at a time per channel.** Overlapping notes (a Gate over 100 %, Voices above 1, or three poly
-lanes at once) share the channel's wheel, so they can't hold different microtones. Keep to one
+at a time per channel.** Overlapping notes (a step's Gate over 100 %, Voices above 1, or three
+poly lanes at once) share the channel's wheel, so they can't hold different microtones. Keep to one
 voice for microtonal work, or give the lanes separate instances. `Bend range` becomes live and
 is announced by RPN just as it is in continuous mode; the residual never exceeds half a
 semitone, so the ±2 default is plenty.
@@ -204,11 +205,12 @@ transport and a freshly loaded instance stays silent until you press play.
 ### Polyphony
 
 **Voices** (header, 1–8) is the ceiling on notes sounding at once. At **1** the behaviour is
-the original monophonic one — a retrigger always closes the previous note, so a Gate over
-100 % simply cuts itself off. Above 1, a long Gate **overlaps into the following step**.
+the original monophonic one — a retrigger always closes the previous note, so a step's Gate
+over 100 % simply cuts itself off. Above 1, a step with a long Gate **overlaps into the
+following step**.
 
 This is about overlapping gates, not chords: pitch comes from the single mixed value, so
-simultaneous triggers would land on the same note. Set Gate above 100 % to hear it.
+simultaneous triggers would land on the same note. Set a step's Gate above 100 % to hear it.
 
 Two details the engine has to get right:
 

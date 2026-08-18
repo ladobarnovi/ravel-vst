@@ -52,6 +52,7 @@ private:
         std::atomic<float>* enabled[params::numSteps] {};
         std::atomic<float>* chance[params::numSteps] {};
         std::atomic<float>* stepVelocity[params::numSteps] {};
+        std::atomic<float>* stepGate[params::numSteps] {};
         std::atomic<float>* active    = nullptr;
         std::atomic<float>* length    = nullptr;
         std::atomic<float>* division  = nullptr;
@@ -81,7 +82,6 @@ private:
     std::atomic<float>* pRangeSteps  = nullptr;
     std::atomic<float>* pScale       = nullptr;
     std::atomic<float>* pVelocity    = nullptr;
-    std::atomic<float>* pGateLength  = nullptr;
     std::atomic<float>* pMidiChannel = nullptr;
     std::atomic<float>* pCcNumber    = nullptr;
     std::atomic<float>* pCcChannel   = nullptr;

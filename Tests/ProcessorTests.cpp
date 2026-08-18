@@ -423,11 +423,11 @@ int main()
 
         check (valuesMoved, "rotate right shifts values round by one, wrapping");
 
-        const bool gateFollowed =
+        const bool onStateFollowed =
             processor.apvts.getRawParameterValue (params::stepOnId (0, 1))->load() > 0.5f
             && processor.apvts.getRawParameterValue (params::stepOnId (0, 0))->load() < 0.5f;
 
-        check (gateFollowed, "rotate moves the gate along with the value");
+        check (onStateFollowed, "rotate moves the on/off state along with the value");
 
         params::rotateLane (processor.apvts, 0, -1);
 

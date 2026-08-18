@@ -230,6 +230,7 @@ juce::String stepValueId    (int lane, int step);
 juce::String stepOnId       (int lane, int step);
 juce::String stepChanceId   (int lane, int step);
 juce::String stepVelocityId (int lane, int step);
+juce::String stepGateId     (int lane, int step);
 juce::String laneOnId       (int lane);
 juce::String laneLengthId   (int lane);
 juce::String laneDivId      (int lane);
@@ -251,7 +252,6 @@ inline constexpr auto rootNoteId     = "root_note";
 inline constexpr auto rangeStepsId   = "range_steps";
 inline constexpr auto scaleId         = "scale";
 inline constexpr auto velocityId     = "velocity";
-inline constexpr auto gateLengthId   = "gate_len";
 inline constexpr auto midiChannelId  = "midi_ch";
 inline constexpr auto ccNumberId     = "cc_num";
 inline constexpr auto ccChannelId    = "cc_ch";
@@ -284,8 +284,8 @@ void invertLaneValues (juce::AudioProcessorValueTreeState& state, int lane);
 
 /** Shifts the lane's steps round by one. Negative rotates left, positive rotates right.
 
-    Value, gate, chance and velocity move together -- rotating only the values would slide a
-    pattern out from under its own rhythm and accents.
+    Value, on/off, chance, velocity and gate move together -- rotating only the values would
+    slide a pattern out from under its own rhythm, accents and note lengths.
 */
 void rotateLane (juce::AudioProcessorValueTreeState& state, int lane, int direction);
 
@@ -296,6 +296,7 @@ struct LanePattern
     bool  enabled[numSteps] {};
     float chance[numSteps] {};
     float velocity[numSteps] {};
+    float gate[numSteps] {};
     bool  valid = false;
 };
 

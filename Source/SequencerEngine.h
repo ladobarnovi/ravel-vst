@@ -30,6 +30,10 @@ public:
         /** Per-step accent, as a trim on the global Velocity. 1 is unity. */
         float velocity[params::numSteps] {};
 
+        /** Per-step note length, as a percentage of the step's own length. 100 touches the
+            next step without overlapping it; above that overlaps into it (see Voices). */
+        float gate[params::numSteps] {};
+
         /** The lane's mute. False makes every one of its steps behave as if switched off:
             nothing added to the mix, nothing triggered, and its CC latched where it was. */
         bool  active    = true;
@@ -58,7 +62,6 @@ public:
         int   rangeSteps    = 12;
         int   scale         = 4;
         int   velocity      = 100;
-        float gatePercent   = 60.0f;
         int   midiChannel   = 1;
         int   ccNumber      = 1;
         int   ccChannel     = 1;
@@ -191,6 +194,9 @@ private:
     /** The MIDI velocity for a note fired by a given step: the global Velocity scaled by
         that step's own accent. */
     static int velocityFor (const Snapshot& s, int laneIndex, int stepIndex) noexcept;
+
+    /** That step's own gate length, as a percentage of the step's length. */
+    static float gateFor (const Snapshot& s, int laneIndex, int stepIndex) noexcept;
 
     /** Allocates a slot in [begin, end), emits the bend and note-on, and arms the gate. */
     void startNote (juce::MidiBuffer& out, int sampleOffset, const PitchResult& pitch,

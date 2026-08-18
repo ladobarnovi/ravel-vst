@@ -2,10 +2,10 @@
 
 namespace
 {
-    constexpr int gateHeight   = 5;
-    constexpr int gateGap      = 4;
+    constexpr int trigHeight   = 5;
+    constexpr int trigGap      = 4;
 
-    // Wide enough that the eight gate strips read as eight marks rather than as one line
+    // Wide enough that the eight trig strips read as eight marks rather than as one line
     // ruled under the whole step area.
     constexpr int slotGap      = 5;
 
@@ -33,15 +33,16 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
 
     const LayerSetup setups[]
     {
-        { valueSlider,    params::stepValueId (laneIndex, stepIndex),    0.0, "Step value -- drives pitch" },
-        { velocitySlider, params::stepVelocityId (laneIndex, stepIndex), 1.0, "This step's accent, as a trim on the global Velocity" },
-        { chanceSlider,   params::stepChanceId (laneIndex, stepIndex),   1.0, "Probability this step fires" },
+        { valueSlider,    params::stepValueId (laneIndex, stepIndex),    0.0,  "Step value -- drives pitch" },
+        { velocitySlider, params::stepVelocityId (laneIndex, stepIndex), 1.0,  "This step's accent, as a trim on the global Velocity" },
+        { chanceSlider,   params::stepChanceId (laneIndex, stepIndex),   1.0,  "Probability this step fires" },
+        { gateSlider,     params::stepGateId (laneIndex, stepIndex),     60.0, "How long this step's note is held, as % of the step" },
     };
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>* attachments[]
-        { &valueAttachment, &velocityAttachment, &chanceAttachment };
+        { &valueAttachment, &velocityAttachment, &chanceAttachment, &gateAttachment };
 
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < numStepLayers; ++i)
     {
         auto& slider = setups[i].slider;
 
@@ -60,7 +61,7 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
 
     onButton.setColour (juce::ToggleButton::tickColourId, accent);
     onButton.setTooltip ("Mute or unmute this step");
-    theme::setRole (onButton, theme::Role::stepGate);
+    theme::setRole (onButton, theme::Role::stepTrig);
     addAndMakeVisible (onButton);
 
     onAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
@@ -68,10 +69,10 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
 
     // ButtonAttachment listens through addListener rather than through either callback,
     // so onStateChange is free for the lane's own use.
-    onButton.onStateChange = [this] { applyGateState(); };
+    onButton.onStateChange = [this] { applyTrigState(); };
 
     setLayer (StepLayer::value);
-    applyGateState();
+    applyTrigState();
 }
 
 juce::Slider& StepSlot::sliderFor (StepLayer layer) noexcept
@@ -80,6 +81,7 @@ juce::Slider& StepSlot::sliderFor (StepLayer layer) noexcept
     {
         case StepLayer::velocity: return velocitySlider;
         case StepLayer::chance:   return chanceSlider;
+        case StepLayer::gate:     return gateSlider;
         case StepLayer::value:
         default:                  return valueSlider;
     }
@@ -89,10 +91,10 @@ void StepSlot::setLayer (StepLayer layer)
 {
     currentLayer = layer;
 
-    for (auto l : { StepLayer::value, StepLayer::velocity, StepLayer::chance })
+    for (auto l : { StepLayer::value, StepLayer::velocity, StepLayer::chance, StepLayer::gate })
         sliderFor (l).setVisible (l == layer);
 
-    applyGateState();
+    applyTrigState();
     repaint();
 }
 
@@ -102,7 +104,7 @@ void StepSlot::setLaneActive (bool laneIsActive)
         return;
 
     laneActive = laneIsActive;
-    applyGateState();
+    applyTrigState();
     repaint();
 }
 
@@ -112,11 +114,11 @@ void StepSlot::setWithinLength (bool isWithinLength)
         return;
 
     withinLength = isWithinLength;
-    applyGateState();
+    applyTrigState();
     repaint();
 }
 
-void StepSlot::applyGateState()
+void StepSlot::applyTrigState()
 {
     const bool on = onButton.getToggleState();
 
@@ -139,7 +141,7 @@ void StepSlot::applyGateState()
                                     : theme::track.interpolatedWith (theme::panel, 0.85f));
     visible.repaint();
 
-    // Mixed toward the panel rather than made transparent: drawStepGate sets its own alpha
+    // Mixed toward the panel rather than made transparent: drawStepTrig sets its own alpha
     // on whatever colour it finds here, so an alpha stored on this one would be discarded.
     onButton.setColour (juce::ToggleButton::tickColourId,
                         live ? accent : accent.interpolatedWith (theme::panel, 0.8f));
@@ -148,7 +150,7 @@ void StepSlot::applyGateState()
 
 juce::Rectangle<int> StepSlot::barArea() const
 {
-    return getLocalBounds().withTrimmedBottom (gateHeight + gateGap);
+    return getLocalBounds().withTrimmedBottom (trigHeight + trigGap);
 }
 
 void StepSlot::drawLayerTick (juce::Graphics& g, const juce::Slider& slider, StepLayer layer) const
@@ -162,9 +164,9 @@ void StepSlot::drawLayerTick (juce::Graphics& g, const juce::Slider& slider, Ste
     const float proportion = (float) ((slider.getValue() - range.getStart()) / range.getLength());
     const float y = bar.getBottom() - bar.getHeight() * juce::jlimit (0.0f, 1.0f, proportion);
 
-    // One third each, in layer order, so the two visible ticks never overlap whichever layer
+    // One quarter each, in layer order, so the visible ticks never overlap whichever layer
     // happens to be the selected one.
-    const float width = bar.getWidth() / 3.0f;
+    const float width = bar.getWidth() / (float) numStepLayers;
     const float x = bar.getX() + width * (float) (int) layer;
 
     g.setColour (theme::text.withAlpha (withinLength ? 0.55f : 0.18f));
@@ -185,6 +187,9 @@ void StepSlot::paintOverChildren (juce::Graphics& g)
     if (currentLayer != StepLayer::chance && chanceSlider.getValue() < 0.999)
         drawLayerTick (g, chanceSlider, StepLayer::chance);
 
+    if (currentLayer != StepLayer::gate && std::abs (gateSlider.getValue() - 60.0) > 0.5)
+        drawLayerTick (g, gateSlider, StepLayer::gate);
+
     if (! playing)
         return;
 
@@ -199,12 +204,13 @@ void StepSlot::resized()
 {
     auto r = getLocalBounds();
 
-    onButton.setBounds (r.removeFromBottom (gateHeight));
-    r.removeFromBottom (gateGap);
+    onButton.setBounds (r.removeFromBottom (trigHeight));
+    r.removeFromBottom (trigGap);
 
     valueSlider.setBounds (r);
     velocitySlider.setBounds (r);
     chanceSlider.setBounds (r);
+    gateSlider.setBounds (r);
 }
 
 void StepSlot::setPlaying (bool shouldBePlaying)
@@ -278,9 +284,10 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
         "Bars edit each step's value, which drives pitch",
         "Bars edit each step's velocity accent",
         "Bars edit each step's probability of firing",
+        "Bars edit each step's gate, how long its note is held",
     };
 
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < numStepLayers; ++i)
     {
         auto& button = layerButtons[i];
 
@@ -291,7 +298,7 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
     }
 
     // The attachment drives the slider through Slider::Listener, the same way the step
-    // gates' does, so onValueChange is free for the lane's own use -- and it fires for a
+    // trigs' does, so onValueChange is free for the lane's own use -- and it fires for a
     // change from the host as readily as for a drag.
     lengthSlider = dynamic_cast<juce::Slider*> (&lengthRow->getControl());
 
@@ -343,7 +350,7 @@ void LaneComponent::setLayer (StepLayer layer)
 {
     currentLayer = layer;
 
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < numStepLayers; ++i)
         layerButtons[i].setToggleState (i == (int) layer, juce::dontSendNotification);
 
     for (auto* slot : slots)

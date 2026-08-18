@@ -138,7 +138,6 @@ void TriLaneAudioProcessorEditor::buildTabs()
 
     auto& voice = pitchPage.addColumn ("Voice");
     voice.add (params::velocityId,   "Velocity");
-    voice.add (params::gateLengthId, "Gate");
     voice.add (params::voiceCountId, "Voices");
 
     //--------------------------------------------------------------------------

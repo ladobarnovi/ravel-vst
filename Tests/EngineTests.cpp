@@ -130,6 +130,14 @@ namespace
             s.lanes[lane].active = false;
     }
 
+    /** Sets every step's gate on one lane to the same percentage -- Gate is per-step now,
+        where the tests used to set one value for the whole plugin. */
+    void setLaneGate (SequencerEngine::Snapshot& s, int lane, float percent)
+    {
+        for (auto& g : s.lanes[lane].gate)
+            g = percent;
+    }
+
     /** Lane 1 drives at full depth, lanes 2 and 3 are inert. Chromatic scale so a
         scale degree maps 1:1 onto a semitone, keeping expected pitches obvious.
     */
@@ -151,6 +159,7 @@ namespace
             {
                 lane.chance[i]   = 1.0f;
                 lane.velocity[i] = 1.0f;
+                lane.gate[i]     = 60.0f;
             }
 
             lane.length    = params::numSteps;
@@ -174,7 +183,6 @@ namespace
         s.rangeSteps    = 12;
         s.scale         = 0;        // Chromatic
         s.velocity      = 100;
-        s.gatePercent   = 60.0f;
         s.midiChannel   = 1;
         s.ccNumber      = 1;
         s.ccChannel     = 1;
@@ -232,7 +240,7 @@ int main()
     {
         auto s = baseSnapshot();
         s.lanes[0].length = 4;
-        s.gatePercent = 60.0f;   // 60% of 6000 = 3600 samples
+        // baseSnapshot() defaults every step's gate to 60%, i.e. 3600 of 6000 samples.
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -395,7 +403,7 @@ int main()
     {
         auto s = baseSnapshot();
         s.lanes[0].length = 4;
-        s.gatePercent = 200.0f;   // long enough that the note is still held
+        setLaneGate (s, 0, 200.0f);   // long enough that the note is still held
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1299,7 +1307,7 @@ int main()
         auto s = baseSnapshot();
         s.lanes[0].length = 4;
         s.scale = 0;
-        s.gatePercent = 180.0f;   // would overlap if polyphony were allowed
+        setLaneGate (s, 0, 180.0f);   // would overlap if polyphony were allowed
         s.voiceCount = 1;
 
         for (int i = 0; i < 4; ++i)
@@ -1331,7 +1339,7 @@ int main()
         auto s = baseSnapshot();
         s.lanes[0].length = 4;
         s.scale = 0;
-        s.gatePercent = 180.0f;   // 1.8 steps long, so each note laps into the next
+        setLaneGate (s, 0, 180.0f);   // 1.8 steps long, so each note laps into the next
         s.voiceCount = 4;
 
         for (int i = 0; i < 4; ++i)
@@ -1373,7 +1381,7 @@ int main()
         auto s = baseSnapshot();
         s.lanes[0].length = 8;
         s.scale = 0;
-        s.gatePercent = 200.0f;
+        setLaneGate (s, 0, 200.0f);
         s.voiceCount = 2;
 
         for (int i = 0; i < params::numSteps; ++i)
@@ -1407,7 +1415,7 @@ int main()
         s.lanes[0].length = 1;
         s.lanes[0].values[0] = 0.25f;
         s.scale = 0;
-        s.gatePercent = 190.0f;
+        setLaneGate (s, 0, 190.0f);
         s.voiceCount = 4;
 
         SequencerEngine engine;
@@ -1435,7 +1443,7 @@ int main()
         auto s = baseSnapshot();
         s.lanes[0].length = 4;
         s.scale = 0;
-        s.gatePercent = 190.0f;
+        setLaneGate (s, 0, 190.0f);
         s.voiceCount = 4;
 
         for (int i = 0; i < 4; ++i)
@@ -1483,13 +1491,13 @@ int main()
         s.polyMode = true;
         s.scale = 0;               // Chromatic: a degree is a semitone
         s.rangeSteps = 12;
-        s.gatePercent = 50.0f;
         useLanes (s, 3);
 
         for (int lane = 0; lane < params::numLanes; ++lane)
         {
             s.lanes[lane].length = 1;
             s.lanes[lane].depth  = 1.0f;
+            setLaneGate (s, lane, 50.0f);
         }
 
         s.lanes[0].values[0] = 0.0f;             // root, 48
@@ -1540,7 +1548,7 @@ int main()
         auto s = baseSnapshot();
         s.scale = 0;
         s.velocity = 100;
-        s.gatePercent = 40.0f;
+        setLaneGate (s, 0, 40.0f);
         s.lanes[0].length = 4;
 
         for (int i = 0; i < 4; ++i)
@@ -1576,7 +1584,7 @@ int main()
         auto s = baseSnapshot();
         s.scale = 0;
         s.velocity = 80;
-        s.gatePercent = 40.0f;
+        setLaneGate (s, 0, 40.0f);
         s.lanes[0].length = 1;
         s.lanes[0].values[0] = 0.0f;
         s.lanes[0].velocity[0] = 1.0f;
@@ -1607,12 +1615,12 @@ int main()
         s.polyMode = true;
         s.scale = 0;
         s.velocity = 100;
-        s.gatePercent = 50.0f;
 
         for (int lane = 0; lane < params::numLanes; ++lane)
         {
             s.lanes[lane].length = 1;
             s.lanes[lane].values[0] = (float) lane / 12.0f;
+            setLaneGate (s, lane, 50.0f);
         }
 
         s.lanes[0].depth = 1.0f;
@@ -1648,17 +1656,18 @@ int main()
         auto s = baseSnapshot();
         s.scale = 0;
         s.velocity = 100;
-        s.gatePercent = 40.0f;
         s.triggerSource = params::numLanes;    // Any Lane
         s.voiceCount = 4;
 
         s.lanes[0].length = 1;
         s.lanes[0].division = params::divIndex_1_16;
         s.lanes[0].velocity[0] = 1.0f;
+        setLaneGate (s, 0, 40.0f);
 
         s.lanes[1].length = 1;
         s.lanes[1].division = params::divIndex_1_4;
         s.lanes[1].velocity[0] = 0.3f;
+        setLaneGate (s, 1, 40.0f);
 
         // Under Any Lane every lane is a trigger lane and the last one to advance at a given
         // sample wins, so lane 3 -- which runs at 1/16 by default -- has to be switched off
@@ -1695,17 +1704,18 @@ int main()
         s.polyMode = true;
         s.scale = 0;
         s.voiceCount = 1;
-        s.gatePercent = 400.0f;      // four steps long
 
         s.lanes[0].length = 1;
         s.lanes[0].values[0] = 0.0f;             // note 48
         s.lanes[0].division = params::divIndex_1_4;
         s.lanes[0].depth = 1.0f;
+        setLaneGate (s, 0, 400.0f);   // four steps long
 
         s.lanes[1].length = 1;
         s.lanes[1].values[0] = 9.0f / 12.0f;     // note 57
         s.lanes[1].division = params::divIndex_1_16;
         s.lanes[1].depth = 1.0f;
+        setLaneGate (s, 1, 400.0f);
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1731,10 +1741,10 @@ int main()
     {
         auto s = baseSnapshot();
         s.scale = 0;
-        s.gatePercent = 400.0f;
         s.voiceCount = 4;
         s.lanes[0].length = 1;
         s.lanes[0].values[0] = 0.0f;
+        setLaneGate (s, 0, 400.0f);
 
         SequencerEngine engine;
         engine.prepare (sampleRate);

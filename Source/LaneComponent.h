@@ -12,10 +12,13 @@
     bar keeps its own parameter attachment, since nothing has to be rebound when the
     selection changes.
 */
-enum class StepLayer { value = 0, velocity = 1, chance = 2 };
+enum class StepLayer { value = 0, velocity = 1, chance = 2, gate = 3 };
+
+/** How many layers a step has, and how many StepLayer values there are. */
+inline constexpr int numStepLayers = 4;
 
 //==============================================================================
-/** One step: a tall bar for the selected layer, ticks for the other two, and a gate strip. */
+/** One step: a tall bar for the selected layer, ticks for the others, and a trig strip. */
 class StepSlot final : public juce::Component
 {
 public:
@@ -37,23 +40,24 @@ public:
     void setWithinLength (bool isWithinLength);
 
 private:
-    /** Recolours the visible bar to match the gate, so a muted step reads as muted without
+    /** Recolours the visible bar to match the trig, so a muted step reads as muted without
         needing a separate indicator. */
-    void applyGateState();
+    void applyTrigState();
 
     /** A faint mark at a hidden layer's level, drawn over the visible bar. Each layer owns
-        one of three horizontal thirds, so no two ticks can ever sit on top of each other. */
+        one of four horizontal quarters, so no two ticks can ever sit on top of each other. */
     void drawLayerTick (juce::Graphics&, const juce::Slider&, StepLayer) const;
 
-    /** The rectangle the three bars share, which is the slot minus the gate strip. */
+    /** The rectangle the bars share, which is the slot minus the trig strip. */
     juce::Rectangle<int> barArea() const;
 
-    juce::Slider valueSlider, velocitySlider, chanceSlider;
+    juce::Slider valueSlider, velocitySlider, chanceSlider, gateSlider;
     juce::ToggleButton onButton;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> valueAttachment,
                                                                          velocityAttachment,
-                                                                         chanceAttachment;
+                                                                         chanceAttachment,
+                                                                         gateAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> onAttachment;
 
     juce::Colour accent;
@@ -107,9 +111,10 @@ private:
 
     // Which per-step parameter the eight bars edit. Per lane rather than global, so one lane
     // can be shown as accents while another is being dialled in for pitch.
-    juce::TextButton layerButtons[3] { juce::TextButton ("Value"),
-                                       juce::TextButton ("Velocity"),
-                                       juce::TextButton ("Prob") };
+    juce::TextButton layerButtons[numStepLayers] { juce::TextButton ("Value"),
+                                                   juce::TextButton ("Velocity"),
+                                                   juce::TextButton ("Prob"),
+                                                   juce::TextButton ("Gate") };
 
     StepLayer currentLayer = StepLayer::value;
 

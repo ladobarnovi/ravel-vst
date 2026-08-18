@@ -13,6 +13,7 @@ juce::String stepValueId    (int lane, int step) { return stepPrefix (lane, step
 juce::String stepOnId       (int lane, int step) { return stepPrefix (lane, step) + "_on"; }
 juce::String stepChanceId   (int lane, int step) { return stepPrefix (lane, step) + "_chance"; }
 juce::String stepVelocityId (int lane, int step) { return stepPrefix (lane, step) + "_vel"; }
+juce::String stepGateId     (int lane, int step) { return stepPrefix (lane, step) + "_gate"; }
 juce::String laneOnId       (int lane)           { return lanePrefix (lane) + "_on"; }
 juce::String laneLengthId   (int lane)           { return lanePrefix (lane) + "_length"; }
 juce::String laneDivId      (int lane)           { return lanePrefix (lane) + "_div"; }
@@ -101,6 +102,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
                 juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f),
                 1.0f,
                 juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
+
+            // How long this step's note is held, as a percentage of the step's own length.
+            // Per step rather than a single master, so a lane can stab on some steps and
+            // hold on others. Above 100% overlaps into the following step -- see Voices.
+            layout.add (std::make_unique<juce::AudioParameterFloat> (
+                juce::ParameterID { stepGateId (lane, step), versionHint },
+                stepName + " Gate",
+                juce::NormalisableRange<float> (5.0f, 200.0f, 1.0f),
+                60.0f,
+                juce::AudioParameterFloatAttributes().withStringFromValueFunction (
+                    [] (float v, int) { return juce::String (juce::roundToInt (v)) + " %"; })));
         }
 
         // The lane's own mute. True is "playing", and it is what a session saved before this
@@ -202,12 +214,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
 
     layout.add (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { velocityId, versionHint }, "Velocity", 1, 127, 100));
-
-    layout.add (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { gateLengthId, versionHint }, "Gate",
-        juce::NormalisableRange<float> (5.0f, 200.0f, 1.0f), 60.0f,
-        juce::AudioParameterFloatAttributes().withStringFromValueFunction (
-            [] (float v, int) { return juce::String (juce::roundToInt (v)) + " %"; })));
 
     layout.add (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { midiChannelId, versionHint }, "Note Channel", 1, 16, 1));
@@ -313,6 +319,7 @@ void rotateLane (juce::AudioProcessorValueTreeState& state, int lane, int direct
         setParam (state, stepOnId       (lane, step), pattern.enabled[source] ? 1.0f : 0.0f);
         setParam (state, stepChanceId   (lane, step), pattern.chance[source]);
         setParam (state, stepVelocityId (lane, step), pattern.velocity[source]);
+        setParam (state, stepGateId     (lane, step), pattern.gate[source]);
     }
 }
 
@@ -326,6 +333,7 @@ LanePattern copyLane (juce::AudioProcessorValueTreeState& state, int lane)
         pattern.enabled[step]  = getParam (state, stepOnId (lane, step)) > 0.5f;
         pattern.chance[step]   = getParam (state, stepChanceId (lane, step));
         pattern.velocity[step] = getParam (state, stepVelocityId (lane, step));
+        pattern.gate[step]     = getParam (state, stepGateId (lane, step));
     }
 
     pattern.valid = true;
@@ -343,6 +351,7 @@ void pasteLane (juce::AudioProcessorValueTreeState& state, int lane, const LaneP
         setParam (state, stepOnId       (lane, step), pattern.enabled[step] ? 1.0f : 0.0f);
         setParam (state, stepChanceId   (lane, step), pattern.chance[step]);
         setParam (state, stepVelocityId (lane, step), pattern.velocity[step]);
+        setParam (state, stepGateId     (lane, step), pattern.gate[step]);
     }
 }
 

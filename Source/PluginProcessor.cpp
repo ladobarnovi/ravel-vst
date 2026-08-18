@@ -17,6 +17,7 @@ TriLaneAudioProcessor::TriLaneAudioProcessor()
             lp.enabled[step] = apvts.getRawParameterValue (params::stepOnId (lane, step));
             lp.chance[step]  = apvts.getRawParameterValue (params::stepChanceId (lane, step));
             lp.stepVelocity[step] = apvts.getRawParameterValue (params::stepVelocityId (lane, step));
+            lp.stepGate[step] = apvts.getRawParameterValue (params::stepGateId (lane, step));
         }
 
         lp.active    = apvts.getRawParameterValue (params::laneOnId (lane));
@@ -40,7 +41,6 @@ TriLaneAudioProcessor::TriLaneAudioProcessor()
     pRangeSteps  = apvts.getRawParameterValue (params::rangeStepsId);
     pScale       = apvts.getRawParameterValue (params::scaleId);
     pVelocity    = apvts.getRawParameterValue (params::velocityId);
-    pGateLength  = apvts.getRawParameterValue (params::gateLengthId);
     pMidiChannel = apvts.getRawParameterValue (params::midiChannelId);
     pCcNumber    = apvts.getRawParameterValue (params::ccNumberId);
     pCcChannel   = apvts.getRawParameterValue (params::ccChannelId);
@@ -95,6 +95,7 @@ SequencerEngine::Snapshot TriLaneAudioProcessor::buildSnapshot() const
             ls.enabled[step] = lp.enabled[step]->load() > 0.5f;
             ls.chance[step]  = lp.chance[step]->load();
             ls.velocity[step] = lp.stepVelocity[step]->load();
+            ls.gate[step]     = lp.stepGate[step]->load();
         }
 
         // A lane the instance has not been given yet is inert in exactly the same way a
@@ -120,7 +121,6 @@ SequencerEngine::Snapshot TriLaneAudioProcessor::buildSnapshot() const
     s.rangeSteps    = (int) std::lround (pRangeSteps->load());
     s.scale         = (int) std::lround (pScale->load());
     s.velocity      = (int) std::lround (pVelocity->load());
-    s.gatePercent   = pGateLength->load();
     s.midiChannel   = (int) std::lround (pMidiChannel->load());
     s.ccNumber      = (int) std::lround (pCcNumber->load());
     s.ccChannel     = (int) std::lround (pCcChannel->load());

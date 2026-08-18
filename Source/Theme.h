@@ -34,7 +34,7 @@ namespace theme
 
         Every custom-drawn widget in the plugin is a stock JUCE control with a role
         stamped on it, and the LookAndFeel switches on that role. This is what lets one
-        shared LookAndFeel draw an inline parameter row, a step bar and a step gate
+        shared LookAndFeel draw an inline parameter row, a step bar and a step trig
         without any of them needing a subclass, and it keeps JUCE's mouse handling and
         parameter attachments working untouched.
     */
@@ -44,7 +44,7 @@ namespace theme
         valueRow,       ///< "caption ....... value" on one line, with a fill hairline.
         stepBar,        ///< Tall vertical step value bar.
         stepChance,     ///< Tick across a step bar; only its right gutter takes the mouse.
-        stepGate        ///< Flat strip under a step bar.
+        stepTrig        ///< Flat strip under a step bar: this step's on/off toggle.
     };
 
     const juce::Identifier roleProperty { "trilaneRole" };
@@ -224,7 +224,7 @@ public:
                 drawStepChance (g, bounds.toFloat(), sliderPos, slider);
                 return;
 
-            case theme::Role::stepGate:
+            case theme::Role::stepTrig:
             case theme::Role::standard:
             default:
                 break;
@@ -295,8 +295,8 @@ public:
                 drawToggleAsValueRow (g, button, shouldDrawButtonAsHighlighted);
                 return;
 
-            case theme::Role::stepGate:
-                drawStepGate (g, button, shouldDrawButtonAsHighlighted);
+            case theme::Role::stepTrig:
+                drawStepTrig (g, button, shouldDrawButtonAsHighlighted);
                 return;
 
             default:
@@ -401,7 +401,7 @@ private:
         g.fillRect (bounds.getX() + 1.0f, y, bounds.getWidth() - 2.0f, 1.5f);
     }
 
-    void drawStepGate (juce::Graphics& g, juce::ToggleButton& button, bool highlighted)
+    void drawStepTrig (juce::Graphics& g, juce::ToggleButton& button, bool highlighted)
     {
         const auto bounds = button.getLocalBounds().toFloat();
         const auto accent = button.findColour (juce::ToggleButton::tickColourId);
