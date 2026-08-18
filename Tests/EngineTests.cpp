@@ -120,6 +120,16 @@ namespace
         return result;
     }
 
+    /** Cuts the snapshot down to the first `count` lanes, the way an instance that has
+        only been given that many does -- the processor folds its lane count into exactly
+        this flag before the engine ever sees it.
+    */
+    void useLanes (SequencerEngine::Snapshot& s, int count)
+    {
+        for (int lane = count; lane < params::numLanes; ++lane)
+            s.lanes[lane].active = false;
+    }
+
     /** Lane 1 drives at full depth, lanes 2 and 3 are inert. Chromatic scale so a
         scale degree maps 1:1 onto a semitone, keeping expected pitches obvious.
     */
@@ -1475,6 +1485,7 @@ int main()
         s.scale = 0;               // Chromatic: a degree is a semitone
         s.rangeSteps = 12;
         s.gatePercent = 50.0f;
+        useLanes (s, 3);
 
         for (int lane = 0; lane < params::numLanes; ++lane)
         {
@@ -1701,9 +1712,12 @@ int main()
 
         // Under Any Lane every lane is a trigger lane and the last one to advance at a given
         // sample wins, so lane 3 -- which runs at 1/16 by default -- has to be switched off
-        // or it would claim every trigger and supply its own velocity.
+        // or it would claim every trigger and supply its own velocity. The instance has two
+        // lanes, which takes care of lane 4 the same way.
         for (int i = 0; i < params::numSteps; ++i)
             s.lanes[2].enabled[i] = false;
+
+        useLanes (s, 3);
 
         SequencerEngine engine;
         engine.prepare (sampleRate);

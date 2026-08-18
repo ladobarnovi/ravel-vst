@@ -207,7 +207,7 @@ private:
     // its level rather than dropping to zero.
     float laneHeldValue[params::numLanes] {};
     float laneSlewedValue[params::numLanes] {};
-    int   laneLastCcValue[params::numLanes] { -1, -1, -1 };
+    int   laneLastCcValue[params::numLanes] { -1, -1, -1, -1 };
 
     // What the receiving instrument has already been told, so the RPNs are re-sent only
     // when the mode, range or target channel actually changes.
@@ -221,6 +221,6 @@ private:
     // switch is flipped is released rather than left for the other mode to inherit.
     int   configuredPolyMode  = -1;
 
-    std::atomic<int>   uiStep[params::numLanes] { {}, {}, {} };
+    std::atomic<int>   uiStep[params::numLanes] {};
     std::atomic<float> uiMix { 0.0f };
 };

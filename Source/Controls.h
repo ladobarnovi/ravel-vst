@@ -56,6 +56,10 @@ public:
     /** Rows fill left to right, then wrap. Defaults to a single column. */
     void setColumns (int numColumns);
 
+    /** Greys out the heading and every row at once, for a whole group the current
+        configuration has nothing to say about -- a lane the instance does not have yet. */
+    void setDimmed (bool shouldBeDimmed);
+
     /** Height this group needs for its heading plus the given number of rows. */
     static int heightForRows (int numRows, bool withHeading);
 

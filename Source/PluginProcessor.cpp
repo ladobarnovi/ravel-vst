@@ -51,6 +51,7 @@ TriLaneAudioProcessor::TriLaneAudioProcessor()
     pSwing       = apvts.getRawParameterValue (params::swingId);
     pVoiceCount  = apvts.getRawParameterValue (params::voiceCountId);
     pPolyMode    = apvts.getRawParameterValue (params::polyModeId);
+    pLaneCount   = apvts.getRawParameterValue (params::laneCountId);
 }
 
 //==============================================================================
@@ -81,6 +82,9 @@ SequencerEngine::Snapshot TriLaneAudioProcessor::buildSnapshot() const
 {
     SequencerEngine::Snapshot s;
 
+    const int laneCount = juce::jlimit (1, params::numLanes,
+                                        (int) std::lround (pLaneCount->load()));
+
     for (int lane = 0; lane < params::numLanes; ++lane)
     {
         const auto& lp = laneParams[lane];
@@ -94,7 +98,9 @@ SequencerEngine::Snapshot TriLaneAudioProcessor::buildSnapshot() const
             ls.velocity[step] = lp.stepVelocity[step]->load();
         }
 
-        ls.active    = lp.active->load() > 0.5f;
+        // A lane the instance has not been given yet is inert in exactly the same way a
+        // muted one is, so the engine needs to know about only the one flag.
+        ls.active    = lane < laneCount && lp.active->load() > 0.5f;
         ls.length    = (int) std::lround (lp.length->load());
         ls.division  = (int) std::lround (lp.division->load());
         ls.direction = (int) std::lround (lp.direction->load());
@@ -202,8 +208,46 @@ void TriLaneAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 void TriLaneAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     if (const auto xml = getXmlFromBinary (data, sizeInBytes))
+    {
         if (xml->hasTagName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*xml));
+        {
+            auto tree = juce::ValueTree::fromXml (*xml);
+            migrateFixedThreeLaneState (tree);
+            apvts.replaceState (tree);
+        }
+    }
+}
+
+//==============================================================================
+void TriLaneAudioProcessor::migrateFixedThreeLaneState (juce::ValueTree& tree)
+{
+    // Anything APVTS does not find in the tree comes back as that parameter's default, so a
+    // session written before lanes were countable would silently load as a one-lane instance
+    // with its other two patterns hidden. The absence of lane_count is what identifies such a
+    // session, and three is what it was written with.
+    juce::ValueTree laneCount, trigger;
+
+    for (int i = 0; i < tree.getNumChildren(); ++i)
+    {
+        const auto child = tree.getChild (i);
+        const auto id = child.getProperty ("id").toString();
+
+        if (id == params::laneCountId) laneCount = child;
+        else if (id == params::triggerSrcId) trigger = child;
+    }
+
+    if (laneCount.isValid())
+        return;
+
+    juce::ValueTree added ("PARAM");
+    added.setProperty ("id", params::laneCountId, nullptr);
+    added.setProperty ("value", 3.0f, nullptr);
+    tree.appendChild (added, nullptr);
+
+    // Trigger gained a "Lane 4" entry ahead of "Any Lane", so the old index for Any -- which
+    // was the end of a three-lane list -- now names a lane instead of naming all of them.
+    if (trigger.isValid() && (int) std::lround ((float) trigger.getProperty ("value")) == 3)
+        trigger.setProperty ("value", (float) params::numLanes, nullptr);
 }
 
 //==============================================================================

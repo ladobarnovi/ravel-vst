@@ -87,6 +87,14 @@ ControlRow* ControlGroup::add (const juce::String& paramID, const juce::String& 
     return row;
 }
 
+void ControlGroup::setDimmed (bool shouldBeDimmed)
+{
+    headingLabel.setAlpha (shouldBeDimmed ? 0.35f : 1.0f);
+
+    for (auto* row : rows)
+        row->setDimmed (shouldBeDimmed);
+}
+
 void ControlGroup::setColumns (int numColumns)
 {
     columns = juce::jmax (1, numColumns);
@@ -144,6 +152,20 @@ namespace
     // value stay near each other and, more importantly, so the columns line up in the
     // same places when you switch between tabs holding different numbers of them.
     constexpr int columnWidth = 170;
+
+    /** The fixed width, narrowed only if that many columns would not otherwise fit. The
+        routing page carries one column per lane plus the global one, which is what makes
+        the widest page wider than the window at the full lane count.
+    */
+    int columnWidthFor (int numColumns, int pageWidth)
+    {
+        if (numColumns <= 1)
+            return juce::jmin (columnWidth, pageWidth);
+
+        const int available = pageWidth - columnGutter * (numColumns - 1);
+
+        return juce::jlimit (1, columnWidth, available / numColumns);
+    }
 }
 
 TabPage::TabPage (juce::AudioProcessorValueTreeState& state)
@@ -174,8 +196,10 @@ void TabPage::resized()
     if (columns.isEmpty())
         return;
 
+    const int width = columnWidthFor (columns.size(), getWidth());
+
     for (int i = 0; i < columns.size(); ++i)
-        columns[i]->setBounds (i * (columnWidth + columnGutter), 0, columnWidth, getHeight());
+        columns[i]->setBounds (i * (width + columnGutter), 0, width, getHeight());
 }
 
 //==============================================================================

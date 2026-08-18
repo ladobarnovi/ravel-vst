@@ -44,7 +44,22 @@ private:
     // Shared by all three lanes, so a pattern can be copied from one and pasted onto another.
     params::LanePattern patternClipboard;
 
+    // Every lane is built up front, because their parameters exist up front; the count only
+    // decides how many are shown and heard.
     juce::OwnedArray<LaneComponent> lanes;
+
+    juce::TextButton addLaneButton { "+ Add lane" }, removeLaneButton { "Remove lane" };
+
+    /** Writes the new count through the parameter rather than straight into the members, so
+        the host records it as an edit and the editor picks it up on the next tick like any
+        other parameter change. */
+    void setLaneCount (int newCount);
+
+    /** Shows that many lanes, relabels the buttons, and resizes the window to fit. */
+    void applyLaneCount (int newCount);
+
+    std::atomic<float>* laneCountParam = nullptr;
+    int laneCount = 0;
 
     // Output mode is the one global that changes what the plugin *is*, so it stays in the
     // header rather than going behind a tab with the rest of the setup.
@@ -58,6 +73,9 @@ private:
     ControlRow* bendRangeRow = nullptr;
     ControlRow* quantizeRow = nullptr;
     ControlRow* triggerRow = nullptr;
+
+    // One per lane, dimmed while the instance does not have that lane.
+    ControlGroup* laneRoutingColumns[params::numLanes] {};
 
     std::atomic<float>* quantizeParam = nullptr;
     int lastQuantize = -1;

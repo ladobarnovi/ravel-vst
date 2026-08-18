@@ -12,7 +12,11 @@
 namespace params
 {
 
-inline constexpr int numLanes = 3;
+// The most lanes an instance can have. Every lane's parameters exist from the moment the
+// plugin is created, because a VST3 cannot grow its parameter list at runtime -- so "adding
+// a lane" raises laneCount, and the lanes above the count are simply inert and hidden. Their
+// step data stays where it is, which is what lets a removed lane come back unchanged.
+inline constexpr int numLanes = 4;
 inline constexpr int numSteps = 8;
 
 //==============================================================================
@@ -31,7 +35,7 @@ inline constexpr int divIndex_1_16 = 6;
 inline const juce::StringArray directionNames  { "Forward", "Reverse", "Ping-Pong", "Random" };
 inline const juce::StringArray modeNames       { "Add", "Multiply", "Max", "S&H" };
 inline const juce::StringArray outputModeNames { "Notes", "CC", "Notes + CC" };
-inline const juce::StringArray triggerNames    { "Lane 1", "Lane 2", "Lane 3", "Any Lane" };
+inline const juce::StringArray triggerNames    { "Lane 1", "Lane 2", "Lane 3", "Lane 4", "Any Lane" };
 
 //==============================================================================
 // Pitch is either quantized to scale degrees or continuous. Continuous pitch is carried as
@@ -258,6 +262,9 @@ inline constexpr auto freeRunId      = "free_run";
 inline constexpr auto swingId        = "swing";
 inline constexpr auto voiceCountId   = "voices";
 inline constexpr auto polyModeId     = "poly_mode";
+
+/** How many lanes this instance currently has, 1 to numLanes. */
+inline constexpr auto laneCountId    = "lane_count";
 
 juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 

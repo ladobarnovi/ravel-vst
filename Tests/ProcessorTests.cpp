@@ -416,6 +416,83 @@ int main()
     }
 
     //==========================================================================
+    section ("Lane count decides how many lanes are heard");
+    {
+        TriLaneAudioProcessor processor;
+        processor.setPlayConfigDetails (0, 2, 48000.0, 512);
+        processor.prepareToPlay (48000.0, 512);
+
+        MockPlayHead playHead;
+        processor.setPlayHead (&playHead);
+
+        // Poly mode, so each lane that plays contributes its own note-ons and the count
+        // shows up directly in the tally. Over four 1/16 steps lane 1 fires four times and
+        // lane 2, at 1/8, twice.
+        setChoice (processor, params::polyModeId, 1);
+
+        setChoice (processor, params::laneCountId, 1);
+        const auto one = runProcessor (processor, playHead, true, 4 * 6000);
+
+        check (one.noteOns == 4, "a one-lane instance plays only lane 1");
+
+        TriLaneAudioProcessor second;
+        second.setPlayConfigDetails (0, 2, 48000.0, 512);
+        second.prepareToPlay (48000.0, 512);
+        second.setPlayHead (&playHead);
+        setChoice (second, params::polyModeId, 1);
+        setChoice (second, params::laneCountId, 2);
+
+        const auto two = runProcessor (second, playHead, true, 4 * 6000);
+
+        check (two.noteOns == 6, "adding a lane brings its own clock in with it");
+    }
+
+    //==========================================================================
+    section ("State saved before lanes were countable");
+    {
+        // Such a session has no lane_count at all, and would otherwise load as the
+        // one-lane default with its other two patterns hidden.
+        TriLaneAudioProcessor a;
+        setChoice (a, params::triggerSrcId, 3);      // "Any Lane" on the old four-item list
+
+        juce::MemoryBlock state;
+        a.getStateInformation (state);
+
+        auto xml = juce::AudioProcessor::getXmlFromBinary (state.getData(), (int) state.getSize());
+        check (xml != nullptr, "state can be reopened as XML");
+
+        if (xml != nullptr)
+        {
+            for (auto* child : xml->getChildIterator())
+            {
+                if (child->getStringAttribute ("id") == params::laneCountId)
+                {
+                    xml->removeChildElement (child, true);
+                    break;
+                }
+            }
+
+            juce::MemoryBlock old;
+            juce::AudioProcessor::copyXmlToBinary (*xml, old);
+
+            TriLaneAudioProcessor b;
+            b.setStateInformation (old.getData(), (int) old.getSize());
+
+            const auto value = [&b] (const juce::String& id)
+            {
+                const auto* p = b.apvts.getRawParameterValue (id);
+                return p != nullptr ? (int) std::lround (p->load()) : -1;
+            };
+
+            check (value (params::laneCountId) == 3,
+                   "it comes back with the three lanes it was written with");
+
+            check (value (params::triggerSrcId) == params::numLanes,
+                   "and its trigger still means Any Lane, not the newly added Lane 4");
+        }
+    }
+
+    //==========================================================================
     section ("State round-trip");
     {
         TriLaneAudioProcessor a;

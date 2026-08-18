@@ -2,15 +2,29 @@
 
 namespace
 {
-    constexpr int windowWidth  = 1000;
-    constexpr int windowHeight = 654;
+    constexpr int windowWidth   = 1000;
 
-    constexpr int laneHeight   = 140;
-    constexpr int headerHeight = 26;
-    constexpr int gap          = 8;
-    constexpr int margin       = 12;
+    constexpr int laneHeight    = 140;
+    constexpr int headerHeight  = 26;
+    constexpr int laneBarHeight = 22;
+    constexpr int panelHeight   = 152;
+    constexpr int gap           = 8;
+    constexpr int margin        = 12;
 
-    constexpr int meterWidth   = 210;
+    constexpr int meterWidth    = 210;
+
+    /** The window grows and shrinks with the lane count rather than the lanes sharing a
+        fixed height between them: one lane in a window sized for four would be mostly empty
+        panel, and four lanes squeezed into one lane's height would cost the step bars the
+        resolution that makes them worth dragging.
+    */
+    int windowHeightForLanes (int numLanes)
+    {
+        return margin * 2 + headerHeight + gap
+                 + numLanes * (laneHeight + gap)
+                 + laneBarHeight + gap
+                 + panelHeight;
+    }
 }
 
 //==============================================================================
@@ -69,17 +83,31 @@ TriLaneAudioProcessorEditor::TriLaneAudioProcessorEditor (TriLaneAudioProcessor&
     addAndMakeVisible (mixMeter);
 
     for (int lane = 0; lane < params::numLanes; ++lane)
-        addAndMakeVisible (lanes.add (new LaneComponent (state, lane, patternClipboard)));
+        addChildComponent (lanes.add (new LaneComponent (state, lane, patternClipboard)));
+
+    addLaneButton.setTooltip ("Add another lane. Lanes are added and removed at the bottom, "
+                              "and a removed lane keeps its pattern");
+    addLaneButton.onClick = [this] { setLaneCount (laneCount + 1); };
+    addChildComponent (addLaneButton);
+
+    removeLaneButton.setTooltip ("Remove the bottom lane. Its pattern is kept, and comes back "
+                                 "with it");
+    removeLaneButton.onClick = [this] { setLaneCount (laneCount - 1); };
+    addChildComponent (removeLaneButton);
 
     buildTabs();
 
     // Polled on the timer rather than via a parameter listener, because listener
     // callbacks arrive on the audio thread and must not touch components.
-    quantizeParam = state.getRawParameterValue (params::quantizeId);
-    scaleParam    = state.getRawParameterValue (params::scaleId);
-    polyModeParam = state.getRawParameterValue (params::polyModeId);
+    quantizeParam  = state.getRawParameterValue (params::quantizeId);
+    scaleParam     = state.getRawParameterValue (params::scaleId);
+    polyModeParam  = state.getRawParameterValue (params::polyModeId);
+    laneCountParam = state.getRawParameterValue (params::laneCountId);
 
-    setSize (windowWidth, windowHeight);
+    // Sizes the window as a side effect, so this stands in for the setSize() a
+    // fixed-height editor would do here.
+    applyLaneCount ((int) std::lround (laneCountParam->load()));
+
     startTimerHz (30);
 }
 
@@ -128,6 +156,7 @@ void TriLaneAudioProcessorEditor::buildTabs()
     for (int lane = 0; lane < params::numLanes; ++lane)
     {
         auto& column = routingPage.addColumn ("Lane " + juce::String (lane + 1));
+        laneRoutingColumns[lane] = &column;
 
         column.add (params::laneCcOnId (lane), "Send CC")
               ->setTooltip ("Send this lane's own value as CC, independent of Depth");
@@ -144,6 +173,50 @@ void TriLaneAudioProcessorEditor::buildTabs()
     tabs.addTab ("Timing",  timingPage);
     tabs.addTab ("Routing", routingPage);
     addAndMakeVisible (tabs);
+}
+
+//==============================================================================
+void TriLaneAudioProcessorEditor::setLaneCount (int newCount)
+{
+    newCount = juce::jlimit (1, params::numLanes, newCount);
+
+    if (auto* parameter = processorRef.apvts.getParameter (params::laneCountId))
+    {
+        // Through the parameter rather than straight into the member, so the host records
+        // it as an edit and can automate and undo it like anything else.
+        parameter->beginChangeGesture();
+        parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) newCount));
+        parameter->endChangeGesture();
+    }
+
+    applyLaneCount (newCount);
+}
+
+void TriLaneAudioProcessorEditor::applyLaneCount (int newCount)
+{
+    newCount = juce::jlimit (1, params::numLanes, newCount);
+
+    if (laneCount == newCount)
+        return;
+
+    laneCount = newCount;
+
+    for (int lane = 0; lane < lanes.size(); ++lane)
+        lanes[lane]->setVisible (lane < laneCount);
+
+    // A lane the instance does not have has nothing to route, so its column reads as
+    // unavailable instead of as three controls that quietly do nothing.
+    for (int lane = 0; lane < params::numLanes; ++lane)
+        if (laneRoutingColumns[lane] != nullptr)
+            laneRoutingColumns[lane]->setDimmed (lane >= laneCount);
+
+    addLaneButton.setVisible (laneCount < params::numLanes);
+
+    removeLaneButton.setVisible (laneCount > 1);
+    removeLaneButton.setButtonText ("Remove lane " + juce::String (laneCount));
+
+    // Every count maps to a different height, so this always lays the editor out again.
+    setSize (windowWidth, windowHeightForLanes (laneCount));
 }
 
 //==============================================================================
@@ -178,11 +251,29 @@ void TriLaneAudioProcessorEditor::resized()
     r.removeFromTop (gap);
 
     //--------------------------------------------------------------------------
-    for (auto* lane : lanes)
+    for (int lane = 0; lane < juce::jmin (laneCount, lanes.size()); ++lane)
     {
-        lane->setBounds (r.removeFromTop (laneHeight));
+        lanes[lane]->setBounds (r.removeFromTop (laneHeight));
         r.removeFromTop (gap);
     }
+
+    //--------------------------------------------------------------------------
+    // The add/remove pair sits where the next lane would go, so the button that makes a
+    // lane appear is already standing in its place.
+    auto laneBar = r.removeFromTop (laneBarHeight);
+
+    // Whichever buttons the current count leaves showing start at the left edge: a hidden
+    // Add would otherwise leave a gap where it used to be.
+    if (laneCount < params::numLanes)
+    {
+        addLaneButton.setBounds (laneBar.removeFromLeft (86));
+        laneBar.removeFromLeft (6);
+    }
+
+    if (laneCount > 1)
+        removeLaneButton.setBounds (laneBar.removeFromLeft (108));
+
+    r.removeFromTop (gap);
 
     //--------------------------------------------------------------------------
     panelArea = r;
@@ -225,6 +316,11 @@ void TriLaneAudioProcessorEditor::timerCallback()
             bendRangeRow->setDimmed (quantize != 0 && ! params::scaleNeedsBend (scale));
         }
     }
+
+    // Polled like the rest: the count can also move through host automation or an undo,
+    // neither of which comes back through the buttons.
+    if (laneCountParam != nullptr)
+        applyLaneCount ((int) std::lround (laneCountParam->load()));
 
     if (polyModeParam != nullptr)
     {

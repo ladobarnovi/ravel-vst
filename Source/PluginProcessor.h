@@ -68,6 +68,10 @@ private:
 
     SequencerEngine::Snapshot buildSnapshot() const;
 
+    /** Fills in what a session saved while the plugin still had a fixed three lanes does
+        not carry. See the definition for what is inferred and why. */
+    static void migrateFixedThreeLaneState (juce::ValueTree& tree);
+
     LaneParams laneParams[params::numLanes];
 
     std::atomic<float>* pOutputMode  = nullptr;
@@ -88,6 +92,7 @@ private:
     std::atomic<float>* pSwing       = nullptr;
     std::atomic<float>* pVoiceCount  = nullptr;
     std::atomic<float>* pPolyMode    = nullptr;
+    std::atomic<float>* pLaneCount   = nullptr;
 
     SequencerEngine engine;
 

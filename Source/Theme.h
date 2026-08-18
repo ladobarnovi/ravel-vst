@@ -23,9 +23,10 @@ namespace theme
             juce::Colour (0xff3fd1c0),   // teal
             juce::Colour (0xffe8a33d),   // amber
             juce::Colour (0xffd6567f),   // magenta
+            juce::Colour (0xff8a7ff0),   // violet
         };
 
-        return accents[(size_t) juce::jlimit (0, 2, laneIndex)];
+        return accents[(size_t) juce::jlimit (0, 3, laneIndex)];
     }
 
     //==========================================================================

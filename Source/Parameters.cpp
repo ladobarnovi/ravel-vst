@@ -38,11 +38,19 @@ namespace
         { 0.00f, 0.42f, 0.17f, 0.58f, 0.25f, 0.83f, 0.33f, 0.50f },
         { 0.00f, 0.50f, 1.00f, 0.50f, 0.00f, 0.50f, 1.00f, 0.50f },
         { 1.00f, 0.66f, 0.33f, 0.00f, 0.33f, 0.66f, 1.00f, 0.50f },
+        { 0.25f, 0.75f, 0.50f, 1.00f, 0.00f, 0.75f, 0.25f, 0.50f },
     };
 
-    constexpr int   defaultLength[numLanes]   { 8, 5, 3 };
-    constexpr int   defaultDivision[numLanes] { divIndex_1_16, divIndex_1_8, divIndex_1_4 };
-    constexpr float defaultDepth[numLanes]    { 1.0f, 0.0f, 0.0f };
+    // Lengths and rates that do not divide into each other, so a lane added on top of the
+    // ones already running lands somewhere new rather than doubling one of them.
+    constexpr int   defaultLength[numLanes]   { 8, 5, 3, 7 };
+    constexpr int   defaultDivision[numLanes] { divIndex_1_16, divIndex_1_8, divIndex_1_4, divIndex_1_8 };
+
+    // Every lane starts at full depth. Adding a lane is now a deliberate act, so it has to
+    // do something audible on the click -- a new lane at zero depth would look like the
+    // button had failed. Depth is the first control in the lane's own block when it is too
+    // much.
+    constexpr float defaultDepth[numLanes]    { 1.0f, 1.0f, 1.0f, 1.0f };
 
     juce::String percentText (float value, int)
     {
@@ -169,6 +177,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     }
 
     //==========================================================================
+    // One lane to begin with. The other three exist as parameters from the start -- a VST3
+    // cannot add any later -- but stay silent and hidden until this is raised.
+    layout.add (std::make_unique<juce::AudioParameterInt> (
+        juce::ParameterID { laneCountId, versionHint }, "Lanes", 1, numLanes, 1));
+
     layout.add (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { outputModeId, versionHint }, "Output", outputModeNames, outNotes));
 

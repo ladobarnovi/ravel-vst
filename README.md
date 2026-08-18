@@ -1,10 +1,12 @@
 # TriLane
 
-A three-lane polyrhythmic step sequencer, built as a VST3 for Ableton Live 12 on Windows.
+A polyrhythmic step sequencer, built as a VST3 for Ableton Live 12 on Windows. It opens
+with one lane and goes up to four, added one at a time.
 
 Each lane is an independent 8-step sequencer with its own **length**, **clock rate**,
-**direction** and **depth**. The three lanes are folded together into one value, and that
-value drives note pitch and/or a MIDI CC.
+**direction** and **depth**. The lanes are folded together into one value, and that value
+drives note pitch and/or a MIDI CC -- or, in **Poly** mode, each lane triggers its own note
+off its own clock.
 
 ---
 
@@ -17,6 +19,7 @@ value drives note pitch and/or a MIDI CC.
 | 8 step bars | 0–100 % | The lane's values |
 | 8 chance bars | 0–100 % | Per-step probability of firing (thin bar under each value) |
 | 8 step toggles | on/off | Hard mute for a step |
+| Lane toggle | on/off | Mutes the whole lane: transparent for the mix, triggers nothing |
 | Length | 1–8 | Shorter lanes phase against longer ones |
 | Rate | 1/1 … 1/32, incl. triplets | Independent per lane — this is where the polyrhythm comes from |
 | Direction | Forward, Reverse, Ping-Pong, Random | |
@@ -71,18 +74,28 @@ land in automation and undo instead of silently mutating state behind the host's
 logic lives in `Parameters.cpp` rather than the button callbacks, which is what lets it be
 tested without a UI.
 
-**Mix modes.** Lanes are combined in order 1 → 2 → 3, starting from zero:
+**Mix modes.** Lanes are combined in lane order, starting from zero:
 
 - **Add** — `mix += depth × value`. The plain-vanilla mode.
 - **Multiply** — scales the mix by the step value. Depth 0 is a no-op, depth 100 % is a
   full multiply. Good for accents and for gating one lane with another.
 - **Max** — takes whichever is larger, the mix so far or `depth × value`.
 - **S&H** — samples the mix *as it stands at this lane's clock* and holds it. This re-times
-  the lanes above it, so it only does something useful on lane 2 or 3 (on lane 1 there is
-  nothing upstream to sample).
+  the lanes above it, so it only does something useful below the first lane (on lane 1 there
+  is nothing upstream to sample).
 
 A step that is toggled **off** is transparent for its lane — nothing is added, multiplied
 or held — and it fires no note if that lane is the trigger source.
+
+**Lanes.** *+ Add lane* and *Remove lane N* sit under the last lane, and the window grows and
+shrinks to fit. Lanes are added and removed at the bottom, and a removed lane keeps its
+pattern: bringing it back restores it exactly. Muting a lane with its own toggle is the same
+thing as switching every one of its steps off at once, so a muted lane is transparent for the
+mix in every mix mode and triggers nothing in either mode.
+
+All four lanes' parameters exist from the moment the plugin is loaded, because a VST3 cannot
+add parameters later. The lane count only decides which of them are heard and shown, which is
+what makes it automatable and undoable like any other control.
 
 **Output section**
 
