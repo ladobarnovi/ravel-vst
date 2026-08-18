@@ -106,22 +106,43 @@ void StepSlot::setLaneActive (bool laneIsActive)
     repaint();
 }
 
+void StepSlot::setWithinLength (bool isWithinLength)
+{
+    if (withinLength == isWithinLength)
+        return;
+
+    withinLength = isWithinLength;
+    applyGateState();
+    repaint();
+}
+
 void StepSlot::applyGateState()
 {
     const bool on = onButton.getToggleState();
+
+    // Either reason for the step never firing -- a muted lane, or a step the lane's Length
+    // leaves out of the cycle -- lands on the same faint treatment.
+    const bool live = laneActive && withinLength;
+
     auto& visible = sliderFor (currentLayer);
 
-    // Three levels rather than two: a muted lane sits below even its own off steps, so the
-    // difference between "this step is off" and "this whole lane is off" stays readable.
-    const float alpha = ! laneActive ? 0.12f : (on ? 1.0f : 0.25f);
+    // Three levels rather than two: an inert step sits below even an off step, so the
+    // difference between "this step is off" and "this step never runs" stays readable.
+    const float alpha = ! live ? 0.12f : (on ? 1.0f : 0.25f);
 
     visible.setColour (juce::Slider::trackColourId, accent.withAlpha (alpha));
+
+    // The empty part of the bar carries the out-of-range state on its own, which is what
+    // makes it visible on a step whose value is zero -- there is no fill there to dim.
+    visible.setColour (juce::Slider::backgroundColourId,
+                       withinLength ? theme::track
+                                    : theme::track.interpolatedWith (theme::panel, 0.85f));
     visible.repaint();
 
     // Mixed toward the panel rather than made transparent: drawStepGate sets its own alpha
     // on whatever colour it finds here, so an alpha stored on this one would be discarded.
     onButton.setColour (juce::ToggleButton::tickColourId,
-                        laneActive ? accent : accent.interpolatedWith (theme::panel, 0.8f));
+                        live ? accent : accent.interpolatedWith (theme::panel, 0.8f));
     onButton.repaint();
 }
 
@@ -146,7 +167,7 @@ void StepSlot::drawLayerTick (juce::Graphics& g, const juce::Slider& slider, Ste
     const float width = bar.getWidth() / 3.0f;
     const float x = bar.getX() + width * (float) (int) layer;
 
-    g.setColour (theme::text.withAlpha (0.55f));
+    g.setColour (theme::text.withAlpha (withinLength ? 0.55f : 0.18f));
     g.fillRect (x, juce::jlimit (bar.getY(), bar.getBottom() - 1.5f, y - 0.75f), width, 1.5f);
 }
 
@@ -225,7 +246,8 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
     //--------------------------------------------------------------------------
     // Two columns, filled left to right then wrapping, so each row pairs a structural
     // parameter with one that shapes the lane's feel.
-    paramGroup.add (params::laneLengthId (laneIndex), "Length");
+    auto* lengthRow = paramGroup.add (params::laneLengthId (laneIndex), "Length");
+    lengthRow->setTooltip ("How many of the eight steps the lane cycles through");
     paramGroup.add (params::laneDivId (laneIndex),    "Rate");
     paramGroup.add (params::laneDirId (laneIndex),    "Direction");
     paramGroup.add (params::laneDepthId (laneIndex),  "Depth");
@@ -270,8 +292,33 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
         addAndMakeVisible (button);
     }
 
+    // The attachment drives the slider through Slider::Listener, the same way the step
+    // gates' does, so onValueChange is free for the lane's own use -- and it fires for a
+    // change from the host as readily as for a drag.
+    lengthSlider = dynamic_cast<juce::Slider*> (&lengthRow->getControl());
+
+    if (lengthSlider != nullptr)
+        lengthSlider->onValueChange = [this] { applyLength(); };
+
     setLayer (StepLayer::value);
     applyLaneState();
+    applyLength();
+}
+
+void LaneComponent::applyLength()
+{
+    if (lengthSlider == nullptr)
+        return;
+
+    const int length = juce::jlimit (1, params::numSteps, (int) std::lround (lengthSlider->getValue()));
+
+    if (appliedLength == length)
+        return;
+
+    appliedLength = length;
+
+    for (int i = 0; i < slots.size(); ++i)
+        slots.getUnchecked (i)->setWithinLength (i < length);
 }
 
 void LaneComponent::applyLaneState()

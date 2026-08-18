@@ -20,7 +20,7 @@ off its own clock.
 | 8 chance bars | 0–100 % | Per-step probability of firing (thin bar under each value) |
 | 8 step toggles | on/off | Hard mute for a step |
 | Lane toggle | on/off | Mutes the whole lane: transparent for the mix, triggers nothing |
-| Length | 1–8 | Shorter lanes phase against longer ones |
+| Length | 1–8 | Shorter lanes phase against longer ones. Steps past the length grey out, and stay editable |
 | Rate | 1/1 … 1/32, incl. triplets | Independent per lane — this is where the polyrhythm comes from |
 | Direction | Forward, Reverse, Ping-Pong, Random | |
 | Depth | −100 % … +100 % | How much this lane affects the mix |

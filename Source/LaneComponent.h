@@ -31,6 +31,11 @@ public:
         and its playhead but never competes with the lanes that are actually sounding. */
     void setLaneActive (bool laneIsActive);
 
+    /** Marks the slot as sitting past the lane's Length, which the sequencer never reaches.
+        The slot recedes into the panel rather than disappearing: it is still editable, so a
+        pattern can be drawn past the end and brought into play by raising Length. */
+    void setWithinLength (bool isWithinLength);
+
 private:
     /** Recolours the visible bar to match the gate, so a muted step reads as muted without
         needing a separate indicator. */
@@ -54,6 +59,7 @@ private:
     juce::Colour accent;
     bool playing = false;
     bool laneActive = true;
+    bool withinLength = true;
     StepLayer currentLayer = StepLayer::value;
 
     juce::Slider& sliderFor (StepLayer) noexcept;
@@ -115,6 +121,14 @@ private:
     void applyLaneState();
 
     int appliedLaneActive = -1;
+
+    /** Greys the steps the lane's Length leaves out of the cycle. */
+    void applyLength();
+
+    // The Length row's own widget, watched so the steps follow it. Non-owning: the row
+    // belongs to paramGroup.
+    juce::Slider* lengthSlider = nullptr;
+    int appliedLength = -1;
 
     // Set in resized(), drawn in paint(): the hairline between steps and parameters.
     int dividerX = 0;
