@@ -484,7 +484,9 @@ void SequencerEngine::process (const Snapshot& s,
             // switched off: transparent for the mix, and it fires nothing. The roll is a
             // pure function of the timeline position, so it holds steady for the whole
             // step and repeats identically next time round the loop.
-            bool stepOn = ln.enabled[(size_t) step];
+            // A muted lane is exactly a lane whose steps are all off, which is what makes it
+            // transparent for every mix mode and silent for every trigger path at once.
+            bool stepOn = ln.active && ln.enabled[(size_t) step];
 
             if (stepOn && chance < 0.999f)
                 stepOn = hashToUnitFloat (globalIndex, laneIndex, probabilitySalt) < chance;

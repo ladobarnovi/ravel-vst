@@ -29,6 +29,10 @@ public:
 
         /** Per-step accent, as a trim like velocityScale below. 1 is unity. */
         float velocity[params::numSteps] {};
+
+        /** The lane's mute. False makes every one of its steps behave as if switched off:
+            nothing added to the mix, nothing triggered, and its CC latched where it was. */
+        bool  active    = true;
         int   length    = params::numSteps;
         int   division  = params::divIndex_1_16;
         int   direction = 0;

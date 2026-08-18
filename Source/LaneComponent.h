@@ -27,6 +27,10 @@ public:
     void setPlaying (bool shouldBePlaying);
     void setLayer (StepLayer layer);
 
+    /** Dims the whole slot while its lane is muted, so a muted lane still shows its pattern
+        and its playhead but never competes with the lanes that are actually sounding. */
+    void setLaneActive (bool laneIsActive);
+
 private:
     /** Recolours the visible bar to match the gate, so a muted step reads as muted without
         needing a separate indicator. */
@@ -49,6 +53,7 @@ private:
 
     juce::Colour accent;
     bool playing = false;
+    bool laneActive = true;
     StepLayer currentLayer = StepLayer::value;
 
     juce::Slider& sliderFor (StepLayer) noexcept;
@@ -82,6 +87,9 @@ private:
     const juce::Colour accent;
 
     juce::Label numberLabel;
+    juce::ToggleButton onButton;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> onAttachment;
+
     juce::OwnedArray<StepSlot> slots;
 
     params::LanePattern& clipboard;
@@ -100,6 +108,13 @@ private:
     StepLayer currentLayer = StepLayer::value;
 
     void setLayer (StepLayer);
+
+    /** Pushes the mute through to the slots and the lane's own accents. Tracks the last
+        state it applied because Button::onStateChange also fires on hover, and repainting
+        eight slots every time the mouse crosses the toggle is work for nothing. */
+    void applyLaneState();
+
+    int appliedLaneActive = -1;
 
     // Set in resized(), drawn in paint(): the hairline between steps and parameters.
     int dividerX = 0;

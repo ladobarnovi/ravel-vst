@@ -19,6 +19,7 @@ TriLaneAudioProcessor::TriLaneAudioProcessor()
             lp.stepVelocity[step] = apvts.getRawParameterValue (params::stepVelocityId (lane, step));
         }
 
+        lp.active    = apvts.getRawParameterValue (params::laneOnId (lane));
         lp.length    = apvts.getRawParameterValue (params::laneLengthId (lane));
         lp.division  = apvts.getRawParameterValue (params::laneDivId (lane));
         lp.direction = apvts.getRawParameterValue (params::laneDirId (lane));
@@ -93,6 +94,7 @@ SequencerEngine::Snapshot TriLaneAudioProcessor::buildSnapshot() const
             ls.velocity[step] = lp.stepVelocity[step]->load();
         }
 
+        ls.active    = lp.active->load() > 0.5f;
         ls.length    = (int) std::lround (lp.length->load());
         ls.division  = (int) std::lround (lp.division->load());
         ls.direction = (int) std::lround (lp.direction->load());

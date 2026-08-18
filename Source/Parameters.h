@@ -226,6 +226,7 @@ juce::String stepValueId    (int lane, int step);
 juce::String stepOnId       (int lane, int step);
 juce::String stepChanceId   (int lane, int step);
 juce::String stepVelocityId (int lane, int step);
+juce::String laneOnId       (int lane);
 juce::String laneLengthId   (int lane);
 juce::String laneDivId      (int lane);
 juce::String laneDirId      (int lane);

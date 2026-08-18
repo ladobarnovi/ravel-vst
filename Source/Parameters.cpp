@@ -13,6 +13,7 @@ juce::String stepValueId    (int lane, int step) { return stepPrefix (lane, step
 juce::String stepOnId       (int lane, int step) { return stepPrefix (lane, step) + "_on"; }
 juce::String stepChanceId   (int lane, int step) { return stepPrefix (lane, step) + "_chance"; }
 juce::String stepVelocityId (int lane, int step) { return stepPrefix (lane, step) + "_vel"; }
+juce::String laneOnId       (int lane)           { return lanePrefix (lane) + "_on"; }
 juce::String laneLengthId   (int lane)           { return lanePrefix (lane) + "_length"; }
 juce::String laneDivId      (int lane)           { return lanePrefix (lane) + "_div"; }
 juce::String laneDirId      (int lane)           { return lanePrefix (lane) + "_dir"; }
@@ -101,6 +102,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
                 1.0f,
                 juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
         }
+
+        // The lane's own mute. True is "playing", and it is what a session saved before this
+        // existed loads with, so nothing goes silent on upgrade. Muting reads as every step
+        // in the lane being switched off at once -- see the engine.
+        layout.add (std::make_unique<juce::AudioParameterBool> (
+            juce::ParameterID { laneOnId (lane), versionHint },
+            laneName + "On", true));
 
         layout.add (std::make_unique<juce::AudioParameterInt> (
             juce::ParameterID { laneLengthId (lane), versionHint },

@@ -96,13 +96,33 @@ void StepSlot::setLayer (StepLayer layer)
     repaint();
 }
 
+void StepSlot::setLaneActive (bool laneIsActive)
+{
+    if (laneActive == laneIsActive)
+        return;
+
+    laneActive = laneIsActive;
+    applyGateState();
+    repaint();
+}
+
 void StepSlot::applyGateState()
 {
     const bool on = onButton.getToggleState();
     auto& visible = sliderFor (currentLayer);
 
-    visible.setColour (juce::Slider::trackColourId, on ? accent : accent.withAlpha (0.25f));
+    // Three levels rather than two: a muted lane sits below even its own off steps, so the
+    // difference between "this step is off" and "this whole lane is off" stays readable.
+    const float alpha = ! laneActive ? 0.12f : (on ? 1.0f : 0.25f);
+
+    visible.setColour (juce::Slider::trackColourId, accent.withAlpha (alpha));
     visible.repaint();
+
+    // Mixed toward the panel rather than made transparent: drawStepGate sets its own alpha
+    // on whatever colour it finds here, so an alpha stored on this one would be discarded.
+    onButton.setColour (juce::ToggleButton::tickColourId,
+                        laneActive ? accent : accent.interpolatedWith (theme::panel, 0.8f));
+    onButton.repaint();
 }
 
 juce::Rectangle<int> StepSlot::barArea() const
@@ -148,8 +168,9 @@ void StepSlot::paintOverChildren (juce::Graphics& g)
         return;
 
     // Drawn over the children rather than in paint(), because the bar fills the whole slot
-    // and would cover anything painted underneath it.
-    g.setColour (accent);
+    // and would cover anything painted underneath it. A muted lane keeps its playhead --
+    // it is still running, and unmuting it mid-bar should not be a surprise.
+    g.setColour (laneActive ? accent : accent.withAlpha (0.3f));
     g.drawRoundedRectangle (barArea().toFloat().reduced (0.75f), 3.0f, 1.5f);
 }
 
@@ -187,6 +208,16 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
     numberLabel.setInterceptsMouseClicks (false, false);
     numberLabel.setBorderSize (juce::BorderSize<int> (0));
     addAndMakeVisible (numberLabel);
+
+    onButton.setColour (juce::ToggleButton::tickColourId, accent);
+    onButton.setTooltip ("Mute or unmute this lane");
+    addAndMakeVisible (onButton);
+
+    onAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+        state, params::laneOnId (laneIndex), onButton);
+
+    // As in StepSlot: the attachment listens through addListener, so onStateChange is ours.
+    onButton.onStateChange = [this] { applyLaneState(); };
 
     for (int step = 0; step < params::numSteps; ++step)
         addAndMakeVisible (slots.add (new StepSlot (state, laneIndex, step)));
@@ -240,6 +271,27 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
     }
 
     setLayer (StepLayer::value);
+    applyLaneState();
+}
+
+void LaneComponent::applyLaneState()
+{
+    const int active = onButton.getToggleState() ? 1 : 0;
+
+    if (appliedLaneActive == active)
+        return;
+
+    appliedLaneActive = active;
+
+    numberLabel.setColour (juce::Label::textColourId,
+                           active != 0 ? accent : accent.withAlpha (0.35f));
+    numberLabel.repaint();
+
+    for (auto* slot : slots)
+        slot->setLaneActive (active != 0);
+
+    // The accent stripe is painted here, not by a child.
+    repaint();
 }
 
 void LaneComponent::setLayer (StepLayer layer)
@@ -300,8 +352,9 @@ void LaneComponent::paint (juce::Graphics& g)
     g.setColour (theme::panel);
     g.fillRoundedRectangle (bounds, 6.0f);
 
-    // Accent stripe down the left edge identifies the lane at a glance.
-    g.setColour (accent);
+    // Accent stripe down the left edge identifies the lane at a glance, and goes faint
+    // while the lane is muted so the state reads from across the window.
+    g.setColour (appliedLaneActive == 0 ? accent.withAlpha (0.25f) : accent);
     g.fillRoundedRectangle (bounds.getX() + 10.0f, bounds.getY() + 14.0f, (float) railWidth,
                             bounds.getHeight() - 28.0f, 1.5f);
 
@@ -317,7 +370,13 @@ void LaneComponent::resized()
     r.removeFromLeft (8);
 
     auto leftColumn = r.removeFromLeft (numberWidth);
-    numberLabel.setBounds (leftColumn.removeFromTop (18));
+
+    // The lane number and its mute share the top row: the toggle belongs with the label
+    // that identifies the lane, and the layer buttons below keep their full width.
+    auto identityRow = leftColumn.removeFromTop (18);
+    onButton.setBounds (identityRow.removeFromRight (16).reduced (1, 2));
+    numberLabel.setBounds (identityRow.withTrimmedRight (4));
+
     leftColumn.removeFromTop (6);
 
     for (auto& button : layerButtons)

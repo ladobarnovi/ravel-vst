@@ -1106,6 +1106,50 @@ int main()
     }
 
     //==========================================================================
+    section ("A muted lane is transparent and fires nothing");
+    {
+        // Lane 2 multiplies the chain by zero, which would collapse every note to the root.
+        // Muted, it must leave the mix exactly as an absent lane would.
+        auto s = baseSnapshot();
+        s.lanes[0].length = 4;
+        s.lanes[0].values[1] = 0.5f;     // -> note 54 with range 12, chromatic
+        s.lanes[1].mode   = params::modeMultiply;
+        s.lanes[1].depth  = 1.0f;
+        s.lanes[1].active = false;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto ons = only (run (engine, s, 4 * samplesPerStep), noteOn);
+
+        check (ons.size() == 4 && ons[1].number == 54,
+               "a muted lane leaves the mix untouched");
+
+        // Muting the lane that drives the notes silences the sequencer, in both modes.
+        auto muted = baseSnapshot();
+        muted.lanes[0].length = 4;
+        muted.lanes[0].active = false;
+
+        SequencerEngine mono;
+        mono.prepare (sampleRate);
+
+        check (only (run (mono, muted, 4 * samplesPerStep), noteOn).empty(),
+               "muting the trigger lane stops the notes");
+
+        muted.polyMode = true;
+        muted.lanes[1].depth  = 1.0f;
+        muted.lanes[1].length = 4;
+
+        SequencerEngine poly;
+        poly.prepare (sampleRate);
+
+        const auto polyOns = only (run (poly, muted, 4 * samplesPerStep), noteOn);
+
+        check (polyOns.size() == 4,
+               "in poly mode only the muted lane goes quiet, not its neighbours");
+    }
+
+    //==========================================================================
     section ("Swing shifts alternate steps");
     {
         auto s = baseSnapshot();
