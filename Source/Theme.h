@@ -47,7 +47,7 @@ namespace theme
         stepTrig        ///< Flat strip under a step bar: this step's on/off toggle.
     };
 
-    const juce::Identifier roleProperty { "trilaneRole" };
+    const juce::Identifier roleProperty { "ravelRole" };
 
     inline void setRole (juce::Component& component, Role role)
     {
@@ -147,12 +147,12 @@ namespace theme
     Widgets stay stock JUCE controls so they keep their mouse handling and their
     parameter attachments; only the visuals are replaced. Per-lane colour comes from
     the widget's own colour IDs rather than from state held here, which is what lets
-    one shared instance serve all three lanes.
+    one shared instance serve every lane.
 */
-class TriLaneLookAndFeel final : public juce::LookAndFeel_V4
+class RavelLookAndFeel final : public juce::LookAndFeel_V4
 {
 public:
-    TriLaneLookAndFeel()
+    RavelLookAndFeel()
     {
         setColour (juce::ResizableWindow::backgroundColourId, theme::background);
         setColour (juce::Label::textColourId,                 theme::text);

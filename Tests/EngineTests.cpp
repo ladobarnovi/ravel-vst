@@ -198,7 +198,7 @@ namespace
 //==============================================================================
 int main()
 {
-    std::printf ("TriLane engine tests\n");
+    std::printf ("Ravel engine tests\n");
 
     //==========================================================================
     section ("Step timing and pitch mapping (4-step lane at 1/16)");

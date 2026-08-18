@@ -1,5 +1,5 @@
 /*
-    Drives the real TriLaneAudioProcessor::processBlock through a mock playhead.
+    Drives the real RavelAudioProcessor::processBlock through a mock playhead.
 
     EngineTests covers the sequencer core; this covers the layer above it -- playhead
     handling, the free-run fallback, the parameter snapshot, and the plugin's declared
@@ -54,7 +54,7 @@ namespace
     /** Runs the processor for `totalSamples`, advancing the mock playhead exactly as a
         host would, and tallies what comes out of the MIDI buffer.
     */
-    Counts runProcessor (TriLaneAudioProcessor& processor,
+    Counts runProcessor (RavelAudioProcessor& processor,
                          MockPlayHead& playHead,
                          bool hostPlaying,
                          int totalSamples,
@@ -114,7 +114,7 @@ namespace
         return counts;
     }
 
-    void setChoice (TriLaneAudioProcessor& processor, const juce::String& paramID, int index)
+    void setChoice (RavelAudioProcessor& processor, const juce::String& paramID, int index)
     {
         auto* param = processor.apvts.getParameter (paramID);
         jassert (param != nullptr);
@@ -128,12 +128,12 @@ int main()
     // APVTS inherits from Timer, so the message manager has to exist.
     const juce::ScopedJuceInitialiser_GUI juceInit;
 
-    std::printf ("TriLane processor tests\n");
+    std::printf ("Ravel processor tests\n");
 
     //==========================================================================
     section ("Declared capabilities (what the host reads to decide routing)");
     {
-        TriLaneAudioProcessor processor;
+        RavelAudioProcessor processor;
 
         check (processor.producesMidi(), "producesMidi() is true -- required for Live to offer it as a MIDI source");
         check (processor.acceptsMidi(),  "acceptsMidi() is true");
@@ -144,7 +144,7 @@ int main()
     //==========================================================================
     section ("What a freshly loaded instance starts as");
     {
-        TriLaneAudioProcessor processor;
+        RavelAudioProcessor processor;
 
         const auto value = [&processor] (const juce::String& id)
         {
@@ -182,7 +182,7 @@ int main()
     //==========================================================================
     section ("Host transport running");
     {
-        TriLaneAudioProcessor processor;
+        RavelAudioProcessor processor;
         processor.setPlayConfigDetails (0, 2, 48000.0, 512);
         processor.prepareToPlay (48000.0, 512);
 
@@ -201,7 +201,7 @@ int main()
     //==========================================================================
     section ("Free Run (transport stopped)");
     {
-        TriLaneAudioProcessor processor;
+        RavelAudioProcessor processor;
         processor.setPlayConfigDetails (0, 2, 48000.0, 512);
         processor.prepareToPlay (48000.0, 512);
 
@@ -220,7 +220,7 @@ int main()
     //==========================================================================
     section ("Free Run disabled + transport stopped = silence");
     {
-        TriLaneAudioProcessor processor;
+        RavelAudioProcessor processor;
         processor.setPlayConfigDetails (0, 2, 48000.0, 512);
         processor.prepareToPlay (48000.0, 512);
 
@@ -235,7 +235,7 @@ int main()
     //==========================================================================
     section ("No playhead at all (host provides none)");
     {
-        TriLaneAudioProcessor processor;
+        RavelAudioProcessor processor;
         processor.setPlayConfigDetails (0, 2, 48000.0, 512);
         processor.prepareToPlay (48000.0, 512);
 
@@ -263,7 +263,7 @@ int main()
     //==========================================================================
     section ("Output mode: CC only");
     {
-        TriLaneAudioProcessor processor;
+        RavelAudioProcessor processor;
         processor.setPlayConfigDetails (0, 2, 48000.0, 512);
         processor.prepareToPlay (48000.0, 512);
 
@@ -282,7 +282,7 @@ int main()
     //==========================================================================
     section ("Per-lane randomise and clear");
     {
-        TriLaneAudioProcessor processor;
+        RavelAudioProcessor processor;
         juce::Random random (0x5eed);
 
         const auto stepValue = [&processor] (int lane, int step)
@@ -357,7 +357,7 @@ int main()
     //==========================================================================
     section ("Pattern actions: invert, rotate, copy/paste");
     {
-        TriLaneAudioProcessor processor;
+        RavelAudioProcessor processor;
 
         const auto value = [&processor] (int lane, int step)
         {
@@ -447,7 +447,7 @@ int main()
     //==========================================================================
     section ("Lane count decides how many lanes are heard");
     {
-        TriLaneAudioProcessor processor;
+        RavelAudioProcessor processor;
         processor.setPlayConfigDetails (0, 2, 48000.0, 512);
         processor.prepareToPlay (48000.0, 512);
 
@@ -464,7 +464,7 @@ int main()
 
         check (one.noteOns == 4, "a one-lane instance plays only lane 1");
 
-        TriLaneAudioProcessor second;
+        RavelAudioProcessor second;
         second.setPlayConfigDetails (0, 2, 48000.0, 512);
         second.prepareToPlay (48000.0, 512);
         second.setPlayHead (&playHead);
@@ -481,7 +481,7 @@ int main()
     {
         // Such a session has no lane_count at all, and would otherwise load as the
         // one-lane default with its other two patterns hidden.
-        TriLaneAudioProcessor a;
+        RavelAudioProcessor a;
         setChoice (a, params::triggerSrcId, 3);      // "Any Lane" on the old four-item list
 
         juce::MemoryBlock state;
@@ -504,7 +504,7 @@ int main()
             juce::MemoryBlock old;
             juce::AudioProcessor::copyXmlToBinary (*xml, old);
 
-            TriLaneAudioProcessor b;
+            RavelAudioProcessor b;
             b.setStateInformation (old.getData(), (int) old.getSize());
 
             const auto value = [&b] (const juce::String& id)
@@ -524,13 +524,13 @@ int main()
     //==========================================================================
     section ("State round-trip");
     {
-        TriLaneAudioProcessor a;
+        RavelAudioProcessor a;
         setChoice (a, params::outputModeId, params::outCC);
 
         juce::MemoryBlock state;
         a.getStateInformation (state);
 
-        TriLaneAudioProcessor b;
+        RavelAudioProcessor b;
         b.setStateInformation (state.getData(), (int) state.getSize());
 
         const auto* param = b.apvts.getRawParameterValue (params::outputModeId);

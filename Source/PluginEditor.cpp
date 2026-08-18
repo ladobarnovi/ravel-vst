@@ -55,13 +55,13 @@ void MixMeter::paint (juce::Graphics& g)
 }
 
 //==============================================================================
-TriLaneAudioProcessorEditor::TriLaneAudioProcessorEditor (TriLaneAudioProcessor& p)
+RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
     : AudioProcessorEditor (&p), processorRef (p),
       outputGroup (p.apvts), pitchPage (p.apvts), timingPage (p.apvts), routingPage (p.apvts)
 {
     setLookAndFeel (&lookAndFeel);
 
-    titleLabel.setText ("TRILANE", juce::dontSendNotification);
+    titleLabel.setText ("RAVEL", juce::dontSendNotification);
     titleLabel.setFont (theme::titleFont());
     titleLabel.setColour (juce::Label::textColourId, theme::text);
     titleLabel.setInterceptsMouseClicks (false, false);
@@ -111,14 +111,14 @@ TriLaneAudioProcessorEditor::TriLaneAudioProcessorEditor (TriLaneAudioProcessor&
     startTimerHz (30);
 }
 
-TriLaneAudioProcessorEditor::~TriLaneAudioProcessorEditor()
+RavelAudioProcessorEditor::~RavelAudioProcessorEditor()
 {
     stopTimer();
     setLookAndFeel (nullptr);
 }
 
 //==============================================================================
-void TriLaneAudioProcessorEditor::buildTabs()
+void RavelAudioProcessorEditor::buildTabs()
 {
     auto& notes = pitchPage.addColumn ("Notes");
     notes.add (params::rootNoteId,   "Root");
@@ -175,7 +175,7 @@ void TriLaneAudioProcessorEditor::buildTabs()
 }
 
 //==============================================================================
-void TriLaneAudioProcessorEditor::setLaneCount (int newCount)
+void RavelAudioProcessorEditor::setLaneCount (int newCount)
 {
     newCount = juce::jlimit (1, params::numLanes, newCount);
 
@@ -191,7 +191,7 @@ void TriLaneAudioProcessorEditor::setLaneCount (int newCount)
     applyLaneCount (newCount);
 }
 
-void TriLaneAudioProcessorEditor::applyLaneCount (int newCount)
+void RavelAudioProcessorEditor::applyLaneCount (int newCount)
 {
     newCount = juce::jlimit (1, params::numLanes, newCount);
 
@@ -219,7 +219,7 @@ void TriLaneAudioProcessorEditor::applyLaneCount (int newCount)
 }
 
 //==============================================================================
-void TriLaneAudioProcessorEditor::paint (juce::Graphics& g)
+void RavelAudioProcessorEditor::paint (juce::Graphics& g)
 {
     g.fillAll (theme::background);
 
@@ -230,7 +230,7 @@ void TriLaneAudioProcessorEditor::paint (juce::Graphics& g)
     }
 }
 
-void TriLaneAudioProcessorEditor::resized()
+void RavelAudioProcessorEditor::resized()
 {
     auto r = getLocalBounds().reduced (margin);
 
@@ -288,7 +288,7 @@ void TriLaneAudioProcessorEditor::resized()
 }
 
 //==============================================================================
-void TriLaneAudioProcessorEditor::timerCallback()
+void RavelAudioProcessorEditor::timerCallback()
 {
     const auto& engine = processorRef.getEngine();
 

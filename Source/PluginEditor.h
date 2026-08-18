@@ -5,7 +5,7 @@
 #include "PluginProcessor.h"
 #include "Theme.h"
 
-/** Read-out of the combined value the three lanes currently produce. */
+/** Read-out of the combined value the lanes currently produce. */
 class MixMeter final : public juce::Component
 {
 public:
@@ -17,12 +17,12 @@ private:
 };
 
 //==============================================================================
-class TriLaneAudioProcessorEditor final : public juce::AudioProcessorEditor,
+class RavelAudioProcessorEditor final : public juce::AudioProcessorEditor,
                                           private juce::Timer
 {
 public:
-    explicit TriLaneAudioProcessorEditor (TriLaneAudioProcessor&);
-    ~TriLaneAudioProcessorEditor() override;
+    explicit RavelAudioProcessorEditor (RavelAudioProcessor&);
+    ~RavelAudioProcessorEditor() override;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -35,9 +35,9 @@ private:
     void buildTabs();
 
     // Declared first so it outlives every child that references it.
-    TriLaneLookAndFeel lookAndFeel;
+    RavelLookAndFeel lookAndFeel;
 
-    TriLaneAudioProcessor& processorRef;
+    RavelAudioProcessor& processorRef;
 
     juce::Label titleLabel, mixCaption;
 
@@ -92,5 +92,5 @@ private:
 
     juce::Rectangle<int> panelArea;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TriLaneAudioProcessorEditor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RavelAudioProcessorEditor)
 };

@@ -3,11 +3,11 @@
 #include "Parameters.h"
 #include "SequencerEngine.h"
 
-class TriLaneAudioProcessor final : public juce::AudioProcessor
+class RavelAudioProcessor final : public juce::AudioProcessor
 {
 public:
-    TriLaneAudioProcessor();
-    ~TriLaneAudioProcessor() override = default;
+    RavelAudioProcessor();
+    ~RavelAudioProcessor() override = default;
 
     //==========================================================================
     void prepareToPlay (double sampleRate, int maximumExpectedSamplesPerBlock) override;
@@ -99,5 +99,5 @@ private:
     // audition patterns without hitting play.
     double freeRunPpq = 0.0;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TriLaneAudioProcessor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RavelAudioProcessor)
 };

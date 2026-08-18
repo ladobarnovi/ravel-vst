@@ -1,4 +1,4 @@
-# Configures (first run only) and builds TriLane, then reports where the VST3 landed.
+# Configures (first run only) and builds Ravel, then reports where the VST3 landed.
 #
 #   .\build.ps1              -> Release build
 #   .\build.ps1 -Config Debug
@@ -28,7 +28,7 @@ if ($LASTEXITCODE -ne 0) { throw "CMake configure failed." }
 cmake --build $buildDir --config $Config
 if ($LASTEXITCODE -ne 0) { throw "Build failed." }
 
-$installed = Join-Path $env:USERPROFILE "Documents\VST3\TriLane.vst3"
+$installed = Join-Path $env:USERPROFILE "Documents\VST3\Ravel.vst3"
 
 if (Test-Path $installed) {
     Write-Output ""
@@ -37,5 +37,5 @@ if (Test-Path $installed) {
 } else {
     Write-Output ""
     Write-Output "Build succeeded, but the copy step did not land in Documents\VST3."
-    Write-Output "The .vst3 is under: $buildDir\TriLane_artefacts\$Config\VST3"
+    Write-Output "The .vst3 is under: $buildDir\Ravel_artefacts\$Config\VST3"
 }

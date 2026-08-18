@@ -1,4 +1,4 @@
-# TriLane
+# Ravel
 
 A polyrhythmic step sequencer, built as a VST3 for Ableton Live 12 on Windows. It opens
 with one lane and goes up to four, added one at a time.
@@ -185,7 +185,7 @@ plays the identical pitch no matter how high Slew is set.
 
 **Bend Range** is transmitted, not assumed: whenever the range, the target channel, or
 *whether pitch bends at all* changes — Quantize, or switching to or from a non-12 scale —
-TriLane sends pitch bend sensitivity (RPN 0) on the Note channel. Smaller Bend Range means
+Ravel sends pitch bend sensitivity (RPN 0) on the Note channel. Smaller Bend Range means
 finer resolution; ±2 is the default and is plenty, since the residual never exceeds half a
 semitone.
 
@@ -243,23 +243,23 @@ Then, from a normal shell:
 .\build.ps1
 ```
 
-The build drops `TriLane.vst3` into `%USERPROFILE%\Documents\VST3`. That folder is used
+The build drops `Ravel.vst3` into `%USERPROFILE%\Documents\VST3`. That folder is used
 instead of `C:\Program Files\Common Files\VST3` because the latter needs an elevated shell
-to write to on every build. Change it by passing `-DTRILANE_VST3_DIR=...` at configure time.
+to write to on every build. Change it by passing `-DRAVEL_VST3_DIR=...` at configure time.
 
 In Live: **Preferences → Plug-Ins → VST3 Plug-In Custom Folder**, point it at
 `Documents\VST3`, and hit **Rescan**.
 
 > **Close Live before rebuilding.** Once Live has loaded the plugin it holds the DLL open,
-> and the next build dies with `LNK1104: cannot open file ... TriLane.vst3`. That is a file
+> and the next build dies with `LNK1104: cannot open file ... Ravel.vst3`. That is a file
 > lock, not a code error — quit Live and build again.
 
 ### Tests
 
 ```powershell
 .\build.ps1
-.\build\TriLaneTests_artefacts\Release\TriLaneTests.exe
-.\build\TriLaneProcessorTests_artefacts\Release\TriLaneProcessorTests.exe
+.\build\RavelTests_artefacts\Release\RavelTests.exe
+.\build\RavelProcessorTests_artefacts\Release\RavelProcessorTests.exe
 ```
 
 134 checks across two suites, neither needing a plugin host.
@@ -271,7 +271,7 @@ steps, the mix modes, transport jumps, stuck-note release on stop, CC output, di
 the continuous-pitch path — including that note number plus pitch bend reconstructs the
 intended fractional pitch, and that the bend range is actually transmitted.
 
-`Tests/ProcessorTests.cpp` (38 checks) drives the real `TriLaneAudioProcessor::processBlock`
+`Tests/ProcessorTests.cpp` (38 checks) drives the real `RavelAudioProcessor::processBlock`
 through a mock playhead. This covers the layer where the plugin could compile, load and still
 emit nothing: playhead handling, the free-run fallback, the parameter snapshot, state
 round-trip, every pattern action, and the MIDI capability flags a host reads to decide whether
@@ -290,14 +290,14 @@ only ever snap a value already inside rounding noise.
 
 ### Sequencing notes
 
-Live does not host MIDI-effect plugins, so TriLane is built as an *instrument* that emits
+Live does not host MIDI-effect plugins, so Ravel is built as an *instrument* that emits
 MIDI. It is silent by design — its output is MIDI, not audio.
 
-1. Drop **TriLane** on a MIDI track (say Track 1).
+1. Drop **Ravel** on a MIDI track (say Track 1).
 2. On Track 2, load the instrument you actually want to hear.
-3. On Track 2 set **MIDI From → 1-TriLane → TriLane**, and set **Monitor** to **In**.
+3. On Track 2 set **MIDI From → 1-Ravel → Ravel**, and set **Monitor** to **In**.
 
-Track 2 now plays whatever TriLane sequences. This is the same routing trick Scaler and
+Track 2 now plays whatever Ravel sequences. This is the same routing trick Scaler and
 Cthulhu use in Live.
 
 ### Modulating Live's own parameters
@@ -308,8 +308,8 @@ There is no such mechanism in the plugin format. What works is a MIDI CC loopbac
 1. Install [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html) and create a port.
 2. **Preferences → Link/Tempo/MIDI**: enable that port as an **Input**, with both
    **Track** and **Remote** switched on.
-3. Set TriLane's **Output** to `CC`, and pick a **CC Number**.
-4. On the track receiving TriLane's MIDI, set **MIDI To → loopMIDI Port**.
+3. Set Ravel's **Output** to `CC`, and pick a **CC Number**.
+4. On the track receiving Ravel's MIDI, set **MIDI To → loopMIDI Port**.
 5. Start playback so CC is flowing, press **Ctrl+M**, click the parameter you want to
    modulate, and Live latches onto the incoming CC.
 

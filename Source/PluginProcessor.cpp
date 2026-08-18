@@ -2,10 +2,10 @@
 #include "PluginEditor.h"
 
 //==============================================================================
-TriLaneAudioProcessor::TriLaneAudioProcessor()
+RavelAudioProcessor::RavelAudioProcessor()
     : AudioProcessor (BusesProperties()
                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts (*this, nullptr, "TRILANE", params::createParameterLayout())
+      apvts (*this, nullptr, "RAVEL", params::createParameterLayout())
 {
     for (int lane = 0; lane < params::numLanes; ++lane)
     {
@@ -54,30 +54,30 @@ TriLaneAudioProcessor::TriLaneAudioProcessor()
 }
 
 //==============================================================================
-void TriLaneAudioProcessor::prepareToPlay (double sampleRate, int)
+void RavelAudioProcessor::prepareToPlay (double sampleRate, int)
 {
     engine.prepare (sampleRate);
     freeRunPpq = 0.0;
 }
 
-void TriLaneAudioProcessor::releaseResources()
+void RavelAudioProcessor::releaseResources()
 {
 }
 
-void TriLaneAudioProcessor::reset()
+void RavelAudioProcessor::reset()
 {
     engine.reset();
     freeRunPpq = 0.0;
 }
 
-bool TriLaneAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+bool RavelAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
     const auto& out = layouts.getMainOutputChannelSet();
     return out == juce::AudioChannelSet::mono() || out == juce::AudioChannelSet::stereo();
 }
 
 //==============================================================================
-SequencerEngine::Snapshot TriLaneAudioProcessor::buildSnapshot() const
+SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
 {
     SequencerEngine::Snapshot s;
 
@@ -134,7 +134,7 @@ SequencerEngine::Snapshot TriLaneAudioProcessor::buildSnapshot() const
 }
 
 //==============================================================================
-void TriLaneAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+void RavelAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
 
@@ -192,22 +192,25 @@ void TriLaneAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
 }
 
 //==============================================================================
-juce::AudioProcessorEditor* TriLaneAudioProcessor::createEditor()
+juce::AudioProcessorEditor* RavelAudioProcessor::createEditor()
 {
-    return new TriLaneAudioProcessorEditor (*this);
+    return new RavelAudioProcessorEditor (*this);
 }
 
-void TriLaneAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
+void RavelAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     if (const auto xml = apvts.copyState().createXml())
         copyXmlToBinary (*xml, destData);
 }
 
-void TriLaneAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
+void RavelAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     if (const auto xml = getXmlFromBinary (data, sizeInBytes))
     {
-        if (xml->hasTagName (apvts.state.getType()))
+        // "TRILANE" is the tag a session saved before the TriLane -> Ravel rename carries;
+        // accepting it here keeps those old sessions' patterns loading instead of silently
+        // resetting to defaults.
+        if (xml->hasTagName (apvts.state.getType()) || xml->hasTagName ("TRILANE"))
         {
             auto tree = juce::ValueTree::fromXml (*xml);
             migrateFixedThreeLaneState (tree);
@@ -217,7 +220,7 @@ void TriLaneAudioProcessor::setStateInformation (const void* data, int sizeInByt
 }
 
 //==============================================================================
-void TriLaneAudioProcessor::migrateFixedThreeLaneState (juce::ValueTree& tree)
+void RavelAudioProcessor::migrateFixedThreeLaneState (juce::ValueTree& tree)
 {
     // Anything APVTS does not find in the tree comes back as that parameter's default, so a
     // session written before lanes were countable would silently load as a one-lane instance
@@ -251,5 +254,5 @@ void TriLaneAudioProcessor::migrateFixedThreeLaneState (juce::ValueTree& tree)
 //==============================================================================
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new TriLaneAudioProcessor();
+    return new RavelAudioProcessor();
 }
