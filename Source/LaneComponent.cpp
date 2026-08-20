@@ -278,6 +278,13 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
     menuButton.onClick = [this] { showActionsMenu(); };
     addAndMakeVisible (menuButton);
 
+    removeButton.setTooltip ("Remove this lane. The lanes below it move up to close the gap, "
+                             "and this one's pattern goes with it -- Ctrl+Z brings it back");
+    removeButton.onClick = [this] { if (onRemove != nullptr) onRemove(); };
+
+    // Added hidden: the editor turns it on for every lane once there is more than one.
+    addChildComponent (removeButton);
+
     //--------------------------------------------------------------------------
     static const char* layerTooltips[]
     {
@@ -461,7 +468,14 @@ void LaneComponent::resized()
     paramGroup.setBounds (paramBlock.removeFromTop (groupHeight));
     paramBlock.removeFromTop (theme::rowGap * 2);
 
-    auto buttonRow = paramBlock.removeFromTop (buttonHeight).removeFromLeft (paramWidth / 2 - 14);
+    auto actionRow = paramBlock.removeFromTop (buttonHeight);
+
+    // Hard right, a wide gap clear of Rnd and Clr. It is the only action in the lane that a
+    // second click does not undo, so it should not sit where the hand passes on the way to
+    // the ones that do.
+    removeButton.setBounds (actionRow.removeFromRight (60));
+
+    auto buttonRow = actionRow.removeFromLeft (paramWidth / 2 - 14);
     const int buttonWidth = (buttonRow.getWidth() - 8) / 3;
 
     randomiseButton.setBounds (buttonRow.removeFromLeft (buttonWidth));
@@ -469,6 +483,11 @@ void LaneComponent::resized()
     clearButton.setBounds (buttonRow.removeFromLeft (buttonWidth));
     buttonRow.removeFromLeft (4);
     menuButton.setBounds (buttonRow.removeFromLeft (buttonWidth));
+}
+
+void LaneComponent::setCanRemove (bool canBeRemoved)
+{
+    removeButton.setVisible (canBeRemoved);
 }
 
 void LaneComponent::setPlayingStep (int stepIndex)

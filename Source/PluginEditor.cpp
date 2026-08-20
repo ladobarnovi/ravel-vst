@@ -106,17 +106,17 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
     addAndMakeVisible (mixMeter);
 
     for (int lane = 0; lane < params::numLanes; ++lane)
-        addChildComponent (lanes.add (new LaneComponent (state, lane, patternClipboard)));
+    {
+        auto* component = lanes.add (new LaneComponent (state, lane, patternClipboard));
+        component->onRemove = [this, lane] { removeLane (lane); };
 
-    addLaneButton.setTooltip ("Add another lane. Lanes are added and removed at the bottom, "
-                              "and a removed lane keeps its pattern");
+        addChildComponent (component);
+    }
+
+    addLaneButton.setTooltip ("Add a lane at the bottom of the stack. Each lane carries its "
+                              "own Remove button");
     addLaneButton.onClick = [this] { setLaneCount (laneCount + 1); };
     addChildComponent (addLaneButton);
-
-    removeLaneButton.setTooltip ("Remove the bottom lane. Its pattern is kept, and comes back "
-                                 "with it");
-    removeLaneButton.onClick = [this] { setLaneCount (laneCount - 1); };
-    addChildComponent (removeLaneButton);
 
     buildTabs();
 
@@ -259,7 +259,13 @@ void RavelAudioProcessorEditor::applyLaneCount (int newCount)
     laneCount = newCount;
 
     for (int lane = 0; lane < lanes.size(); ++lane)
+    {
         lanes[lane]->setVisible (lane < laneCount);
+
+        // Every lane can go except the last one standing, so this is a property of the count
+        // rather than of which lane it is.
+        lanes[lane]->setCanRemove (laneCount > 1);
+    }
 
     // A lane the instance does not have has nothing to route, so its column reads as
     // unavailable instead of as three controls that quietly do nothing.
@@ -269,11 +275,20 @@ void RavelAudioProcessorEditor::applyLaneCount (int newCount)
 
     addLaneButton.setVisible (laneCount < params::numLanes);
 
-    removeLaneButton.setVisible (laneCount > 1);
-    removeLaneButton.setButtonText ("Remove lane " + juce::String (laneCount));
-
     // Every count maps to a different height, so this always lays the editor out again.
     setSize (windowWidth, windowHeightForLanes (laneCount));
+}
+
+void RavelAudioProcessorEditor::removeLane (int laneIndex)
+{
+    // The shift and the new lane count are both written from inside this one callback, so the
+    // history coalesces them into a single step and one Ctrl+Z puts the lane back.
+    params::removeLane (processorRef.apvts, laneIndex);
+
+    if (laneCountParam != nullptr)
+        applyLaneCount ((int) std::lround (laneCountParam->load()));
+
+    updateHistoryButtons();
 }
 
 //==============================================================================
@@ -326,20 +341,11 @@ void RavelAudioProcessorEditor::resized()
     }
 
     //--------------------------------------------------------------------------
-    // The add/remove pair sits where the next lane would go, so the button that makes a
-    // lane appear is already standing in its place.
+    // Add sits where the next lane would go, so the button that makes a lane appear is
+    // already standing in its place. Removing is a per-lane button now, inside the lane it
+    // takes out, so nothing else shares this bar.
     auto laneBar = r.removeFromTop (laneBarHeight);
-
-    // Whichever buttons the current count leaves showing start at the left edge: a hidden
-    // Add would otherwise leave a gap where it used to be.
-    if (laneCount < params::numLanes)
-    {
-        addLaneButton.setBounds (laneBar.removeFromLeft (86));
-        laneBar.removeFromLeft (6);
-    }
-
-    if (laneCount > 1)
-        removeLaneButton.setBounds (laneBar.removeFromLeft (108));
+    addLaneButton.setBounds (laneBar.removeFromLeft (86));
 
     r.removeFromTop (gap);
 

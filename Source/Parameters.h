@@ -321,6 +321,23 @@ void invertLaneValues (juce::AudioProcessorValueTreeState& state, int lane);
 */
 void rotateLane (juce::AudioProcessorValueTreeState& state, int lane, int direction);
 
+/** Takes a lane out of the instance, closing the gap behind it.
+
+    Every lane above `lane` moves down one -- all of it, the lane's own controls as well as
+    its eight steps, not just the pattern -- and the slot the stack shrinks out of at the top
+    is put back to its defaults. That is what makes `+ Add lane` always mean a new lane
+    rather than a second copy of the one that just moved down.
+
+    Removal is destructive: the removed lane's data is overwritten by the lane above it, and
+    the only way back is the undo history. Keeping it was only ever possible while lanes came
+    off the end -- once any lane can go, there is no free slot to keep it in. Every write here
+    goes through a change gesture in one message callback, so the shift and the new lane count
+    land as a single undo step.
+
+    Does nothing at a lane count of 1, or for a lane this instance does not have.
+*/
+void removeLane (juce::AudioProcessorValueTreeState& state, int lane);
+
 /** A whole lane's step data, for copy/paste between lanes. */
 struct LanePattern
 {

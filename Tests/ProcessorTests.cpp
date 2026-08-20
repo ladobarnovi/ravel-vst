@@ -696,6 +696,109 @@ int main()
     }
 
     //==========================================================================
+    section ("Removing a lane");
+    {
+        RavelAudioProcessor processor;
+
+        const auto set = [&processor] (const juce::String& id, float actual)
+        {
+            if (auto* p = processor.apvts.getParameter (id))
+                p->setValueNotifyingHost (p->convertTo0to1 (actual));
+        };
+
+        const auto get = [&processor] (const juce::String& id)
+        {
+            return processor.apvts.getRawParameterValue (id)->load();
+        };
+
+        set (params::laneCountId, 3.0f);
+
+        // Each lane is stamped with something recognisable, in a step value and in a lane
+        // control, so a shift that moved only the pattern would still be caught.
+        for (int lane = 0; lane < 3; ++lane)
+        {
+            set (params::stepValueId (lane, 0), 0.1f * (float) (lane + 1));
+            set (params::laneLengthId (lane), (float) (lane + 4));
+            set (params::laneNudgeId (lane), 0.1f * (float) (lane + 1));
+        }
+
+        params::removeLane (processor.apvts, 1);
+
+        check ((int) std::lround (get (params::laneCountId)) == 2,
+               "removing a lane drops the lane count by one");
+
+        check (std::abs (get (params::stepValueId (0, 0)) - 0.1f) < 0.01f,
+               "the lanes below the removed one stay where they are");
+
+        check (std::abs (get (params::stepValueId (1, 0)) - 0.3f) < 0.01f,
+               "and the lane above it moves down into its place");
+
+        check ((int) std::lround (get (params::laneLengthId (1))) == 6,
+               "a lane moving down brings its own controls with it, not just its pattern");
+
+        check (std::abs (get (params::laneNudgeId (1)) - 0.3f) < 0.01f,
+               "including the ones that are not part of a copyable pattern");
+
+        //----------------------------------------------------------------------
+        // The slot the stack shrank out of. Its default rate is lane 3's, not lane 1's,
+        // which is what makes reading each parameter's own default the only correct way.
+        const auto* division = processor.apvts.getParameter (params::laneDivId (2));
+
+        check (division != nullptr
+                 && std::abs (division->getValue() - division->getDefaultValue()) < 1.0e-6f,
+               "the slot left free at the top goes back to that lane's own defaults");
+
+        check (std::abs (get (params::stepValueId (2, 0))) < 0.01f,
+               "so adding a lane again gives a new lane, not a copy of the one that moved");
+    }
+
+    //==========================================================================
+    section ("Removing a lane: limits and undo");
+    {
+        RavelAudioProcessor processor;
+
+        const auto get = [&processor] (const juce::String& id)
+        {
+            return processor.apvts.getRawParameterValue (id)->load();
+        };
+
+        params::removeLane (processor.apvts, 0);
+
+        check ((int) std::lround (get (params::laneCountId)) == 1,
+               "the last remaining lane cannot be removed");
+
+        //----------------------------------------------------------------------
+        if (auto* p = processor.apvts.getParameter (params::laneCountId))
+            p->setValueNotifyingHost (p->convertTo0to1 (3.0f));
+
+        if (auto* p = processor.apvts.getParameter (params::stepValueId (1, 0)))
+            p->setValueNotifyingHost (0.5f);
+
+        processor.undoHistory.closeCurrentEdit();
+
+        params::removeLane (processor.apvts, 3);
+
+        check ((int) std::lround (get (params::laneCountId)) == 3,
+               "a lane this instance does not have cannot be removed either");
+
+        //----------------------------------------------------------------------
+        const int depthBefore = processor.undoHistory.getUndoDepth();
+
+        params::removeLane (processor.apvts, 1);
+
+        check (processor.undoHistory.getUndoDepth() == depthBefore + 1,
+               "a removal is one undo step, not one per parameter it shifted");
+
+        processor.undoHistory.undo();
+
+        check ((int) std::lround (get (params::laneCountId)) == 3,
+               "undoing a removal brings the lane count back");
+
+        check (std::abs (get (params::stepValueId (1, 0)) - 0.5f) < 0.01f,
+               "and puts the removed lane's pattern back with it");
+    }
+
+    //==========================================================================
     section ("State round-trip");
     {
         RavelAudioProcessor a;

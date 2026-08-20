@@ -68,15 +68,20 @@ private:
     // decides how many are shown and heard.
     juce::OwnedArray<LaneComponent> lanes;
 
-    juce::TextButton addLaneButton { "+ Add lane" }, removeLaneButton { "Remove lane" };
+    juce::TextButton addLaneButton { "+ Add lane" };
 
     /** Writes the new count through the parameter rather than straight into the members, so
         the host records it as an edit and the editor picks it up on the next tick like any
         other parameter change. */
     void setLaneCount (int newCount);
 
-    /** Shows that many lanes, relabels the buttons, and resizes the window to fit. */
+    /** Shows that many lanes, and resizes the window to fit. */
     void applyLaneCount (int newCount);
+
+    /** Takes out the lane a lane's own Remove button belongs to. Lives here rather than in
+        LaneComponent because it is the stack that changes: every lane above this one moves
+        down, and the window shrinks by one lane. */
+    void removeLane (int laneIndex);
 
     std::atomic<float>* laneCountParam = nullptr;
     int laneCount = 0;

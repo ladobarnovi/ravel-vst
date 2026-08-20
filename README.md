@@ -31,6 +31,7 @@ off its own clock.
 | Humanize | 0–100 % | Random timing jitter, repeatable per bar |
 | Lane CC | on/off + number/channel | This lane's own CC destination |
 | RND / CLR / ⋯ | — | Pattern actions |
+| Remove | — | Takes this lane out. The lanes below it move up to close the gap |
 
 ### Probability
 
@@ -104,11 +105,27 @@ A step that is toggled **off** is transparent for its lane — nothing is added,
 or held — and it fires no note if that lane is the trigger source.
 
 **Lanes.** Every lane starts as eight steps of zero — a flat pattern on the root, not a demo
-to clear away — and lanes differ only in their default rate. *+ Add lane* and *Remove lane N*
-sit under the last lane, and the window grows and shrinks to fit. Lanes are added and removed at the bottom, and a removed lane keeps its
-pattern: bringing it back restores it exactly. Muting a lane with its own toggle is the same
-thing as switching every one of its steps off at once, so a muted lane is transparent for the
-mix in every mix mode and triggers nothing in either mode.
+to clear away — and lanes differ only in their default rate. *+ Add lane* sits under the last
+lane and appends one at the bottom; **each lane carries its own Remove**, at the right of its
+action row, so any lane can go and not just the last one. The window grows and shrinks to fit.
+
+Removing a lane closes the gap behind it: every lane below the removed one moves up a slot,
+bringing its own controls with it — rate, direction, depth, nudge, its CC destination, not
+only its pattern. So removing lane 2 of 3 leaves you with the old lanes 1 and 3, in that
+order, which is the thing a single *Remove lane N* button at the bottom could not express.
+
+The lane accent colours stay with the *slot* rather than with the pattern, because they mark
+where the sequencer is in the stack: after a removal the third lane's pattern is drawn in the
+second lane's amber.
+
+**Removal is destructive.** The lane that moved up has overwritten the removed one, and the
+slot freed at the top of the stack goes back to its defaults — so *+ Add lane* always gives a
+new lane rather than a copy of the one that just moved. **Ctrl+Z** is what brings a removed
+lane back; the shift and the new lane count land as a single undo step.
+
+Muting a lane with its own toggle is the same thing as switching every one of its steps off at
+once, so a muted lane is transparent for the mix in every mix mode and triggers nothing in
+either mode.
 
 All four lanes' parameters exist from the moment the plugin is loaded, because a VST3 cannot
 add parameters later. The lane count only decides which of them are heard and shown, which is

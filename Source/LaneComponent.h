@@ -91,6 +91,14 @@ public:
     /** Called from the editor's timer with the lane's current step. */
     void setPlayingStep (int stepIndex);
 
+    /** Hidden on the last remaining lane, since an instance always has at least one. */
+    void setCanRemove (bool canBeRemoved);
+
+    /** Invoked when this lane's Remove button is clicked. The editor supplies it, because
+        removing a lane is a change to the stack rather than to the lane -- the lanes above
+        this one move down, and the window resizes. */
+    std::function<void()> onRemove;
+
 private:
     juce::AudioProcessorValueTreeState& apvts;
     const int lane;
@@ -107,6 +115,12 @@ private:
     ControlGroup paramGroup;
 
     juce::TextButton randomiseButton { "Rnd" }, clearButton { "Clr" }, menuButton { "..." };
+
+    // Spelt out rather than abbreviated to match Rnd and Clr. "Del" next to "Clr" would be
+    // two three-letter buttons a keystroke apart meaning "empty this lane" and "destroy this
+    // lane", which is exactly the pair not to make look alike.
+    juce::TextButton removeButton { "Remove" };
+
     juce::Random random;
 
     // Which per-step parameter the eight bars edit. Per lane rather than global, so one lane

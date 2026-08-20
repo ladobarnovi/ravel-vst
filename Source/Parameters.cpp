@@ -1,5 +1,7 @@
 #include "Parameters.h"
 
+#include <vector>
+
 namespace params
 {
 
@@ -323,6 +325,105 @@ void rotateLane (juce::AudioProcessorValueTreeState& state, int lane, int direct
     }
 }
 
+//==============================================================================
+namespace
+{
+    /** Every parameter ID a lane owns, in a fixed order.
+
+        Copying a lane and resetting one both walk this, so the two cannot drift apart -- and
+        because the order only has to be self-consistent, two calls for different lanes line
+        up index for index.
+    */
+    std::vector<juce::String> laneParameterIds (int lane)
+    {
+        std::vector<juce::String> ids;
+        ids.reserve ((size_t) (numSteps * 5 + 11));
+
+        for (int step = 0; step < numSteps; ++step)
+        {
+            ids.push_back (stepValueId    (lane, step));
+            ids.push_back (stepOnId       (lane, step));
+            ids.push_back (stepChanceId   (lane, step));
+            ids.push_back (stepVelocityId (lane, step));
+            ids.push_back (stepGateId     (lane, step));
+        }
+
+        ids.push_back (laneOnId       (lane));
+        ids.push_back (laneLengthId   (lane));
+        ids.push_back (laneDivId      (lane));
+        ids.push_back (laneDirId      (lane));
+        ids.push_back (laneDepthId    (lane));
+        ids.push_back (laneModeId     (lane));
+        ids.push_back (laneNudgeId    (lane));
+        ids.push_back (laneHumanizeId (lane));
+        ids.push_back (laneCcOnId     (lane));
+        ids.push_back (laneCcNumId    (lane));
+        ids.push_back (laneCcChanId   (lane));
+
+        return ids;
+    }
+
+    /** Moves one lane's parameters onto another's.
+
+        Normalised values, so nothing here has to know the range or the type of any individual
+        parameter -- a lane holds floats, ints, choices and bools, and this treats them alike.
+    */
+    void copyLaneParameters (juce::AudioProcessorValueTreeState& state, int from, int to)
+    {
+        const auto sourceIds = laneParameterIds (from);
+        const auto targetIds = laneParameterIds (to);
+
+        for (size_t i = 0; i < sourceIds.size(); ++i)
+        {
+            auto* source = state.getParameter (sourceIds[(size_t) i]);
+            auto* target = state.getParameter (targetIds[(size_t) i]);
+
+            if (source == nullptr || target == nullptr)
+                continue;
+
+            target->beginChangeGesture();
+            target->setValueNotifyingHost (source->getValue());
+            target->endChangeGesture();
+        }
+    }
+
+    /** Puts a lane back to what a freshly loaded instance would have given it. Read from each
+        parameter's own default rather than written out here, because a lane's defaults are
+        not the same for every lane -- the rate and the CC number both depend on which one it
+        is.
+    */
+    void resetLaneParameters (juce::AudioProcessorValueTreeState& state, int lane)
+    {
+        for (const auto& id : laneParameterIds (lane))
+        {
+            if (auto* parameter = state.getParameter (id))
+            {
+                parameter->beginChangeGesture();
+                parameter->setValueNotifyingHost (parameter->getDefaultValue());
+                parameter->endChangeGesture();
+            }
+        }
+    }
+}
+
+void removeLane (juce::AudioProcessorValueTreeState& state, int lane)
+{
+    const int count = (int) std::lround (getParam (state, laneCountId));
+
+    // An instance always has at least one lane, and a lane it does not have cannot go.
+    if (count <= 1 || lane < 0 || lane >= count)
+        return;
+
+    // Upwards from the hole, so each lane is read before the one below it is overwritten.
+    for (int target = lane; target < count - 1; ++target)
+        copyLaneParameters (state, target + 1, target);
+
+    resetLaneParameters (state, count - 1);
+
+    setParam (state, laneCountId, (float) (count - 1));
+}
+
+//==============================================================================
 LanePattern copyLane (juce::AudioProcessorValueTreeState& state, int lane)
 {
     LanePattern pattern;
