@@ -44,7 +44,9 @@ namespace theme
         valueRow,       ///< "caption ....... value" on one line, with a fill hairline.
         stepBar,        ///< Tall vertical step value bar.
         stepChance,     ///< Tick across a step bar; only its right gutter takes the mouse.
-        stepTrig        ///< Flat strip under a step bar: this step's on/off toggle.
+        stepTrig,       ///< Flat strip under a step bar: this step's on/off toggle.
+        undoArrow,      ///< Curved arrow drawn in place of a TextButton's text.
+        redoArrow       ///< The same arrow, mirrored.
     };
 
     const juce::Identifier roleProperty { "ravelRole" };
@@ -139,6 +141,49 @@ namespace theme
             g.fillRect (fill);
         }
     }
+
+    //==========================================================================
+    /** One history button's glyph: a semicircle over the top, with a head on the end the
+        arrow travels toward.
+
+        Drawn rather than typed. The characters this stands in for -- U+21B6 and U+21B7 --
+        are not in every font Windows might hand back for the default sans-serif, and a
+        header button that renders as a missing-glyph box is worse than no button at all.
+    */
+    inline void drawHistoryArrow (juce::Graphics& g, juce::Rectangle<float> bounds,
+                                  bool forward, juce::Colour colour)
+    {
+        const auto centre = bounds.getCentre();
+        const float radius = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.28f;
+
+        // The arc rides above the button's centre line, because the head hangs below it and
+        // the two together have to look centred.
+        const float baseline = centre.y - radius * 0.2f;
+        const float quarter  = juce::MathConstants<float>::halfPi;
+
+        // Swept from the tail to the head, so the head's end is the one the arrow points at:
+        // right-to-left over the top for undo, left-to-right for redo.
+        juce::Path arc;
+        arc.addCentredArc (centre.x, baseline, radius, radius, 0.0f,
+                           forward ? -quarter : quarter,
+                           forward ?  quarter : -quarter,
+                           true);
+
+        g.setColour (colour);
+        g.strokePath (arc, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved,
+                                                 juce::PathStrokeType::butt));
+
+        // Sitting on the arc's end and pointing down, which is where the tangent goes there.
+        const float tipX = centre.x + (forward ? radius : -radius);
+        const float head = radius * 0.7f;
+
+        juce::Path arrowHead;
+        arrowHead.addTriangle (tipX - head * 0.8f, baseline,
+                               tipX + head * 0.8f, baseline,
+                               tipX,               baseline + head);
+
+        g.fillPath (arrowHead);
+    }
 }
 
 //==============================================================================
@@ -186,6 +231,35 @@ public:
     juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override
     {
         return juce::Font (juce::FontOptions ((float) juce::jmin (15, buttonHeight) * 0.7f));
+    }
+
+    /** The history buttons paint a glyph where their text would go. The text itself stays
+        set to "Undo" and "Redo" -- it is what the accessibility layer reads out, and what a
+        host's own keyboard navigation announces, neither of which can see a Path.
+    */
+    void drawButtonText (juce::Graphics& g, juce::TextButton& button,
+                         bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown) override
+    {
+        const auto role = theme::roleOf (button);
+
+        if (role != theme::Role::undoArrow && role != theme::Role::redoArrow)
+        {
+            juce::LookAndFeel_V4::drawButtonText (g, button, shouldDrawButtonAsHighlighted,
+                                                  shouldDrawButtonAsDown);
+            return;
+        }
+
+        // 3.3:1, 9.3:1 and 13.4:1 against the header background. The disabled end is set by
+        // contrast rather than by eye: being greyed out is the whole answer to "why did
+        // Ctrl+Z do nothing?", so an arrow with nothing to undo still has to read as an
+        // arrow. Anything at or below the 0.35 alpha the dimmed value rows use lands under
+        // 2:1 here, which is a smudge, not an explanation.
+        const auto colour = ! button.isEnabled()          ? theme::textDim.withAlpha (0.7f)
+                          : shouldDrawButtonAsHighlighted ? theme::text
+                                                          : theme::text.withAlpha (0.82f);
+
+        theme::drawHistoryArrow (g, button.getLocalBounds().toFloat(),
+                                 role == theme::Role::redoArrow, colour);
     }
 
     void drawButtonBackground (juce::Graphics& g, juce::Button& button, const juce::Colour&,

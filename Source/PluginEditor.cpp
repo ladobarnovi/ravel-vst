@@ -13,6 +13,10 @@ namespace
 
     constexpr int meterWidth    = 210;
 
+    // Square, and taller than a value row: the arrows are a click target rather than a line
+    // of text, and 22px keeps them comfortably hittable inside a 26px header.
+    constexpr int historyButton = 22;
+
     /** The window grows and shrinks with the lane count rather than the lanes sharing a
         fixed height between them: one lane in a window sized for four would be mostly empty
         panel, and four lanes squeezed into one lane's height would cost the step bars the
@@ -70,6 +74,21 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
     titleLabel.setColour (juce::Label::textColourId, theme::text);
     titleLabel.setInterceptsMouseClicks (false, false);
     addAndMakeVisible (titleLabel);
+
+    // The same two entry points the keyboard shortcuts use, so a click and a Ctrl+Z are the
+    // same operation. Refreshed straight afterwards rather than left to the timer, so the
+    // arrow that just emptied its stack greys out on the click that emptied it.
+    undoButton.setTooltip ("Undo the last edit (Ctrl+Z)");
+    theme::setRole (undoButton, theme::Role::undoArrow);
+    undoButton.onClick = [this] { processorRef.undoHistory.undo(); updateHistoryButtons(); };
+    addAndMakeVisible (undoButton);
+
+    redoButton.setTooltip ("Redo the last undone edit (Ctrl+Shift+Z)");
+    theme::setRole (redoButton, theme::Role::redoArrow);
+    redoButton.onClick = [this] { processorRef.undoHistory.redo(); updateHistoryButtons(); };
+    addAndMakeVisible (redoButton);
+
+    updateHistoryButtons();
 
     auto& state = processorRef.apvts;
 
@@ -205,6 +224,8 @@ bool RavelAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
     else
         processorRef.undoHistory.undo();
 
+    updateHistoryButtons();
+
     // Swallowed even with an empty history. Letting it fall through would hand the keystroke
     // to the host, so running out of steps in the plugin would silently start undoing the
     // arrangement instead -- a much worse surprise than a key that does nothing.
@@ -277,6 +298,17 @@ void RavelAudioProcessorEditor::resized()
     titleLabel.setBounds (header.removeFromLeft (92));
     header.removeFromLeft (12);
 
+    // Grouped with the title rather than with the mode switches: undo acts on the whole
+    // editor, and putting it in the row of parameters would read as one more parameter.
+    auto history = header.removeFromLeft (historyButton * 2 + 4)
+                         .withSizeKeepingCentre (historyButton * 2 + 4, historyButton);
+
+    undoButton.setBounds (history.removeFromLeft (historyButton));
+    history.removeFromLeft (4);
+    redoButton.setBounds (history.removeFromLeft (historyButton));
+
+    header.removeFromLeft (14);
+
     outputGroup.setBounds (header.removeFromLeft (370)
                                  .withSizeKeepingCentre (370, theme::rowHeight));
 
@@ -325,9 +357,33 @@ void RavelAudioProcessorEditor::resized()
 }
 
 //==============================================================================
+void RavelAudioProcessorEditor::updateHistoryButtons()
+{
+    const int canUndo = processorRef.undoHistory.canUndo() ? 1 : 0;
+    const int canRedo = processorRef.undoHistory.canRedo() ? 1 : 0;
+
+    if (canUndo != appliedCanUndo)
+    {
+        appliedCanUndo = canUndo;
+        undoButton.setEnabled (canUndo != 0);
+    }
+
+    if (canRedo != appliedCanRedo)
+    {
+        appliedCanRedo = canRedo;
+        redoButton.setEnabled (canRedo != 0);
+    }
+}
+
+//==============================================================================
 void RavelAudioProcessorEditor::timerCallback()
 {
     const auto& engine = processorRef.getEngine();
+
+    // Polled, because anything at all that moves a parameter -- a step drag, a pattern
+    // action, an automation gesture from the host -- puts an entry on the stack without
+    // coming past the buttons.
+    updateHistoryButtons();
 
     for (int lane = 0; lane < lanes.size(); ++lane)
         lanes[lane]->setPlayingStep (engine.getCurrentStep (lane));

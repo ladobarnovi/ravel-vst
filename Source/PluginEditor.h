@@ -49,6 +49,18 @@ private:
 
     juce::Label titleLabel, mixCaption;
 
+    // Icon buttons, not text: these are the only two actions in the window that are not a
+    // parameter, and the arrow pair is recognised at 22px where two words would not fit the
+    // header. The button text is still set, for the accessibility layer to read.
+    juce::TextButton undoButton { "Undo" }, redoButton { "Redo" };
+
+    /** Enables each arrow only while there is something on that side of the history, so a
+        Ctrl+Z that does nothing has already explained itself before it is pressed. */
+    void updateHistoryButtons();
+
+    // Last states actually applied. setEnabled repaints, and this is polled at 30Hz.
+    int appliedCanUndo = -1, appliedCanRedo = -1;
+
     // Shared by all lanes, so a pattern can be copied from one and pasted onto another.
     params::LanePattern patternClipboard;
 

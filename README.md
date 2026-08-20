@@ -76,6 +76,20 @@ land in automation and undo instead of silently mutating state behind the host's
 logic lives in `Parameters.cpp` rather than the button callbacks, which is what lets it be
 tested without a UI.
 
+### Undo
+
+The two arrows next to the title undo and redo the last edit, and **Ctrl+Z** / **Ctrl+Shift+Z**
+do the same thing (**Ctrl+Y** is accepted for redo as well). An arrow greys out when there is
+nothing on that side of the history, which is also the answer to a Ctrl+Z that appears to do
+nothing: the plugin swallows the keystroke either way rather than letting it fall through to
+the host, since running out of steps in the plugin and silently starting to undo the
+*arrangement* instead would be a far worse surprise.
+
+One edit is one turn of the message loop, so a pattern action that writes forty parameters is
+a single step, while two clicks on two different steps are two. Host automation sends no
+gestures and so never fills the history. The history lives on the processor rather than the
+editor, and therefore survives closing the plugin window; loading a session clears it.
+
 **Mix modes.** Lanes are combined in lane order, starting from zero:
 
 - **Add** — `mix += depth × value`. The plain-vanilla mode.
