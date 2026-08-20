@@ -33,6 +33,19 @@ off its own clock.
 | RND / CLR / ⋯ | — | Pattern actions |
 | Remove | — | Takes this lane out. The lanes below it move up to close the gap |
 
+The eight tall bars edit one of those per-step rows at a time, picked with the
+**Value / Velocity / Prob / Gate** selector down the left of the lane. The three that are not
+selected show as faint ticks across the bars, and only where they are away from their default,
+so an untouched lane stays clean.
+
+**In CC mode the selector disappears and the bars edit Value.** A lane is a plain value
+sequencer there: velocity and gate are read only when a note is started, so in CC mode neither
+does anything, and their ticks come off with the selector. Chance is different — it decides
+whether a step reaches the mix at all, and the mix *is* the CC value, so it goes on working in
+CC mode even though there is no longer a button for it. Its ticks stay drawn for exactly that
+reason: a step whose probability is still making the CC output jump should not be doing it
+invisibly. Switch back to Notes to edit chance again.
+
 ### Probability
 
 Each step has a **Chance**. A step that loses its roll behaves exactly like a step that's

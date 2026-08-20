@@ -78,6 +78,11 @@ private:
     /** Shows that many lanes, and resizes the window to fit. */
     void applyLaneCount (int newCount);
 
+    /** Hides the per-step layer selector in CC mode, where a lane is a plain value
+        sequencer. Applied from the constructor as well as the timer, so an editor opened
+        in CC mode never shows the selector even briefly. */
+    void applyOutputMode (int newMode);
+
     /** Takes out the lane a lane's own Remove button belongs to. Lives here rather than in
         LaneComponent because it is the stack that changes: every lane above this one moves
         down, and the window shrinks by one lane. */
@@ -112,6 +117,11 @@ private:
 
     std::atomic<float>* polyModeParam = nullptr;
     int lastPolyMode = -1;
+
+    // Watched because it decides which per-step layers a lane can usefully edit: velocity
+    // and gate are read only on the note path.
+    std::atomic<float>* outputModeParam = nullptr;
+    int lastOutputMode = -1;
 
     MixMeter mixMeter;
 

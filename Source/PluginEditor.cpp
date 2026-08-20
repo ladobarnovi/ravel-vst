@@ -122,14 +122,19 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
 
     // Polled on the timer rather than via a parameter listener, because listener
     // callbacks arrive on the audio thread and must not touch components.
-    quantizeParam  = state.getRawParameterValue (params::quantizeId);
-    scaleParam     = state.getRawParameterValue (params::scaleId);
-    polyModeParam  = state.getRawParameterValue (params::polyModeId);
-    laneCountParam = state.getRawParameterValue (params::laneCountId);
+    quantizeParam   = state.getRawParameterValue (params::quantizeId);
+    scaleParam      = state.getRawParameterValue (params::scaleId);
+    polyModeParam   = state.getRawParameterValue (params::polyModeId);
+    outputModeParam = state.getRawParameterValue (params::outputModeId);
+    laneCountParam  = state.getRawParameterValue (params::laneCountId);
 
     // Sizes the window as a side effect, so this stands in for the setSize() a
     // fixed-height editor would do here.
     applyLaneCount ((int) std::lround (laneCountParam->load()));
+
+    // Up front rather than left to the first timer tick, so an editor reopened on a session
+    // already in CC mode never flashes a selector it is about to take away.
+    applyOutputMode ((int) std::lround (outputModeParam->load()));
 
     startTimerHz (30);
 }
@@ -279,6 +284,24 @@ void RavelAudioProcessorEditor::applyLaneCount (int newCount)
     setSize (windowWidth, windowHeightForLanes (laneCount));
 }
 
+void RavelAudioProcessorEditor::applyOutputMode (int newMode)
+{
+    if (newMode == lastOutputMode)
+        return;
+
+    lastOutputMode = newMode;
+
+    // In CC mode a lane is a plain value sequencer. Velocity and gate are unread there --
+    // both are only ever arguments to startNote -- and the selector is not wanted for chance
+    // alone, so it goes entirely and the bars edit Value. Chance does still gate the mix, and
+    // so still shapes the CC stream, which is why the slots go on drawing its ticks.
+    const bool selectableLayers = (newMode == params::outNotes);
+
+    for (auto* lane : lanes)
+        lane->setLayerSelectionAvailable (selectableLayers);
+}
+
+//==============================================================================
 void RavelAudioProcessorEditor::removeLane (int laneIndex)
 {
     // The shift and the new lane count are both written from inside this one callback, so the
@@ -419,6 +442,9 @@ void RavelAudioProcessorEditor::timerCallback()
     // neither of which comes back through the buttons.
     if (laneCountParam != nullptr)
         applyLaneCount ((int) std::lround (laneCountParam->load()));
+
+    if (outputModeParam != nullptr)
+        applyOutputMode ((int) std::lround (outputModeParam->load()));
 
     if (polyModeParam != nullptr)
     {

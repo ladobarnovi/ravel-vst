@@ -108,6 +108,15 @@ void StepSlot::setLaneActive (bool laneIsActive)
     repaint();
 }
 
+void StepSlot::setNoteLayersAvailable (bool available)
+{
+    if (noteLayersAvailable == available)
+        return;
+
+    noteLayersAvailable = available;
+    repaint();
+}
+
 void StepSlot::setWithinLength (bool isWithinLength)
 {
     if (withinLength == isWithinLength)
@@ -181,13 +190,17 @@ void StepSlot::paintOverChildren (juce::Graphics& g)
     if (currentLayer != StepLayer::value && valueSlider.getValue() > 0.001)
         drawLayerTick (g, valueSlider, StepLayer::value);
 
-    if (currentLayer != StepLayer::velocity && velocitySlider.getValue() < 0.999)
+    // Velocity and gate go unread in CC mode, so their ticks come off with their buttons --
+    // a mark showing a value nothing acts on is worse than no mark.
+    if (noteLayersAvailable && currentLayer != StepLayer::velocity && velocitySlider.getValue() < 0.999)
         drawLayerTick (g, velocitySlider, StepLayer::velocity);
 
+    // Chance stays in both modes: it gates whether the step reaches the mix, and the mix is
+    // what the CC output follows.
     if (currentLayer != StepLayer::chance && chanceSlider.getValue() < 0.999)
         drawLayerTick (g, chanceSlider, StepLayer::chance);
 
-    if (currentLayer != StepLayer::gate && std::abs (gateSlider.getValue() - 60.0) > 0.5)
+    if (noteLayersAvailable && currentLayer != StepLayer::gate && std::abs (gateSlider.getValue() - 60.0) > 0.5)
         drawLayerTick (g, gateSlider, StepLayer::gate);
 
     if (! playing)
@@ -440,6 +453,10 @@ void LaneComponent::resized()
 
     for (auto& button : layerButtons)
     {
+        // Skipped entirely in CC mode, where the whole selector is hidden.
+        if (! button.isVisible())
+            continue;
+
         button.setBounds (leftColumn.removeFromTop (theme::rowHeight));
         leftColumn.removeFromTop (2);
     }
@@ -488,6 +505,29 @@ void LaneComponent::resized()
 void LaneComponent::setCanRemove (bool canBeRemoved)
 {
     removeButton.setVisible (canBeRemoved);
+}
+
+void LaneComponent::setLayerSelectionAvailable (bool available)
+{
+    if (layerSelectionAvailable == available)
+        return;
+
+    layerSelectionAvailable = available;
+
+    for (auto& button : layerButtons)
+        button.setVisible (available);
+
+    // With nothing left to select, the bars go back to Value -- otherwise CC mode could be
+    // entered with them still editing a layer whose button has just gone.
+    if (! available)
+        setLayer (StepLayer::value);
+
+    // Velocity and gate ticks come off with them; chance ticks stay, because chance is still
+    // gating the mix and so still moving the CC output.
+    for (auto* slot : slots)
+        slot->setNoteLayersAvailable (available);
+
+    resized();
 }
 
 void LaneComponent::setPlayingStep (int stepIndex)
