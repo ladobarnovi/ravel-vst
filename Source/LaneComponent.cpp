@@ -280,19 +280,23 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
 
     //--------------------------------------------------------------------------
     randomiseButton.setTooltip ("Randomise this lane's 8 step values");
+    theme::styleActionButton (randomiseButton);
     randomiseButton.onClick = [this] { params::randomiseLaneValues (apvts, lane, random); };
     addAndMakeVisible (randomiseButton);
 
     clearButton.setTooltip ("Zero this lane's 8 step values");
+    theme::styleActionButton (clearButton);
     clearButton.onClick = [this] { params::clearLaneValues (apvts, lane); };
     addAndMakeVisible (clearButton);
 
     menuButton.setTooltip ("Rotate, invert, copy and paste this lane's pattern");
+    theme::styleActionButton (menuButton);
     menuButton.onClick = [this] { showActionsMenu(); };
     addAndMakeVisible (menuButton);
 
     removeButton.setTooltip ("Remove this lane. The lanes below it move up to close the gap, "
                              "and this one's pattern goes with it -- Ctrl+Z brings it back");
+    theme::styleActionButton (removeButton);
     removeButton.onClick = [this] { if (onRemove != nullptr) onRemove(); };
 
     // Added hidden: the editor turns it on for every lane once there is more than one.

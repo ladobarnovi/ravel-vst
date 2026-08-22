@@ -82,6 +82,7 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
 
     addLaneButton.setTooltip ("Add a lane at the bottom of the stack. Each lane carries its "
                               "own Remove button");
+    theme::styleActionButton (addLaneButton);
     addLaneButton.onClick = [this] { setLaneCount (laneCount + 1); };
     addChildComponent (addLaneButton);
 

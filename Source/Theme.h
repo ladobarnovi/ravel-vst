@@ -46,7 +46,8 @@ namespace theme
         stepChance,     ///< Tick across a step bar; only its right gutter takes the mouse.
         stepTrig,       ///< Flat strip under a step bar: this step's on/off toggle.
         undoArrow,      ///< Curved arrow drawn in place of a TextButton's text.
-        redoArrow       ///< The same arrow, mirrored.
+        redoArrow,      ///< The same arrow, mirrored.
+        actionButton    ///< Pressable chip: filled and outlined at rest, not only on hover.
     };
 
     const juce::Identifier roleProperty { "ravelRole" };
@@ -90,6 +91,22 @@ namespace theme
         // Label's default border is (1, 5, 1, 5), which would indent the heading relative
         // to the row captions underneath it and eats the width of a short label whole.
         label.setBorderSize (juce::BorderSize<int> (0));
+    }
+
+    /** A one-shot action -- Rnd, Clr, the pattern menu, Add lane, Remove -- rather than a
+        selector or a parameter. These sit in among captions and value rows, where a bare
+        word reads as a label, so they take a resting fill and outline instead of only
+        lighting up once the mouse has already found them. The latched layer selectors
+        deliberately do not: a fill there means "this is the current layer", and giving the
+        other three one at rest would leave that meaning nothing to say.
+    */
+    inline void styleActionButton (juce::TextButton& button)
+    {
+        setRole (button, Role::actionButton);
+
+        // Brighter than the textDim default, which was chosen for a button with no
+        // background and looks switched-off once there is a filled chip behind it.
+        button.setColour (juce::TextButton::textColourOffId, text.withAlpha (0.85f));
     }
 
     //==========================================================================
@@ -263,8 +280,31 @@ public:
     }
 
     void drawButtonBackground (juce::Graphics& g, juce::Button& button, const juce::Colour&,
-                               bool shouldDrawButtonAsHighlighted, bool) override
+                               bool shouldDrawButtonAsHighlighted, bool shouldDrawButtonAsDown) override
     {
+        const auto bounds = button.getLocalBounds().toFloat();
+        constexpr float corner = 3.0f;
+
+        if (theme::roleOf (button) == theme::Role::actionButton)
+        {
+            // Down is darker and hover is lighter, rather than both moving the same way:
+            // on a dark panel a chip that sinks under the finger is the half of the
+            // gesture that reads as having been pressed rather than merely pointed at.
+            const auto fill = shouldDrawButtonAsDown        ? theme::background
+                            : shouldDrawButtonAsHighlighted ? theme::panelLight.brighter (0.12f)
+                                                            : theme::panelLight;
+
+            g.setColour (button.isEnabled() ? fill : fill.withAlpha (0.45f));
+            g.fillRoundedRectangle (bounds, corner);
+
+            // Inset by half a pixel so the stroke lands inside the fill instead of
+            // straddling the edge, which would leave it a half-covered smear.
+            g.setColour (shouldDrawButtonAsHighlighted ? theme::outline.brighter (0.35f)
+                                                       : theme::outline);
+            g.drawRoundedRectangle (bounds.reduced (0.5f), corner, 1.0f);
+            return;
+        }
+
         // A latched button (the per-lane layer selector) keeps a filled pill so the current
         // selection is readable at rest; plain action buttons only light up under the mouse.
         if (button.getToggleState())
@@ -274,7 +314,7 @@ public:
         else
             return;
 
-        g.fillRoundedRectangle (button.getLocalBounds().toFloat(), 3.0f);
+        g.fillRoundedRectangle (bounds, corner);
     }
 
     //==========================================================================
