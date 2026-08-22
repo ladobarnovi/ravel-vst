@@ -109,7 +109,6 @@ public:
     // Read by the editor's timer. Plain relaxed atomics: a torn read just means
     // one stale repaint frame.
     int   getCurrentStep (int lane) const noexcept { return uiStep[lane].load (std::memory_order_relaxed); }
-    float getMixValue()             const noexcept { return uiMix.load (std::memory_order_relaxed); }
 
 private:
     //==========================================================================
@@ -226,5 +225,4 @@ private:
     int   configuredPolyMode  = -1;
 
     std::atomic<int>   uiStep[params::numLanes] {};
-    std::atomic<float> uiMix { 0.0f };
 };

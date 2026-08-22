@@ -5,17 +5,6 @@
 #include "PluginProcessor.h"
 #include "Theme.h"
 
-/** Read-out of the combined value the lanes currently produce. */
-class MixMeter final : public juce::Component
-{
-public:
-    void setValue (float newValue);
-    void paint (juce::Graphics&) override;
-
-private:
-    float value = 0.0f;
-};
-
 //==============================================================================
 class RavelAudioProcessorEditor final : public juce::AudioProcessorEditor,
                                           private juce::Timer
@@ -47,7 +36,7 @@ private:
 
     RavelAudioProcessor& processorRef;
 
-    juce::Label titleLabel, mixCaption;
+    juce::Label titleLabel;
 
     // Icon buttons, not text: these are the only two actions in the window that are not a
     // parameter, and the arrow pair is recognised at 22px where two words would not fit the
@@ -122,8 +111,6 @@ private:
     // and gate are read only on the note path.
     std::atomic<float>* outputModeParam = nullptr;
     int lastOutputMode = -1;
-
-    MixMeter mixMeter;
 
     juce::Rectangle<int> panelArea;
 

@@ -11,8 +11,6 @@ namespace
     constexpr int gap           = 8;
     constexpr int margin        = 12;
 
-    constexpr int meterWidth    = 210;
-
     // Square, and taller than a value row: the arrows are a click target rather than a line
     // of text, and 22px keeps them comfortably hittable inside a 26px header.
     constexpr int historyButton = 22;
@@ -28,33 +26,6 @@ namespace
                  + numLanes * (laneHeight + gap)
                  + laneBarHeight + gap
                  + panelHeight;
-    }
-}
-
-//==============================================================================
-void MixMeter::setValue (float newValue)
-{
-    if (std::abs (newValue - value) < 0.002f)
-        return;
-
-    value = newValue;
-    repaint();
-}
-
-void MixMeter::paint (juce::Graphics& g)
-{
-    const auto bounds = getLocalBounds().toFloat();
-    const float corner = bounds.getHeight() * 0.5f;
-
-    g.setColour (theme::track);
-    g.fillRoundedRectangle (bounds, corner);
-
-    const float width = bounds.getWidth() * juce::jlimit (0.0f, 1.0f, value);
-
-    if (width > 1.0f)
-    {
-        g.setColour (theme::text.withAlpha (0.8f));
-        g.fillRoundedRectangle (bounds.withWidth (juce::jmax (width, bounds.getHeight())), corner);
     }
 }
 
@@ -100,10 +71,6 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
                              "the three mixing into one");
     outputGroup.setColumns (2);
     addAndMakeVisible (outputGroup);
-
-    theme::styleHeading (mixCaption, "Mix");
-    addAndMakeVisible (mixCaption);
-    addAndMakeVisible (mixMeter);
 
     for (int lane = 0; lane < params::numLanes; ++lane)
     {
@@ -350,10 +317,6 @@ void RavelAudioProcessorEditor::resized()
     outputGroup.setBounds (header.removeFromLeft (370)
                                  .withSizeKeepingCentre (370, theme::rowHeight));
 
-    auto meterArea = header.removeFromRight (meterWidth).withSizeKeepingCentre (meterWidth, 10);
-    mixCaption.setBounds (meterArea.removeFromLeft (28));
-    mixMeter.setBounds (meterArea);
-
     r.removeFromTop (gap);
 
     //--------------------------------------------------------------------------
@@ -416,8 +379,6 @@ void RavelAudioProcessorEditor::timerCallback()
 
     for (int lane = 0; lane < lanes.size(); ++lane)
         lanes[lane]->setPlayingStep (engine.getCurrentStep (lane));
-
-    mixMeter.setValue (engine.getMixValue());
 
     if (quantizeParam != nullptr && scaleParam != nullptr)
     {

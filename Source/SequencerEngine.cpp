@@ -669,9 +669,6 @@ void SequencerEngine::process (const Snapshot& s,
                 }
             }
         }
-
-        if (n == numSamples - 1)
-            uiMix.store (mix, std::memory_order_relaxed);
     }
 
     for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
