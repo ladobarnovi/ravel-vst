@@ -2,6 +2,8 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include <cmath>
+
 namespace theme
 {
     const juce::Colour background  { 0xff141619 };
@@ -79,6 +81,15 @@ namespace theme
     inline juce::Font headingFont() { return juce::Font (juce::FontOptions (11.5f, juce::Font::bold)); }
     inline juce::Font titleFont()   { return juce::Font (juce::FontOptions (17.0f, juce::Font::bold)); }
 
+    /** The font a TextButton draws its label in. Capped, so the tall history arrows do not
+        get a proportionally larger label than the buttons in the lanes. Lives here rather
+        than only inside the LookAndFeel because layout code has to measure the same string
+        the LookAndFeel is about to draw. */
+    inline juce::Font buttonFont (int buttonHeight)
+    {
+        return juce::Font (juce::FontOptions ((float) juce::jmin (15, buttonHeight) * 0.7f));
+    }
+
     /** Small dim heading over a group of value rows. */
     inline void styleHeading (juce::Label& label, const juce::String& headingText)
     {
@@ -107,6 +118,17 @@ namespace theme
         // Brighter than the textDim default, which was chosen for a button with no
         // background and looks switched-off once there is a filled chip behind it.
         button.setColour (juce::TextButton::textColourOffId, text.withAlpha (0.85f));
+    }
+
+    /** Width an action chip needs to hold its label, padding included. Buttons are sized to
+        their own text rather than to a shared width: "Randomize" is more than twice the
+        width of "More", and one width wide enough for the longest leaves the short ones as
+        mostly empty chip, which is what makes a row of buttons read as a table instead. */
+    inline int actionButtonWidth (const juce::String& buttonText, int buttonHeight)
+    {
+        const auto textWidth = juce::GlyphArrangement::getStringWidth (buttonFont (buttonHeight),
+                                                                       buttonText);
+        return (int) std::ceil (textWidth) + 18;
     }
 
     //==========================================================================
@@ -247,7 +269,7 @@ public:
 
     juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override
     {
-        return juce::Font (juce::FontOptions ((float) juce::jmin (15, buttonHeight) * 0.7f));
+        return theme::buttonFont (buttonHeight);
     }
 
     /** The history buttons paint a glyph where their text would go. The text itself stays

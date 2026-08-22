@@ -279,7 +279,7 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
     addAndMakeVisible (paramGroup);
 
     //--------------------------------------------------------------------------
-    randomiseButton.setTooltip ("Randomise this lane's 8 step values");
+    randomiseButton.setTooltip ("Randomize this lane's 8 step values");
     theme::styleActionButton (randomiseButton);
     randomiseButton.onClick = [this] { params::randomiseLaneValues (apvts, lane, random); };
     addAndMakeVisible (randomiseButton);
@@ -491,19 +491,20 @@ void LaneComponent::resized()
 
     auto actionRow = paramBlock.removeFromTop (buttonHeight);
 
-    // Hard right, a wide gap clear of Rnd and Clr. It is the only action in the lane that a
-    // second click does not undo, so it should not sit where the hand passes on the way to
-    // the ones that do.
-    removeButton.setBounds (actionRow.removeFromRight (60));
+    // Hard right, a wide gap clear of the pattern buttons. It is the only action in the lane
+    // that a second click does not undo, so it should not sit where the hand passes on the
+    // way to the ones that do.
+    removeButton.setBounds (actionRow.removeFromRight (
+                                theme::actionButtonWidth (removeButton.getButtonText(), buttonHeight)));
 
-    auto buttonRow = actionRow.removeFromLeft (paramWidth / 2 - 14);
-    const int buttonWidth = (buttonRow.getWidth() - 8) / 3;
-
-    randomiseButton.setBounds (buttonRow.removeFromLeft (buttonWidth));
-    buttonRow.removeFromLeft (4);
-    clearButton.setBounds (buttonRow.removeFromLeft (buttonWidth));
-    buttonRow.removeFromLeft (4);
-    menuButton.setBounds (buttonRow.removeFromLeft (buttonWidth));
+    // Each takes only the width its own label needs, so the gap before Remove absorbs the
+    // difference rather than the buttons padding out to meet it.
+    for (auto* button : { &randomiseButton, &clearButton, &menuButton })
+    {
+        button->setBounds (actionRow.removeFromLeft (
+                               theme::actionButtonWidth (button->getButtonText(), buttonHeight)));
+        actionRow.removeFromLeft (4);
+    }
 }
 
 void LaneComponent::setCanRemove (bool canBeRemoved)

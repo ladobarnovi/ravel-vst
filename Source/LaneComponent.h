@@ -133,11 +133,13 @@ private:
 
     ControlGroup paramGroup;
 
-    juce::TextButton randomiseButton { "Rnd" }, clearButton { "Clr" }, menuButton { "..." };
+    // Spelt out rather than abbreviated: these sit among value rows whose captions are whole
+    // words, and "Clr" next to "Remove" was two controls a keystroke apart meaning "empty
+    // this lane" and "destroy this lane" -- exactly the pair not to leave the reader decoding.
+    // The layout sizes each one to its own label, so the widths differ.
+    juce::TextButton randomiseButton { "Randomize" }, clearButton { "Clear" },
+                     menuButton { "More" };
 
-    // Spelt out rather than abbreviated to match Rnd and Clr. "Del" next to "Clr" would be
-    // two three-letter buttons a keystroke apart meaning "empty this lane" and "destroy this
-    // lane", which is exactly the pair not to make look alike.
     juce::TextButton removeButton { "Remove" };
 
     juce::Random random;
