@@ -2,7 +2,11 @@
 
 namespace
 {
-    constexpr int windowWidth   = 1000;
+    // The window's native (100%-zoom) width. Wide enough for 16 step slots at the same
+    // per-step width the layout used to give 8, plus the fixed-width number column and
+    // parameter block beside them. The user can zoom in or out from here; see
+    // RavelAudioProcessorEditor::updateSizeConstraints().
+    constexpr int nativeContentWidth = 1620;
 
     constexpr int laneHeight    = 140;
     constexpr int headerHeight  = 26;
@@ -14,6 +18,11 @@ namespace
     // Square, and taller than a value row: the arrows are a click target rather than a line
     // of text, and 22px keeps them comfortably hittable inside a 26px header.
     constexpr int historyButton = 22;
+
+    // How far the user can zoom the window either side of native size. Below 60% the step
+    // bars stop being useful click targets; above 150% there's nothing left to reveal.
+    constexpr double minZoom = 0.6;
+    constexpr double maxZoom = 1.5;
 
     /** The window grows and shrinks with the lane count rather than the lanes sharing a
         fixed height between them: one lane in a window sized for four would be mostly empty
@@ -40,11 +49,19 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
     // at the end of that chain for the undo shortcuts.
     setWantsKeyboardFocus (true);
 
+    // content holds the actual UI at a fixed native pixel layout; the editor itself only
+    // scales it to fill whatever size the user drags the window to. See resized().
+    content.onResized = [this] { layoutContent(); };
+    addAndMakeVisible (content);
+
+    setConstrainer (&sizeConstrainer);
+    setResizable (true, true);
+
     titleLabel.setText ("RAVEL", juce::dontSendNotification);
     titleLabel.setFont (theme::titleFont());
     titleLabel.setColour (juce::Label::textColourId, theme::text);
     titleLabel.setInterceptsMouseClicks (false, false);
-    addAndMakeVisible (titleLabel);
+    content.addAndMakeVisible (titleLabel);
 
     // The same two entry points the keyboard shortcuts use, so a click and a Ctrl+Z are the
     // same operation. Refreshed straight afterwards rather than left to the timer, so the
@@ -52,12 +69,12 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
     undoButton.setTooltip ("Undo the last edit (Ctrl+Z)");
     theme::setRole (undoButton, theme::Role::undoArrow);
     undoButton.onClick = [this] { processorRef.undoHistory.undo(); updateHistoryButtons(); };
-    addAndMakeVisible (undoButton);
+    content.addAndMakeVisible (undoButton);
 
     redoButton.setTooltip ("Redo the last undone edit (Ctrl+Shift+Z)");
     theme::setRole (redoButton, theme::Role::redoArrow);
     redoButton.onClick = [this] { processorRef.undoHistory.redo(); updateHistoryButtons(); };
-    addAndMakeVisible (redoButton);
+    content.addAndMakeVisible (redoButton);
 
     updateHistoryButtons();
 
@@ -70,21 +87,21 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
                ->setTooltip ("Each lane triggers its own note off its own clock, instead of "
                              "the three mixing into one");
     outputGroup.setColumns (2);
-    addAndMakeVisible (outputGroup);
+    content.addAndMakeVisible (outputGroup);
 
     for (int lane = 0; lane < params::numLanes; ++lane)
     {
         auto* component = lanes.add (new LaneComponent (state, lane, patternClipboard));
         component->onRemove = [this, lane] { removeLane (lane); };
 
-        addChildComponent (component);
+        content.addChildComponent (component);
     }
 
     addLaneButton.setTooltip ("Add a lane at the bottom of the stack. Each lane carries its "
                               "own Remove button");
     theme::styleActionButton (addLaneButton);
     addLaneButton.onClick = [this] { setLaneCount (laneCount + 1); };
-    addChildComponent (addLaneButton);
+    content.addChildComponent (addLaneButton);
 
     buildTabs();
 
@@ -97,12 +114,29 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
     laneCountParam  = state.getRawParameterValue (params::laneCountId);
 
     // Sizes the window as a side effect, so this stands in for the setSize() a
-    // fixed-height editor would do here.
+    // fixed-height editor would do here. Leaves it at 100% zoom, which the restore below
+    // then overrides if the session remembers something else.
     applyLaneCount ((int) std::lround (laneCountParam->load()));
 
     // Up front rather than left to the first timer tick, so an editor reopened on a session
     // already in CC mode never flashes a selector it is about to take away.
     applyOutputMode ((int) std::lround (outputModeParam->load()));
+
+    // The zoom the window was last closed at, stored as plain properties on the state tree
+    // rather than as a parameter: it's UI state, not something a host should automate or
+    // recall through undo. Absent on a session saved before this existed, in which case the
+    // 100% size applyLaneCount() just set is already correct.
+    const int savedWidth  = (int) state.state.getProperty ("editorWidth",  0);
+    const int savedHeight = (int) state.state.getProperty ("editorHeight", 0);
+
+    if (savedWidth > 0 && savedHeight > 0)
+    {
+        const double savedScale = juce::jlimit (minZoom, maxZoom,
+                                                 (double) savedHeight / (double) nativeContentHeight);
+
+        setSize ((int) std::lround (nativeContentWidth  * savedScale),
+                 (int) std::lround (nativeContentHeight * savedScale));
+    }
 
     startTimerHz (30);
 }
@@ -160,14 +194,14 @@ void RavelAudioProcessorEditor::buildTabs()
     }
 
     //--------------------------------------------------------------------------
-    addAndMakeVisible (pitchPage);
-    addChildComponent (timingPage);
-    addChildComponent (routingPage);
+    content.addAndMakeVisible (pitchPage);
+    content.addChildComponent (timingPage);
+    content.addChildComponent (routingPage);
 
     tabs.addTab ("Pitch",   pitchPage);
     tabs.addTab ("Timing",  timingPage);
     tabs.addTab ("Routing", routingPage);
-    addAndMakeVisible (tabs);
+    content.addAndMakeVisible (tabs);
 }
 
 //==============================================================================
@@ -248,8 +282,9 @@ void RavelAudioProcessorEditor::applyLaneCount (int newCount)
 
     addLaneButton.setVisible (laneCount < params::numLanes);
 
-    // Every count maps to a different height, so this always lays the editor out again.
-    setSize (windowWidth, windowHeightForLanes (laneCount));
+    // Every count maps to a different native height, so the constrainer and the window both
+    // need to move to match -- at whatever zoom the user currently has, not back to 100%.
+    updateSizeConstraints();
 }
 
 void RavelAudioProcessorEditor::applyOutputMode (int newMode)
@@ -285,18 +320,54 @@ void RavelAudioProcessorEditor::removeLane (int laneIndex)
 //==============================================================================
 void RavelAudioProcessorEditor::paint (juce::Graphics& g)
 {
+    // The panel background itself is drawn by content, in its own (unscaled) coordinate
+    // space -- this fill is just the base coat, mostly covered but cheap insurance against
+    // any rounding gap at content's scaled edges.
     g.fillAll (theme::background);
+}
 
-    if (! panelArea.isEmpty())
-    {
-        g.setColour (theme::panel);
-        g.fillRoundedRectangle (panelArea.toFloat(), 6.0f);
-    }
+void RavelAudioProcessorEditor::updateSizeConstraints()
+{
+    // Preserves the user's current zoom across a lane-count change rather than snapping the
+    // window back to 100% every time a lane is added or removed.
+    const double previousScale = nativeContentHeight > 0 && getHeight() > 0
+                                    ? (double) getHeight() / (double) nativeContentHeight
+                                    : 1.0;
+
+    nativeContentHeight = windowHeightForLanes (laneCount);
+
+    // Locked so a drag-resize zooms uniformly rather than stretching bars into ellipses.
+    sizeConstrainer.setFixedAspectRatio ((double) nativeContentWidth / (double) nativeContentHeight);
+    sizeConstrainer.setSizeLimits (
+        (int) std::lround (nativeContentWidth  * minZoom), (int) std::lround (nativeContentHeight * minZoom),
+        (int) std::lround (nativeContentWidth  * maxZoom), (int) std::lround (nativeContentHeight * maxZoom));
+
+    const double scale = juce::jlimit (minZoom, maxZoom, previousScale);
+
+    setSize ((int) std::lround (nativeContentWidth  * scale),
+             (int) std::lround (nativeContentHeight * scale));
 }
 
 void RavelAudioProcessorEditor::resized()
 {
-    auto r = getLocalBounds().reduced (margin);
+    if (nativeContentHeight <= 0)
+        return; // Constructor hasn't run applyLaneCount() yet, so there's nothing to scale.
+
+    // content stays at native pixel size always; only its transform changes, so none of its
+    // children's layout math needs to know zoom exists.
+    const float scale = (float) getWidth() / (float) nativeContentWidth;
+    content.setTransform (juce::AffineTransform::scale (scale));
+    content.setBounds (0, 0, nativeContentWidth, nativeContentHeight);
+
+    // Persisted as plain state-tree properties (see the restore in the constructor) so the
+    // window reopens at the size it was left, not back at 100%.
+    processorRef.apvts.state.setProperty ("editorWidth",  getWidth(),  nullptr);
+    processorRef.apvts.state.setProperty ("editorHeight", getHeight(), nullptr);
+}
+
+void RavelAudioProcessorEditor::layoutContent()
+{
+    auto r = content.getLocalBounds().reduced (margin);
 
     //--------------------------------------------------------------------------
     auto header = r.removeFromTop (headerHeight);
@@ -337,7 +408,7 @@ void RavelAudioProcessorEditor::resized()
     r.removeFromTop (gap);
 
     //--------------------------------------------------------------------------
-    panelArea = r;
+    content.panelArea = r;
 
     auto panel = r.reduced (14, 8);
     tabs.setBounds (panel.removeFromTop (TabStrip::height));

@@ -3,7 +3,7 @@
 A polyrhythmic step sequencer, built as a VST3 for Ableton Live 12 on Windows. It opens
 with one lane and goes up to four, added one at a time.
 
-Each lane is an independent 8-step sequencer with its own **length**, **clock rate**,
+Each lane is an independent 16-step sequencer with its own **length**, **clock rate**,
 **direction** and **depth**. The lanes are folded together into one value, and that value
 drives either note pitch or a MIDI CC -- or, in **Poly** mode, each lane triggers its own note
 off its own clock.
@@ -16,13 +16,13 @@ off its own clock.
 
 | Control | Range | Notes |
 |---|---|---|
-| 8 step bars | 0–100 % | The lane's values |
+| 16 step bars | 0–100 % | The lane's values |
 | 8 velocity bars | 0–100 % | Per-step accent, as a trim on the global Velocity (100 % is unity) |
 | 8 chance bars | 0–100 % | Per-step probability of firing (thin bar under each value) |
 | 8 gate bars | 5–200 % | How long each step's note is held, as % of the step. Above 100 % overlaps into the next step (see Polyphony) |
-| 8 step toggles | on/off | Hard mute for a step |
+| 16 step toggles | on/off | Hard mute for a step |
 | Lane toggle | on/off | Mutes the whole lane: transparent for the mix, triggers nothing |
-| Length | 1–8 | Shorter lanes phase against longer ones. Steps past the length grey out, and stay editable |
+| Length | 1–16 | Shorter lanes phase against longer ones. Steps past the length grey out, and stay editable |
 | Rate | 1/1 … 1/32, incl. triplets | Independent per lane — this is where the polyrhythm comes from |
 | Direction | Forward, Reverse, Ping-Pong, Random | |
 | Depth | −100 % … +100 % | How much this lane affects the mix |
@@ -33,7 +33,7 @@ off its own clock.
 | RND / CLR / ⋯ | — | Pattern actions |
 | Remove | — | Takes this lane out. The lanes below it move up to close the gap |
 
-The eight tall bars edit one of those per-step rows at a time, picked with the
+The sixteen tall bars edit one of those per-step rows at a time, picked with the
 **Value / Velocity / Prob / Gate** selector down the left of the lane. The three that are not
 selected show as faint ticks across the bars, and only where they are away from their default,
 so an untouched lane stays clean.
@@ -117,10 +117,15 @@ editor, and therefore survives closing the plugin window; loading a session clea
 A step that is toggled **off** is transparent for its lane — nothing is added, multiplied
 or held — and it fires no note if that lane is the trigger source.
 
-**Lanes.** Every lane starts as eight steps of zero — a flat pattern on the root, not a demo
+**Lanes.** Every lane starts as sixteen steps of zero — a flat pattern on the root, not a demo
 to clear away — and lanes differ only in their default rate. *+ Add lane* sits under the last
 lane and appends one at the bottom; **each lane carries its own Remove**, at the right of its
-action row, so any lane can go and not just the last one. The window grows and shrinks to fit.
+action row, so any lane can go and not just the last one. The window grows and shrinks to fit
+the lane count on its own; **it's also resizable by hand**, from the bottom-right corner or
+the host's own window border. Dragging it doesn't reflow the layout, it zooms the whole thing
+uniformly, between 60% and 150% of native size, so bars and text scale together rather than
+the step area alone stretching. The size is remembered per session, the same way the pattern
+is.
 
 Removing a lane closes the gap behind it: every lane below the removed one moves up a slot,
 bringing its own controls with it — rate, direction, depth, nudge, its CC destination, not
@@ -306,7 +311,7 @@ In Live: **Preferences → Plug-Ins → VST3 Plug-In Custom Folder**, point it a
 .\build\RavelProcessorTests_artefacts\Release\RavelProcessorTests.exe
 ```
 
-134 checks across two suites, neither needing a plugin host.
+166 checks across two suites, neither needing a plugin host.
 
 `Tests/EngineTests.cpp` (96 checks) drives `SequencerEngine` over a synthetic timeline. The
 engine takes PPQ positions as plain arguments rather than reading a playhead itself, which is
@@ -315,7 +320,7 @@ steps, the mix modes, transport jumps, stuck-note release on stop, CC output, di
 the continuous-pitch path — including that note number plus pitch bend reconstructs the
 intended fractional pitch, and that the bend range is actually transmitted.
 
-`Tests/ProcessorTests.cpp` (38 checks) drives the real `RavelAudioProcessor::processBlock`
+`Tests/ProcessorTests.cpp` (70 checks) drives the real `RavelAudioProcessor::processBlock`
 through a mock playhead. This covers the layer where the plugin could compile, load and still
 emit nothing: playhead handling, the free-run fallback, the parameter snapshot, state
 round-trip, every pattern action, and the MIDI capability flags a host reads to decide whether
@@ -373,7 +378,7 @@ already includes M4L, and its modulation API can target any parameter directly.
 | `Source/SequencerEngine.*` | The sequencer core and MIDI generation |
 | `Source/PluginProcessor.*` | Plugin plumbing, playhead handling, state save/load |
 | `Source/PluginEditor.*` | Window layout, header, and the Pitch/Timing/Routing tabs |
-| `Source/LaneComponent.*` | One lane: 8 steps plus its controls |
+| `Source/LaneComponent.*` | One lane: 16 steps plus its controls |
 | `Source/Controls.*` | Shared row/column/tab building blocks the editor and lanes are built from |
 | `Source/Theme.h` | Colours and custom widget drawing |
 | `Tests/EngineTests.cpp` | Engine tests, run as a standalone console app |

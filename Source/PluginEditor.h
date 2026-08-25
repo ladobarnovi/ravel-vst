@@ -31,10 +31,52 @@ private:
         buries the layout code in the constructor. */
     void buildTabs();
 
+    /** Recomputes the natural (100%-zoom) size for the current lane count, updates the
+        resize constrainer to match, and rescales the actual window to hold the user's
+        current zoom level rather than snapping back to 100% -- which is what a plain
+        setSize() here would do every time a lane is added or removed. */
+    void updateSizeConstraints();
+
+    /** The layout that used to live in resized(), now run against content's native bounds
+        rather than the editor's actual (possibly zoomed) ones. */
+    void layoutContent();
+
     // Declared first so it outlives every child that references it.
     RavelLookAndFeel lookAndFeel;
 
     RavelAudioProcessor& processorRef;
+
+    /** Everything else is a child of this rather than of the editor itself, laid out at a
+        fixed native pixel size. The editor scales it with an AffineTransform to fill
+        whatever size the user has dragged the window to -- one transform on one component,
+        rather than every constant in every child's resized() needing to know about zoom. */
+    struct ContentComponent final : public juce::Component
+    {
+        void paint (juce::Graphics& g) override
+        {
+            if (! panelArea.isEmpty())
+            {
+                g.setColour (theme::panel);
+                g.fillRoundedRectangle (panelArea.toFloat(), 6.0f);
+            }
+        }
+
+        // resized() can't reach the outer editor's members directly, so it forwards to
+        // layoutContent() instead of duplicating the layout here.
+        void resized() override { if (onResized) onResized(); }
+
+        std::function<void()> onResized;
+        juce::Rectangle<int> panelArea;
+    };
+
+    ContentComponent content;
+
+    // Constrains drag-resize to the content's aspect ratio (locked so the zoom is uniform
+    // rather than stretching bars into ellipses) and to a sane zoom range either side of
+    // native size. Recomputed in updateSizeConstraints() whenever the native size changes.
+    juce::ComponentBoundsConstrainer sizeConstrainer;
+
+    int nativeContentHeight = 0;
 
     juce::Label titleLabel;
 
@@ -111,8 +153,6 @@ private:
     // and gate are read only on the note path.
     std::atomic<float>* outputModeParam = nullptr;
     int lastOutputMode = -1;
-
-    juce::Rectangle<int> panelArea;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RavelAudioProcessorEditor)
 };

@@ -37,7 +37,7 @@ namespace
     // make the second lane you add sound like it came with an opinion.
     constexpr float defaultValues[numLanes][numSteps] {};
 
-    constexpr int   defaultLength[numLanes]   { 8, 8, 8, 8 };
+    constexpr int   defaultLength[numLanes]   { numSteps, numSteps, numSteps, numSteps };
 
     // Rates do differ per lane, because a stack of lanes all running at 1/16 is the one
     // starting point that cannot demonstrate what the plugin is for.

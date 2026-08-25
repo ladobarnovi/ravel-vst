@@ -166,8 +166,8 @@ int main()
                 flat = flat && std::abs (value (params::stepValueId (lane, step))) < 1.0e-6f;
         }
 
-        check (flat, "every lane is eight steps of zero");
-        check (fullLength, "and eight steps long");
+        check (flat, "every lane is sixteen steps of zero");
+        check (fullLength, "and sixteen steps long");
 
         MockPlayHead playHead;
         processor.setPlayConfigDetails (0, 2, 48000.0, 512);
@@ -376,32 +376,37 @@ int main()
                 p->setValueNotifyingHost (on ? 1.0f : 0.0f);
         };
 
+        // Stays under 0.5 at the last step regardless of numSteps, so the synthetic pattern
+        // below never clips against the parameter's 0..1 range the way a fixed /10.0f did
+        // once numSteps passed 10.
+        const auto stepValue = [] (int step) { return (float) step / (float) (params::numSteps * 2); };
+
         //---------------------------------------------------------------------- invert
         for (int step = 0; step < params::numSteps; ++step)
-            setValue (0, step, (float) step / 10.0f);
+            setValue (0, step, stepValue (step));
 
         params::invertLaneValues (processor.apvts, 0);
 
         bool inverted = true;
 
         for (int step = 0; step < params::numSteps; ++step)
-            inverted = inverted && std::abs (value (0, step) - (1.0f - (float) step / 10.0f)) < 0.01f;
+            inverted = inverted && std::abs (value (0, step) - (1.0f - stepValue (step))) < 0.01f;
 
         check (inverted, "invert mirrors every value about the midpoint");
 
         //---------------------------------------------------------------------- rotate
         for (int step = 0; step < params::numSteps; ++step)
         {
-            setValue (0, step, (float) step / 10.0f);
+            setValue (0, step, stepValue (step));
             setEnabled (0, step, step == 0);   // only step 0 enabled, so we can track it
         }
 
         params::rotateLane (processor.apvts, 0, 1);
 
-        // Rotating right by one: old step 0 is now step 1.
-        const bool valuesMoved = std::abs (value (0, 1) - 0.0f) < 0.01f
-                              && std::abs (value (0, 2) - 0.1f) < 0.01f
-                              && std::abs (value (0, 0) - 0.7f) < 0.01f;
+        // Rotating right by one: old step 0 is now step 1, and the old last step wraps to 0.
+        const bool valuesMoved = std::abs (value (0, 1) - stepValue (0)) < 0.01f
+                              && std::abs (value (0, 2) - stepValue (1)) < 0.01f
+                              && std::abs (value (0, 0) - stepValue (params::numSteps - 1)) < 0.01f;
 
         check (valuesMoved, "rotate right shifts values round by one, wrapping");
 
@@ -413,8 +418,8 @@ int main()
 
         params::rotateLane (processor.apvts, 0, -1);
 
-        const bool roundTrip = std::abs (value (0, 0) - 0.0f) < 0.01f
-                            && std::abs (value (0, 7) - 0.7f) < 0.01f;
+        const bool roundTrip = std::abs (value (0, 0) - stepValue (0)) < 0.01f
+                            && std::abs (value (0, params::numSteps - 1) - stepValue (params::numSteps - 1)) < 0.01f;
 
         check (roundTrip, "rotating left then undoes rotating right");
 
@@ -609,7 +614,7 @@ int main()
     }
 
     //==========================================================================
-    section ("A pattern action is one undo step, not eight");
+    section ("A pattern action is one undo step, not sixteen");
     {
         RavelAudioProcessor processor;
         juce::Random random (0x5eed);
@@ -617,7 +622,7 @@ int main()
         params::randomiseLaneValues (processor.apvts, 0, random);
 
         check (processor.undoHistory.getUndoDepth() == 1,
-               "randomising eight steps in one go records a single step");
+               "randomising sixteen steps in one go records a single step");
 
         processor.undoHistory.undo();
 

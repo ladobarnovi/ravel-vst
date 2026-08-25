@@ -17,7 +17,7 @@ namespace params
 // a lane" raises laneCount, and the lanes above the count are simply inert and hidden. Their
 // step data stays where it is, which is what lets a removed lane come back unchanged.
 inline constexpr int numLanes = 4;
-inline constexpr int numSteps = 8;
+inline constexpr int numSteps = 16;
 
 //==============================================================================
 // Clock divisions. Each value is a step length measured in quarter notes,
