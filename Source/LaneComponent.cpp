@@ -5,18 +5,10 @@ namespace
     constexpr int trigHeight   = 5;
     constexpr int trigGap      = 4;
 
-    // Wide enough that the eight trig strips read as eight marks rather than as one line
-    // ruled under the whole step area.
+    // Wide enough that the sixteen trig strips read as sixteen marks rather than as one line
+    // ruled under the whole step area. Part of lane::stepSlotWidth, not extra to it: the
+    // gap comes out of the slot, so the pitch from one step to the next stays exact.
     constexpr int slotGap      = 5;
-
-    constexpr int railWidth    = 3;
-
-    // Sized for the longest layer button, "Velocity". The column to the left of the steps was
-    // empty space anyway, and abbreviating the labels down to three letters cost more in
-    // legibility than the width was worth.
-    constexpr int numberWidth  = 54;
-    constexpr int paramWidth   = 280;
-    constexpr int dividerGap   = 14;
 }
 
 //==============================================================================
@@ -431,7 +423,7 @@ void LaneComponent::paint (juce::Graphics& g)
     // Accent stripe down the left edge identifies the lane at a glance, and goes faint
     // while the lane is muted so the state reads from across the window.
     g.setColour (appliedLaneActive == 0 ? accent.withAlpha (0.25f) : accent);
-    g.fillRoundedRectangle (bounds.getX() + 10.0f, bounds.getY() + 14.0f, (float) railWidth,
+    g.fillRoundedRectangle (bounds.getX() + 10.0f, bounds.getY() + 14.0f, (float) lane::railWidth,
                             bounds.getHeight() - 28.0f, 1.5f);
 
     g.setColour (theme::outline);
@@ -440,12 +432,12 @@ void LaneComponent::paint (juce::Graphics& g)
 
 void LaneComponent::resized()
 {
-    auto r = getLocalBounds().reduced (10, 10);
+    auto r = getLocalBounds().reduced (lane::inset, 10);
 
-    r.removeFromLeft (railWidth);
-    r.removeFromLeft (8);
+    r.removeFromLeft (lane::railWidth);
+    r.removeFromLeft (lane::railGap);
 
-    auto leftColumn = r.removeFromLeft (numberWidth);
+    auto leftColumn = r.removeFromLeft (lane::numberWidth);
 
     // The lane number and its mute share the top row: the toggle belongs with the label
     // that identifies the lane, and the layer buttons below keep their full width.
@@ -465,15 +457,18 @@ void LaneComponent::resized()
         leftColumn.removeFromTop (2);
     }
 
-    r.removeFromLeft (10);
+    r.removeFromLeft (lane::columnGap);
 
     //--------------------------------------------------------------------------
-    auto paramBlock = r.removeFromRight (paramWidth);
-    r.removeFromRight (dividerGap);
-    dividerX = r.getRight() + dividerGap / 2;
+    auto paramBlock = r.removeFromRight (lane::paramWidth);
+    r.removeFromRight (lane::dividerGap);
+    dividerX = r.getRight() + lane::dividerGap / 2;
 
     //--------------------------------------------------------------------------
-    const int slotWidth = r.getWidth() / params::numSteps;
+    // A fixed pitch rather than a share of what is left over, so a step is the same width
+    // whatever zoom the window is at -- the window itself is sized from this. Clamped only
+    // so a host that forces the editor narrower than its native size still lays out.
+    const int slotWidth = juce::jmin (lane::stepSlotWidth, r.getWidth() / params::numSteps);
 
     for (auto* slot : slots)
         slot->setBounds (r.removeFromLeft (slotWidth).withTrimmedRight (slotGap));

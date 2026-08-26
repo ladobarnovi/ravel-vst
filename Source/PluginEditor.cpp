@@ -2,18 +2,19 @@
 
 namespace
 {
-    // The window's native (100%-zoom) width. Wide enough for 16 step slots at the same
-    // per-step width the layout used to give 8, plus the fixed-width number column and
-    // parameter block beside them. The user can zoom in or out from here; see
-    // RavelAudioProcessorEditor::updateSizeConstraints().
-    constexpr int nativeContentWidth = 1620;
-
     constexpr int laneHeight    = 140;
     constexpr int headerHeight  = 26;
     constexpr int laneBarHeight = 22;
     constexpr int panelHeight   = 152;
     constexpr int gap           = 8;
     constexpr int margin        = 12;
+
+    // The window's native (100%-zoom) width: whatever a lane needs to draw 16 steps at
+    // lane::stepSlotWidth, plus the margin either side. Derived rather than typed in, so
+    // changing the step width moves the window with it instead of leaving a gap between
+    // the last step and the parameter block. The user can zoom in or out from here; see
+    // RavelAudioProcessorEditor::updateSizeConstraints().
+    constexpr int nativeContentWidth = margin * 2 + lane::nativeWidth;
 
     // Square, and taller than a value row: the arrows are a click target rather than a line
     // of text, and 22px keeps them comfortably hittable inside a 26px header.

@@ -4,6 +4,34 @@
 #include "Parameters.h"
 #include "Theme.h"
 
+/** Fixed horizontal metrics of a lane.
+
+    These live in the header rather than in LaneComponent.cpp because the editor's native
+    window width is the sum of them plus the step area: the window is sized to give the
+    steps the width they want, rather than the steps taking whatever a fixed window leaves
+    over. See nativeContentWidth in PluginEditor.cpp.
+*/
+namespace lane
+{
+    inline constexpr int inset       = 10;  ///< Reduction applied to the lane's own bounds.
+    inline constexpr int railWidth   = 3;   ///< The lane's accent stripe down the left edge.
+    inline constexpr int railGap     = 8;
+    inline constexpr int numberWidth = 54;  ///< Number label, and the layer buttons under it.
+    inline constexpr int columnGap   = 10;  ///< That column to the first step.
+    inline constexpr int dividerGap  = 14;  ///< Last step to the parameter block; holds the hairline.
+    inline constexpr int paramWidth  = 280;
+
+    /** Pitch of one step slot: the bar plus the gap before the next slot. */
+    inline constexpr int stepSlotWidth = 40;
+
+    /** Everything in a lane that is not step area. */
+    inline constexpr int chromeWidth = inset * 2 + railWidth + railGap + numberWidth
+                                         + columnGap + dividerGap + paramWidth;
+
+    /** The width a lane wants: its chrome plus a full-size slot per step. */
+    inline constexpr int nativeWidth = chromeWidth + params::numSteps * stepSlotWidth;
+}
+
 /** Which of a step's three continuous parameters the tall bars currently edit.
 
     All three are full-height bars stacked in the same rectangle with one visible at a time,
