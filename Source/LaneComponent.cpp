@@ -2,7 +2,7 @@
 
 namespace
 {
-    constexpr int trigHeight   = 5;
+    constexpr int trigHeight   = 11;
     constexpr int trigGap      = 4;
 
     // Wide enough that the sixteen trig strips read as sixteen marks rather than as one line
@@ -53,6 +53,7 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
 
     onButton.setColour (juce::ToggleButton::tickColourId, accent);
     onButton.setTooltip ("Mute or unmute this step");
+    onButton.setMouseCursor (juce::MouseCursor::PointingHandCursor);
     theme::setRole (onButton, theme::Role::stepTrig);
     addAndMakeVisible (onButton);
 

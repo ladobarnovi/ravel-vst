@@ -547,6 +547,6 @@ private:
         else
             g.setColour (highlighted ? theme::outline.brighter (0.3f) : theme::outline);
 
-        g.fillRoundedRectangle (bounds, bounds.getHeight() * 0.5f);
+        g.fillRoundedRectangle (bounds, 2.0f);
     }
 };
