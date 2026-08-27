@@ -61,6 +61,7 @@ private:
         std::atomic<float>* chance[params::numSteps] {};
         std::atomic<float>* stepVelocity[params::numSteps] {};
         std::atomic<float>* stepGate[params::numSteps] {};
+        std::atomic<float>* stepSlide[params::numSteps] {};
         std::atomic<float>* active    = nullptr;
         std::atomic<float>* length    = nullptr;
         std::atomic<float>* division  = nullptr;

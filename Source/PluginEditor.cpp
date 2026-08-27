@@ -2,7 +2,10 @@
 
 namespace
 {
-    constexpr int laneHeight    = 140;
+    // Tall enough for the left column's five layer buttons (Value, Velocity, Prob, Gate,
+    // Slide) plus the lane number above them; the step bars take whatever is left, so a taller
+    // lane just makes them taller.
+    constexpr int laneHeight    = 150;
     constexpr int headerHeight  = 26;
     constexpr int laneBarHeight = 22;
     constexpr int panelHeight   = 152;

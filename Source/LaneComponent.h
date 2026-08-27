@@ -40,10 +40,10 @@ namespace lane
     bar keeps its own parameter attachment, since nothing has to be rebound when the
     selection changes.
 */
-enum class StepLayer { value = 0, velocity = 1, chance = 2, gate = 3 };
+enum class StepLayer { value = 0, velocity = 1, chance = 2, gate = 3, slide = 4 };
 
 /** How many layers a step has, and how many StepLayer values there are. */
-inline constexpr int numStepLayers = 4;
+inline constexpr int numStepLayers = 5;
 
 //==============================================================================
 /** One step: a tall bar for the selected layer, ticks for the others, and a trig strip. */
@@ -87,13 +87,14 @@ private:
     /** The rectangle the bars share, which is the slot minus the trig strip. */
     juce::Rectangle<int> barArea() const;
 
-    juce::Slider valueSlider, velocitySlider, chanceSlider, gateSlider;
+    juce::Slider valueSlider, velocitySlider, chanceSlider, gateSlider, slideSlider;
     juce::ToggleButton onButton;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> valueAttachment,
                                                                          velocityAttachment,
                                                                          chanceAttachment,
-                                                                         gateAttachment;
+                                                                         gateAttachment,
+                                                                         slideAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> onAttachment;
 
     juce::Colour accent;
@@ -177,7 +178,8 @@ private:
     juce::TextButton layerButtons[numStepLayers] { juce::TextButton ("Value"),
                                                    juce::TextButton ("Velocity"),
                                                    juce::TextButton ("Prob"),
-                                                   juce::TextButton ("Gate") };
+                                                   juce::TextButton ("Gate"),
+                                                   juce::TextButton ("Slide") };
 
     StepLayer currentLayer = StepLayer::value;
     bool layerSelectionAvailable = true;

@@ -29,10 +29,11 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
         { velocitySlider, params::stepVelocityId (laneIndex, stepIndex), 1.0,  "This step's accent, as a trim on the global Velocity" },
         { chanceSlider,   params::stepChanceId (laneIndex, stepIndex),   1.0,  "Probability this step fires" },
         { gateSlider,     params::stepGateId (laneIndex, stepIndex),     60.0, "How long this step's note is held, as % of the step" },
+        { slideSlider,    params::stepSlideId (laneIndex, stepIndex),    0.0,  "Glide into this step's pitch from the previous note; 0% is an instant jump" },
     };
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>* attachments[]
-        { &valueAttachment, &velocityAttachment, &chanceAttachment, &gateAttachment };
+        { &valueAttachment, &velocityAttachment, &chanceAttachment, &gateAttachment, &slideAttachment };
 
     for (int i = 0; i < numStepLayers; ++i)
     {
@@ -75,6 +76,7 @@ juce::Slider& StepSlot::sliderFor (StepLayer layer) noexcept
         case StepLayer::velocity: return velocitySlider;
         case StepLayer::chance:   return chanceSlider;
         case StepLayer::gate:     return gateSlider;
+        case StepLayer::slide:    return slideSlider;
         case StepLayer::value:
         default:                  return valueSlider;
     }
@@ -84,7 +86,8 @@ void StepSlot::setLayer (StepLayer layer)
 {
     currentLayer = layer;
 
-    for (auto l : { StepLayer::value, StepLayer::velocity, StepLayer::chance, StepLayer::gate })
+    for (auto l : { StepLayer::value, StepLayer::velocity, StepLayer::chance,
+                    StepLayer::gate, StepLayer::slide })
         sliderFor (l).setVisible (l == layer);
 
     applyTrigState();
@@ -196,6 +199,11 @@ void StepSlot::paintOverChildren (juce::Graphics& g)
     if (noteLayersAvailable && currentLayer != StepLayer::gate && std::abs (gateSlider.getValue() - 60.0) > 0.5)
         drawLayerTick (g, gateSlider, StepLayer::gate);
 
+    // Slide, like velocity and gate, only means anything for notes, so its tick comes off in
+    // CC mode. Its default is zero -- no glide -- so an untouched lane draws no slide marks.
+    if (noteLayersAvailable && currentLayer != StepLayer::slide && slideSlider.getValue() > 0.001)
+        drawLayerTick (g, slideSlider, StepLayer::slide);
+
     if (! playing)
         return;
 
@@ -217,6 +225,7 @@ void StepSlot::resized()
     velocitySlider.setBounds (r);
     chanceSlider.setBounds (r);
     gateSlider.setBounds (r);
+    slideSlider.setBounds (r);
 }
 
 void StepSlot::setPlaying (bool shouldBePlaying)
@@ -302,6 +311,7 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
         "Bars edit each step's velocity accent",
         "Bars edit each step's probability of firing",
         "Bars edit each step's gate, how long its note is held",
+        "Bars edit each step's slide, how long the pitch glides in from the previous note",
     };
 
     for (int i = 0; i < numStepLayers; ++i)
