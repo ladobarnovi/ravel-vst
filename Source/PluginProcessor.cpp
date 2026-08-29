@@ -34,7 +34,8 @@ RavelAudioProcessor::RavelAudioProcessor()
         lp.ccChannel = apvts.getRawParameterValue (params::laneCcChanId (lane));
     }
 
-    pOutputMode  = apvts.getRawParameterValue (params::outputModeId);
+    pNotesOn     = apvts.getRawParameterValue (params::notesOnId);
+    pCcOn        = apvts.getRawParameterValue (params::ccOnId);
     pTriggerSrc  = apvts.getRawParameterValue (params::triggerSrcId);
     pQuantize    = apvts.getRawParameterValue (params::quantizeId);
     pBendRange   = apvts.getRawParameterValue (params::bendRangeId);
@@ -115,7 +116,8 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
         ls.ccChannel = (int) std::lround (lp.ccChannel->load());
     }
 
-    s.outputMode    = (int) std::lround (pOutputMode->load());
+    s.notesOn       = pNotesOn->load() > 0.5f;
+    s.ccOn          = pCcOn->load() > 0.5f;
     s.triggerSource = (int) std::lround (pTriggerSrc->load());
     s.quantize      = pQuantize->load() > 0.5f;
     s.bendRange     = (int) std::lround (pBendRange->load());
@@ -215,7 +217,7 @@ void RavelAudioProcessor::setStateInformation (const void* data, int sizeInBytes
         if (xml->hasTagName (apvts.state.getType()) || xml->hasTagName ("TRILANE"))
         {
             auto tree = juce::ValueTree::fromXml (*xml);
-            migrateFixedThreeLaneState (tree);
+            migrateLegacyState (tree);
             apvts.replaceState (tree);
 
             // Whatever this instance held before the host handed it a session is not a state
@@ -226,13 +228,13 @@ void RavelAudioProcessor::setStateInformation (const void* data, int sizeInBytes
 }
 
 //==============================================================================
-void RavelAudioProcessor::migrateFixedThreeLaneState (juce::ValueTree& tree)
+void RavelAudioProcessor::migrateLegacyState (juce::ValueTree& tree)
 {
     // Anything APVTS does not find in the tree comes back as that parameter's default, so a
     // session written before lanes were countable would silently load as a one-lane instance
     // with its other two patterns hidden. The absence of lane_count is what identifies such a
     // session, and three is what it was written with.
-    juce::ValueTree laneCount, trigger;
+    juce::ValueTree laneCount, trigger, outputMode;
 
     for (int i = 0; i < tree.getNumChildren(); ++i)
     {
@@ -241,20 +243,42 @@ void RavelAudioProcessor::migrateFixedThreeLaneState (juce::ValueTree& tree)
 
         if (id == params::laneCountId) laneCount = child;
         else if (id == params::triggerSrcId) trigger = child;
+        else if (id == "out_mode") outputMode = child;
     }
 
-    if (laneCount.isValid())
-        return;
+    if (! laneCount.isValid())
+    {
+        juce::ValueTree added ("PARAM");
+        added.setProperty ("id", params::laneCountId, nullptr);
+        added.setProperty ("value", 3.0f, nullptr);
+        tree.appendChild (added, nullptr);
 
-    juce::ValueTree added ("PARAM");
-    added.setProperty ("id", params::laneCountId, nullptr);
-    added.setProperty ("value", 3.0f, nullptr);
-    tree.appendChild (added, nullptr);
+        // Trigger gained a "Lane 4" entry ahead of "Any Lane", so the old index for Any --
+        // which was the end of a three-lane list -- now names a lane instead of naming all
+        // of them.
+        if (trigger.isValid() && (int) std::lround ((float) trigger.getProperty ("value")) == 3)
+            trigger.setProperty ("value", (float) params::numLanes, nullptr);
+    }
 
-    // Trigger gained a "Lane 4" entry ahead of "Any Lane", so the old index for Any -- which
-    // was the end of a three-lane list -- now names a lane instead of naming all of them.
-    if (trigger.isValid() && (int) std::lround ((float) trigger.getProperty ("value")) == 3)
-        trigger.setProperty ("value", (float) params::numLanes, nullptr);
+    // "Output" used to be one exclusive choice (0 Notes, 1 CC). It is now the two independent
+    // switches Notes and CC, so an old session's single value has to be split into both --
+    // this check is unrelated to lane_count above and has to run on any session, old or new,
+    // that still carries the retired id.
+    if (outputMode.isValid())
+    {
+        const bool wasCC = (int) std::lround ((float) outputMode.getProperty ("value")) == 1;
+        tree.removeChild (outputMode, nullptr);
+
+        juce::ValueTree notesOn ("PARAM");
+        notesOn.setProperty ("id", params::notesOnId, nullptr);
+        notesOn.setProperty ("value", wasCC ? 0.0f : 1.0f, nullptr);
+        tree.appendChild (notesOn, nullptr);
+
+        juce::ValueTree ccOn ("PARAM");
+        ccOn.setProperty ("id", params::ccOnId, nullptr);
+        ccOn.setProperty ("value", wasCC ? 1.0f : 0.0f, nullptr);
+        tree.appendChild (ccOn, nullptr);
+    }
 }
 
 //==============================================================================

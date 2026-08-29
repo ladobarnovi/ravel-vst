@@ -77,13 +77,15 @@ private:
 
     SequencerEngine::Snapshot buildSnapshot() const;
 
-    /** Fills in what a session saved while the plugin still had a fixed three lanes does
-        not carry. See the definition for what is inferred and why. */
-    static void migrateFixedThreeLaneState (juce::ValueTree& tree);
+    /** Patches up state saved by an older version of the plugin: a fixed three lanes before
+        the lane count existed, or the single exclusive Output choice before Notes and CC
+        became independent switches. See the definition for what is inferred and why. */
+    static void migrateLegacyState (juce::ValueTree& tree);
 
     LaneParams laneParams[params::numLanes];
 
-    std::atomic<float>* pOutputMode  = nullptr;
+    std::atomic<float>* pNotesOn    = nullptr;
+    std::atomic<float>* pCcOn       = nullptr;
     std::atomic<float>* pTriggerSrc  = nullptr;
     std::atomic<float>* pQuantize    = nullptr;
     std::atomic<float>* pBendRange   = nullptr;

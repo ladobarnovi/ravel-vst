@@ -84,13 +84,18 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
 
     auto& state = processorRef.apvts;
 
-    // The two top-level mode switches: what the plugin emits, and whether the lanes are
-    // mixed into one voice or run as three.
-    outputGroup.add (params::outputModeId, "Output");
+    // The top-level switches: what the plugin emits, and whether the lanes are mixed into
+    // one voice or run independently. Notes and CC are independent of each other -- both can
+    // be on together, so one instance can drive a note track and a CC loopback at once.
+    outputGroup.add (params::notesOnId, "Notes")
+               ->setTooltip ("Emit MIDI notes for the mixed pitch, or each lane's own note "
+                             "in Poly");
+    outputGroup.add (params::ccOnId, "CC")
+               ->setTooltip ("Emit the mix CC, and any lane with its own CC switched on");
     outputGroup.add (params::polyModeId, "Poly")
                ->setTooltip ("Each lane triggers its own note off its own clock, instead of "
                              "the three mixing into one");
-    outputGroup.setColumns (2);
+    outputGroup.setColumns (3);
     content.addAndMakeVisible (outputGroup);
 
     for (int lane = 0; lane < params::numLanes; ++lane)
@@ -114,7 +119,8 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
     quantizeParam   = state.getRawParameterValue (params::quantizeId);
     scaleParam      = state.getRawParameterValue (params::scaleId);
     polyModeParam   = state.getRawParameterValue (params::polyModeId);
-    outputModeParam = state.getRawParameterValue (params::outputModeId);
+    notesOnParam    = state.getRawParameterValue (params::notesOnId);
+    ccOnParam       = state.getRawParameterValue (params::ccOnId);
     laneCountParam  = state.getRawParameterValue (params::laneCountId);
 
     // Sizes the window as a side effect, so this stands in for the setSize() a
@@ -123,8 +129,13 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
     applyLaneCount ((int) std::lround (laneCountParam->load()));
 
     // Up front rather than left to the first timer tick, so an editor reopened on a session
-    // already in CC mode never flashes a selector it is about to take away.
-    applyOutputMode ((int) std::lround (outputModeParam->load()));
+    // with Notes off never flashes a selector it is about to take away.
+    lastNotesOn = notesOnParam->load() > 0.5f ? 1 : 0;
+    applyNotesOn (lastNotesOn != 0);
+
+    lastCcOn = ccOnParam->load() > 0.5f ? 1 : 0;
+    if (slewRow != nullptr)
+        slewRow->setDimmed (lastCcOn == 0);
 
     // The zoom the window was last closed at, stored as plain properties on the state tree
     // rather than as a parameter: it's UI state, not something a host should automate or
@@ -168,7 +179,9 @@ void RavelAudioProcessorEditor::buildTabs()
     auto& bend = pitchPage.addColumn ("Bend");
     bendRangeRow = bend.add (params::bendRangeId, "Bend range");
     bend.add (params::offsetId, "Offset");
-    bend.add (params::slewId,   "Slew");
+    slewRow = bend.add (params::slewId, "Slew");
+    slewRow->setTooltip ("Smooths the CC output only -- never touches pitch. Dimmed while "
+                         "CC is off, since it has nothing to smooth");
 
     auto& voice = pitchPage.addColumn ("Voice");
     voice.add (params::velocityId,   "Velocity");
@@ -291,21 +304,15 @@ void RavelAudioProcessorEditor::applyLaneCount (int newCount)
     updateSizeConstraints();
 }
 
-void RavelAudioProcessorEditor::applyOutputMode (int newMode)
+void RavelAudioProcessorEditor::applyNotesOn (bool notesOn)
 {
-    if (newMode == lastOutputMode)
-        return;
-
-    lastOutputMode = newMode;
-
-    // In CC mode a lane is a plain value sequencer. Velocity and gate are unread there --
-    // both are only ever arguments to startNote -- and the selector is not wanted for chance
-    // alone, so it goes entirely and the bars edit Value. Chance does still gate the mix, and
-    // so still shapes the CC stream, which is why the slots go on drawing its ticks.
-    const bool selectableLayers = (newMode == params::outNotes);
-
+    // With Notes off a lane is a plain value sequencer. Velocity, gate and slide are unread
+    // there -- all three are only ever arguments to startNote -- and the selector is not
+    // wanted for chance alone, so it goes entirely and the bars edit Value. Chance does still
+    // gate the mix, and so still shapes the CC stream, which is why the slots go on drawing
+    // its ticks.
     for (auto* lane : lanes)
-        lane->setLayerSelectionAvailable (selectableLayers);
+        lane->setLayerSelectionAvailable (notesOn);
 }
 
 //==============================================================================
@@ -480,8 +487,27 @@ void RavelAudioProcessorEditor::timerCallback()
     if (laneCountParam != nullptr)
         applyLaneCount ((int) std::lround (laneCountParam->load()));
 
-    if (outputModeParam != nullptr)
-        applyOutputMode ((int) std::lround (outputModeParam->load()));
+    if (notesOnParam != nullptr)
+    {
+        const int notesOn = notesOnParam->load() > 0.5f ? 1 : 0;
+
+        if (notesOn != lastNotesOn)
+        {
+            lastNotesOn = notesOn;
+            applyNotesOn (notesOn != 0);
+        }
+    }
+
+    if (ccOnParam != nullptr && slewRow != nullptr)
+    {
+        const int ccOn = ccOnParam->load() > 0.5f ? 1 : 0;
+
+        if (ccOn != lastCcOn)
+        {
+            lastCcOn = ccOn;
+            slewRow->setDimmed (ccOn == 0);
+        }
+    }
 
     if (polyModeParam != nullptr)
     {

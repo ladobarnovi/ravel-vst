@@ -34,7 +34,6 @@ inline constexpr int divIndex_1_16 = 6;
 
 inline const juce::StringArray directionNames  { "Forward", "Reverse", "Ping-Pong", "Random" };
 inline const juce::StringArray modeNames       { "Add", "Multiply", "Max", "S&H" };
-inline const juce::StringArray outputModeNames { "Notes", "CC" };
 inline const juce::StringArray triggerNames    { "Lane 1", "Lane 2", "Lane 3", "Lane 4", "Any Lane" };
 
 //==============================================================================
@@ -65,9 +64,6 @@ inline int pitchBendForSemitones (float semitones, int bendRange) noexcept
 
 // Combine-mode indices, used by the engine's switch.
 enum CombineMode { modeAdd = 0, modeMultiply = 1, modeMax = 2, modeSampleHold = 3 };
-
-// Output-mode indices: the two are mutually exclusive.
-enum OutputMode { outNotes = 0, outCC = 1 };
 
 //==============================================================================
 // Scales are stored as steps of an equal division of the octave rather than as semitones,
@@ -276,8 +272,10 @@ juce::String laneCcOnId     (int lane);
 juce::String laneCcNumId    (int lane);
 juce::String laneCcChanId   (int lane);
 
-// Global / output-section parameter IDs.
-inline constexpr auto outputModeId   = "out_mode";
+// Global / output-section parameter IDs. Notes and CC are independent switches -- both can
+// be on together, so one instance can drive a note track and a CC loopback at once.
+inline constexpr auto notesOnId      = "notes_on";
+inline constexpr auto ccOnId         = "cc_on";
 inline constexpr auto triggerSrcId   = "trig_src";
 inline constexpr auto quantizeId     = "quantize";
 inline constexpr auto bendRangeId    = "bend_range";

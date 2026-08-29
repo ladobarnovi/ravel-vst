@@ -5,8 +5,8 @@ with one lane and goes up to four, added one at a time.
 
 Each lane is an independent 16-step sequencer with its own **length**, **clock rate**,
 **direction** and **depth**. The lanes are folded together into one value, and that value
-drives either note pitch or a MIDI CC -- or, in **Poly** mode, each lane triggers its own note
-off its own clock.
+drives note pitch, a MIDI CC, or both at once -- or, in **Poly** mode, each lane triggers its
+own note off its own clock.
 
 ---
 
@@ -38,13 +38,13 @@ The sixteen tall bars edit one of those per-step rows at a time, picked with the
 selected show as faint ticks across the bars, and only where they are away from their default,
 so an untouched lane stays clean.
 
-**In CC mode the selector disappears and the bars edit Value.** A lane is a plain value
-sequencer there: velocity and gate are read only when a note is started, so in CC mode neither
-does anything, and their ticks come off with the selector. Chance is different — it decides
-whether a step reaches the mix at all, and the mix *is* the CC value, so it goes on working in
-CC mode even though there is no longer a button for it. Its ticks stay drawn for exactly that
-reason: a step whose probability is still making the CC output jump should not be doing it
-invisibly. Switch back to Notes to edit chance again.
+**With Notes off the selector disappears and the bars edit Value.** A lane is a plain value
+sequencer there: velocity, gate and slide are only ever read when a note is started, so with
+Notes off none of them does anything, and their ticks come off with the selector. Chance is
+different — it decides whether a step reaches the mix at all, and the mix drives the CC output
+too, so it goes on working even though there is no longer a button for it. Its ticks stay
+drawn for exactly that reason: a step whose probability is still making the CC output jump
+should not be doing it invisibly. Switch Notes back on to edit chance again.
 
 ### Probability
 
@@ -151,8 +151,10 @@ what makes it automatable and undoable like any other control.
 
 **Header and tabs**
 
-The header carries **Output** (Notes or CC — mutually exclusive) and **Poly**. Everything
-else global lives in three tabs:
+The header carries **Notes**, **CC** and **Poly** — three independent switches, so one
+instance can drive a note track and a CC loopback at once, or neither. Turning Notes off
+takes the per-step layer selector with it (see above), and turning CC off dims **Slew**,
+since Slew only ever smooths the CC output. Everything else global lives in three tabs:
 
 - **Pitch** — Root, Scale, Range, Quantize / Bend range, Offset, Slew / Velocity, Voices
 - **Timing** — Swing, Free run, Trigger
@@ -357,7 +359,9 @@ There is no such mechanism in the plugin format. What works is a MIDI CC loopbac
 1. Install [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html) and create a port.
 2. **Preferences → Link/Tempo/MIDI**: enable that port as an **Input**, with both
    **Track** and **Remote** switched on.
-3. Set Ravel's **Output** to `CC`, and pick a **CC Number**.
+3. Turn on Ravel's **CC** switch and pick a **CC Number** (Routing tab). Leave **Notes** on
+   too if the same instance is also sequencing a track, or turn it off if this instance is
+   CC-only.
 4. On the track receiving Ravel's MIDI, set **MIDI To → loopMIDI Port**.
 5. Start playback so CC is flowing, press **Ctrl+M**, click the parameter you want to
    modulate, and Live latches onto the incoming CC.

@@ -109,10 +109,11 @@ private:
     /** Shows that many lanes, and resizes the window to fit. */
     void applyLaneCount (int newCount);
 
-    /** Hides the per-step layer selector in CC mode, where a lane is a plain value
-        sequencer. Applied from the constructor as well as the timer, so an editor opened
-        in CC mode never shows the selector even briefly. */
-    void applyOutputMode (int newMode);
+    /** Hides the per-step layer selector while Notes is off, where a lane is a plain value
+        sequencer -- velocity, gate and slide are only ever read on the note path. Applied
+        from the constructor as well as the timer, so an editor opened with Notes off never
+        shows the selector even briefly. */
+    void applyNotesOn (bool notesOn);
 
     /** Takes out the lane a lane's own Remove button belongs to. Lives here rather than in
         LaneComponent because it is the stack that changes: every lane above this one moves
@@ -135,6 +136,10 @@ private:
     ControlRow* quantizeRow = nullptr;
     ControlRow* triggerRow = nullptr;
 
+    // Slew only ever smooths the CC output, so it goes dim whenever CC is off -- otherwise
+    // it looks live while doing nothing.
+    ControlRow* slewRow = nullptr;
+
     // One per lane, dimmed while the instance does not have that lane.
     ControlGroup* laneRoutingColumns[params::numLanes] {};
 
@@ -149,10 +154,14 @@ private:
     std::atomic<float>* polyModeParam = nullptr;
     int lastPolyMode = -1;
 
-    // Watched because it decides which per-step layers a lane can usefully edit: velocity
-    // and gate are read only on the note path.
-    std::atomic<float>* outputModeParam = nullptr;
-    int lastOutputMode = -1;
+    // Watched because it decides which per-step layers a lane can usefully edit: velocity,
+    // gate and slide are read only on the note path.
+    std::atomic<float>* notesOnParam = nullptr;
+    int lastNotesOn = -1;
+
+    // Watched because it decides whether Slew is doing anything.
+    std::atomic<float>* ccOnParam = nullptr;
+    int lastCcOn = -1;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RavelAudioProcessorEditor)
 };

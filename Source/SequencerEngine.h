@@ -60,7 +60,10 @@ public:
     {
         LaneSnapshot lanes[params::numLanes];
 
-        int   outputMode    = params::outNotes;
+        // Independent -- both can be on together, and both can be off to mute the instance
+        // entirely.
+        bool  notesOn       = true;
+        bool  ccOn          = false;
         int   triggerSource = 0;
         bool  quantize      = true;
         int   bendRange     = 2;

@@ -177,7 +177,8 @@ namespace
 
         s.lanes[0].depth = 1.0f;
 
-        s.outputMode    = params::outNotes;
+        s.notesOn       = true;
+        s.ccOn          = false;
         s.triggerSource = 0;
         s.root          = 48;
         s.rangeSteps    = 12;
@@ -438,7 +439,8 @@ int main()
         auto s = baseSnapshot();
         s.lanes[0].length = 4;
         s.lanes[0].values[1] = 1.0f;
-        s.outputMode = params::outCC;
+        s.notesOn = false;
+        s.ccOn = true;
         s.ccNumber = 74;
 
         SequencerEngine engine;
@@ -1344,7 +1346,8 @@ int main()
         s.lanes[0].ccOn = true;
         s.lanes[0].ccNumber = 20;
         s.lanes[0].ccChannel = 3;
-        s.outputMode = params::outCC;
+        s.notesOn = false;
+        s.ccOn = true;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1373,7 +1376,8 @@ int main()
         s.lanes[0].values[1] = 1.0f;
         s.lanes[0].ccOn = false;
         s.lanes[0].ccNumber = 20;
-        s.outputMode = params::outCC;
+        s.notesOn = false;
+        s.ccOn = true;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);

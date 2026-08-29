@@ -469,8 +469,8 @@ void SequencerEngine::process (const Snapshot& s,
     // be let go or it would hang forever.
     retireUnownedVoices (out, 0, voiceLimit, s.polyMode);
 
-    const bool notesEnabled = (s.outputMode == params::outNotes);
-    const bool ccEnabled    = (s.outputMode == params::outCC);
+    const bool notesEnabled = s.notesOn;
+    const bool ccEnabled    = s.ccOn;
 
     const int noteChannel = juce::jlimit (1, 16, s.midiChannel);
     const int bendRange   = juce::jlimit (1, 48, s.bendRange);

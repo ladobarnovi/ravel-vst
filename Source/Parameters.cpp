@@ -191,8 +191,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     layout.add (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { laneCountId, versionHint }, "Lanes", 1, numLanes, 1));
 
-    layout.add (std::make_unique<juce::AudioParameterChoice> (
-        juce::ParameterID { outputModeId, versionHint }, "Output", outputModeNames, outNotes));
+    // Independent rather than a single exclusive choice: a lane can drive a note track and
+    // a CC loopback from the same instance, and either can go off on its own to mute that
+    // side of the output without touching the other.
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { notesOnId, versionHint }, "Notes", true));
+
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { ccOnId, versionHint }, "CC", false));
 
     layout.add (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { triggerSrcId, versionHint }, "Trigger", triggerNames, 0));
