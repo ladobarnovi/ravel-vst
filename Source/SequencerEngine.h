@@ -34,12 +34,6 @@ public:
             next step without overlapping it; above that overlaps into it (see Voices). */
         float gate[params::numSteps] {};
 
-        /** Per-step pitch glide, 0..1. 0 is an instant jump to the note's pitch; higher values
-            glide into it from the previous note over a fraction of the step's length (see the
-            Glide handling in process()). Carried on the pitch wheel, so a glide wider than the
-            note channel's Bend Range saturates at the range rather than reaching further. */
-        float slide[params::numSteps] {};
-
         /** The lane's mute. False makes every one of its steps behave as if switched off:
             nothing added to the mix, nothing triggered, and its CC latched where it was. */
         bool  active    = true;
@@ -195,7 +189,6 @@ private:
         int   note     = 0;
         int   channel  = 1;
         int   bend     = -1;    // -1 means no bend is needed
-        float absolute = 0.0f;  // the unrounded pitch in semitones -- note + residual. Slide reads this.
     };
 
     static PitchResult pitchFor (float value, const Snapshot& s, int noteChannel, int bendRange) noexcept;
@@ -210,41 +203,6 @@ private:
     /** Allocates a slot in [begin, end), emits the bend and note-on, and arms the gate. */
     void startNote (juce::MidiBuffer& out, int sampleOffset, const PitchResult& pitch,
                     int velocity, int gateSamples, int begin, int end);
-
-    /** An in-progress pitch glide. One per note stream (the single mixed voice in mono, or
-        each lane in poly), driving the note channel's wheel from `fromSemis` to `toSemis`
-        over `totalSamples`. The note number is fixed at note-on -- only the bend moves -- so a
-        glide wider than the wheel's Bend Range saturates rather than reaching the far end.
-    */
-    struct Glide
-    {
-        bool  active       = false;
-        float fromSemis    = 0.0f;
-        float toSemis      = 0.0f;
-        int   noteNumber   = 0;
-        int   channel      = 1;
-        int   totalSamples = 1;
-        int   elapsed      = 0;
-        int   lastBend     = -1;   // last 14-bit value emitted, so a held value isn't re-sent
-    };
-
-    /** Advances every active glide by one sample and, on the rate-limit tick or on the sample
-        it completes, emits the interpolated wheel value if it has moved. */
-    void advanceGlides (juce::MidiBuffer& out, int sampleOffset, int bendRange);
-
-    /** Clears all glide state and forgets the last pitch, so nothing glides across a transport
-        stop, a mode switch or a return to CC output. */
-    void resetGlides() noexcept;
-
-    Glide glides[params::numLanes];
-
-    // Where each note stream last landed, in semitones, so the next slid step knows what to
-    // glide from. Index 0 is the mixed voice in mono; per lane in poly.
-    float lastPitchSemis[params::numLanes] {};
-    bool  lastPitchValid[params::numLanes] {};
-
-    // Shares the CC rate limit: glide wheel updates go out at most once every ccIntervalSamples.
-    int   glideCountdown = 0;
 
     float slewedValue = 0.0f;
     int   lastCcValue = -1;

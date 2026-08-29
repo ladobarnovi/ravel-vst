@@ -32,18 +32,18 @@ namespace lane
     inline constexpr int nativeWidth = chromeWidth + params::numSteps * stepSlotWidth;
 }
 
-/** Which of a step's three continuous parameters the tall bars currently edit.
+/** Which of a step's four continuous parameters the tall bars currently edit.
 
-    All three are full-height bars stacked in the same rectangle with one visible at a time,
-    rather than three smaller bars competing for the slot. The two that are hidden still show
+    All four are full-height bars stacked in the same rectangle with one visible at a time,
+    rather than four smaller bars competing for the slot. The three that are hidden still show
     as faint ticks, so the whole step stays readable while only one is editable -- and every
     bar keeps its own parameter attachment, since nothing has to be rebound when the
     selection changes.
 */
-enum class StepLayer { value = 0, velocity = 1, chance = 2, gate = 3, slide = 4 };
+enum class StepLayer { value = 0, velocity = 1, chance = 2, gate = 3 };
 
 /** How many layers a step has, and how many StepLayer values there are. */
-inline constexpr int numStepLayers = 5;
+inline constexpr int numStepLayers = 4;
 
 //==============================================================================
 /** One step: a tall bar for the selected layer, ticks for the others, and a trig strip. */
@@ -62,8 +62,8 @@ public:
         and its playhead but never competes with the lanes that are actually sounding. */
     void setLaneActive (bool laneIsActive);
 
-    /** False in CC mode, where velocity and gate are never read. Suppresses those two ticks,
-        which would otherwise go on showing values nothing in that mode acts on.
+    /** False with Notes off, where velocity and gate are never read. Suppresses those two
+        ticks, which would otherwise go on showing values nothing acts on.
 
         Chance ticks are deliberately not covered by this: chance still gates the mix, and so
         still shapes the CC output, even with the selector gone.
@@ -87,14 +87,13 @@ private:
     /** The rectangle the bars share, which is the slot minus the trig strip. */
     juce::Rectangle<int> barArea() const;
 
-    juce::Slider valueSlider, velocitySlider, chanceSlider, gateSlider, slideSlider;
+    juce::Slider valueSlider, velocitySlider, chanceSlider, gateSlider;
     juce::ToggleButton onButton;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> valueAttachment,
                                                                          velocityAttachment,
                                                                          chanceAttachment,
-                                                                         gateAttachment,
-                                                                         slideAttachment;
+                                                                         gateAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> onAttachment;
 
     juce::Colour accent;
@@ -132,13 +131,14 @@ public:
     /** Hidden on the last remaining lane, since an instance always has at least one. */
     void setCanRemove (bool canBeRemoved);
 
-    /** Takes the layer selector away for CC mode, leaving the bars editing Value.
+    /** Takes the layer selector away while Notes is off, leaving the bars editing Value.
 
-        Velocity and Gate are unread in that mode -- both are only ever arguments to
+        Velocity and Gate are unread with Notes off -- both are only ever arguments to
         startNote. Chance is not: it still gates whether a step reaches the mix, and the mix
-        is the CC value. It is hidden here because it is not wanted, not because it is inert,
-        so the slots go on drawing chance ticks -- see StepSlot::setNoteLayersAvailable. That
-        keeps a step whose probability is still shaping the CC stream from doing it invisibly.
+        is what CC follows. It is hidden here because it is not wanted, not because it is
+        inert, so the slots go on drawing chance ticks -- see StepSlot::setNoteLayersAvailable.
+        That keeps a step whose probability is still shaping the CC stream from doing it
+        invisibly.
     */
     void setLayerSelectionAvailable (bool available);
 
@@ -178,8 +178,7 @@ private:
     juce::TextButton layerButtons[numStepLayers] { juce::TextButton ("Value"),
                                                    juce::TextButton ("Velocity"),
                                                    juce::TextButton ("Prob"),
-                                                   juce::TextButton ("Gate"),
-                                                   juce::TextButton ("Slide") };
+                                                   juce::TextButton ("Gate") };
 
     StepLayer currentLayer = StepLayer::value;
     bool layerSelectionAvailable = true;

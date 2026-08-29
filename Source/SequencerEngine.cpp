@@ -40,15 +40,6 @@ namespace
     constexpr std::uint64_t probabilitySalt = 31;
     constexpr std::uint64_t humanizeSalt    = 97;
 
-    // A Slide of 1.0 glides for this fraction of the triggering step's own length; 0.0 is an
-    // instant jump. One whole step is the widest glide, and measuring it against the step means
-    // the wall-clock time follows both tempo and the lane's rate. This is the single number to
-    // change to make the maximum slide longer or shorter.
-    constexpr float maxSlideStepFraction = 1.0f;
-
-    // Below this a step's Slide reads as off. Matches the parameter's own 0.001 granularity.
-    constexpr float slideEpsilon = 0.001f;
-
     /** One RPN as three controller messages, matching the byte order JUCE's
         MidiRPNGenerator produces: parameter LSB, parameter MSB, then data entry MSB.
         Data entry LSB is only required for 14-bit values, which none of these are.
@@ -109,11 +100,7 @@ void SequencerEngine::reset()
         laneHeldValue[lane]   = 0.0f;
         laneSlewedValue[lane] = 0.0f;
         laneLastCcValue[lane] = -1;
-
-        lastPitchSemis[lane] = 0.0f;
     }
-
-    resetGlides();
 }
 
 //==============================================================================
@@ -307,8 +294,7 @@ SequencerEngine::PitchResult SequencerEngine::pitchFor (float value, const Snaps
         const int   degree    = (int) std::lround (value * (float) s.rangeSteps);
         const float absolute  = (float) s.root + params::scaleStepToSemitone (degree, s.scale);
 
-        result.note     = juce::jlimit (0, 127, (int) std::lround (absolute));
-        result.absolute = absolute;
+        result.note = juce::jlimit (0, 127, (int) std::lround (absolute));
 
         // A 12-EDO scale lands exactly on note numbers and the wheel is left alone, as it
         // always was. Any other EDO puts most of its degrees between the keys, so the
@@ -334,9 +320,8 @@ SequencerEngine::PitchResult SequencerEngine::pitchFor (float value, const Snaps
     // that merge MIDI channels when routing between tracks.
     const float absolute = (float) s.root + params::continuousSemitones (value, s.rangeSteps);
 
-    result.note     = juce::jlimit (0, 127, (int) std::lround (absolute));
-    result.bend     = params::pitchBendForSemitones (absolute - (float) result.note, bendRange);
-    result.absolute = absolute;
+    result.note = juce::jlimit (0, 127, (int) std::lround (absolute));
+    result.bend = params::pitchBendForSemitones (absolute - (float) result.note, bendRange);
 
     return result;
 }
@@ -382,59 +367,6 @@ void SequencerEngine::startNote (juce::MidiBuffer& out, int sampleOffset, const 
 }
 
 //==============================================================================
-void SequencerEngine::resetGlides() noexcept
-{
-    for (auto& g : glides)
-    {
-        g.active   = false;
-        g.elapsed  = 0;
-        g.lastBend = -1;
-    }
-
-    for (int i = 0; i < params::numLanes; ++i)
-        lastPitchValid[i] = false;
-
-    glideCountdown = 0;
-}
-
-void SequencerEngine::advanceGlides (juce::MidiBuffer& out, int sampleOffset, int bendRange)
-{
-    // One shared cadence for every stream: the wheel is written at most once per tick, so a
-    // short, steep glide can't turn into one pitch-bend message per sample.
-    const bool tick = (--glideCountdown <= 0);
-
-    if (tick)
-        glideCountdown = ccIntervalSamples;
-
-    for (auto& g : glides)
-    {
-        if (! g.active)
-            continue;
-
-        ++g.elapsed;
-        const bool done = g.elapsed >= g.totalSamples;
-
-        // The landing sample always writes, so the note settles exactly on its target however
-        // the tick happened to fall.
-        if (! tick && ! done)
-            continue;
-
-        const float frac     = done ? 1.0f : (float) g.elapsed / (float) g.totalSamples;
-        const float absolute = g.fromSemis + (g.toSemis - g.fromSemis) * frac;
-        const int   bend     = params::pitchBendForSemitones (absolute - (float) g.noteNumber, bendRange);
-
-        if (bend != g.lastBend)
-        {
-            out.addEvent (juce::MidiMessage::pitchWheel (g.channel, bend), sampleOffset);
-            g.lastBend = bend;
-        }
-
-        if (done)
-            g.active = false;
-    }
-}
-
-//==============================================================================
 void SequencerEngine::process (const Snapshot& s,
                                juce::MidiBuffer& out,
                                int numSamples,
@@ -447,7 +379,6 @@ void SequencerEngine::process (const Snapshot& s,
     if (! transportRunning || ppqPerSample <= 0.0)
     {
         releaseAllVoices (out, 0);
-        resetGlides();
         return;
     }
 
@@ -458,10 +389,6 @@ void SequencerEngine::process (const Snapshot& s,
     if (const int polyFlag = s.polyMode ? 1 : 0; configuredPolyMode != polyFlag)
     {
         releaseAllVoices (out, 0);
-
-        // The streams are laid out differently in the two modes, so a glide belonging to the
-        // old layout has nothing to continue into.
-        resetGlides();
         configuredPolyMode = polyFlag;
     }
 
@@ -478,35 +405,7 @@ void SequencerEngine::process (const Snapshot& s,
     // Pitch rides on the wheel whenever it can land between semitones: in continuous mode
     // always, and in quantized mode when the scale divides the octave into something other
     // than 12.
-    const bool usesBend = ! s.quantize || params::scaleNeedsBend (s.scale);
-
-    // A Slide is drawn on the wheel too, so a pattern with any slide in it forces the wheel
-    // into use even in plain 12-EDO, where pitch would otherwise never touch it. Only active
-    // lanes count -- a muted lane triggers nothing to glide.
-    bool anySlide = false;
-
-    for (int laneIndex = 0; laneIndex < params::numLanes && ! anySlide; ++laneIndex)
-    {
-        const auto& ln = s.lanes[laneIndex];
-
-        if (! ln.active)
-            continue;
-
-        for (int step = 0; step < params::numSteps; ++step)
-            if (ln.slide[step] > slideEpsilon)
-            {
-                anySlide = true;
-                break;
-            }
-    }
-
-    const bool wantsBend = usesBend || anySlide;
-
-    // A glide only makes sense while notes are being emitted and the wheel is in play. If
-    // either has just stopped being true, drop any glide that was mid-flight so a lingering
-    // ramp can't fight the centred wheel a non-bending mode leaves behind.
-    if (! notesEnabled || ! wantsBend)
-        resetGlides();
+    const bool wantsBend = ! s.quantize || params::scaleNeedsBend (s.scale);
 
     // The receiving instrument has to be told the bend range: an instrument left at its own
     // default while we scale for +/-2 semitones plays the wrong interval.
@@ -687,61 +586,18 @@ void SequencerEngine::process (const Snapshot& s,
         if (notesEnabled)
         {
             advanceVoices (out, n);
-            advanceGlides (out, n, bendRange);
 
             const auto gateSamplesFor = [&] (double stepPpq, float gatePercent)
             {
                 return (int) std::lround ((stepPpq / ppqPerSample) * (gatePercent * 0.01));
             };
 
-            // Fires one note on a given stream (0 for the mixed voice in mono, the lane in
-            // poly), arming its glide if the step slides and there is a previous pitch to glide
-            // from. The note number is fixed at the target; the glide only moves the wheel.
-            const auto fireNote = [&] (int stream, float value, int velocity, int gateSamples,
-                                       float slideAmount, double stepPpq, int begin, int end)
+            // Fires one note: pitchFor() already resolves whether this mode bends at all, so
+            // there is nothing left to do here but hand its result to the voice allocator.
+            const auto fireNote = [&] (float value, int velocity, int gateSamples, int begin, int end)
             {
-                auto pitch = pitchFor (value, s, noteChannel, bendRange);
-
-                const bool sliding = slideAmount > slideEpsilon && lastPitchValid[stream];
-
-                // The wheel value the note starts on: the previous pitch when sliding; the
-                // step's own residual (or dead centre) whenever the wheel is otherwise in play,
-                // so an interrupted glide can never leave the next note detuned; and nothing at
-                // all in plain 12-EDO with no slides, exactly as before this existed.
-                int initialBend;
-
-                if (sliding)
-                    initialBend = params::pitchBendForSemitones (lastPitchSemis[stream] - (float) pitch.note,
-                                                                 bendRange);
-                else if (wantsBend)
-                    initialBend = pitch.bend >= 0 ? pitch.bend : params::pitchBendCentre;
-                else
-                    initialBend = pitch.bend;
-
-                pitch.bend = initialBend;
+                const auto pitch = pitchFor (value, s, noteChannel, bendRange);
                 startNote (out, n, pitch, velocity, gateSamples, begin, end);
-
-                auto& g = glides[stream];
-
-                if (sliding)
-                {
-                    g.active       = true;
-                    g.fromSemis    = lastPitchSemis[stream];
-                    g.toSemis      = pitch.absolute;
-                    g.noteNumber   = pitch.note;
-                    g.channel      = pitch.channel;
-                    g.totalSamples = juce::jmax (1, (int) std::lround (
-                                         slideAmount * maxSlideStepFraction * (stepPpq / ppqPerSample)));
-                    g.elapsed      = 0;
-                    g.lastBend     = initialBend;
-                }
-                else
-                {
-                    g.active = false;
-                }
-
-                lastPitchSemis[stream] = pitch.absolute;
-                lastPitchValid[stream] = true;
             };
 
             if (s.polyMode)
@@ -760,24 +616,20 @@ void SequencerEngine::process (const Snapshot& s,
 
                     const int begin = laneIndex * voicesPerLane;
 
-                    fireNote (laneIndex, value,
+                    fireNote (value,
                               velocityFor (s, laneIndex, step),
                               gateSamplesFor (laneTriggerStepPpq[laneIndex], gateFor (s, laneIndex, step)),
-                              s.lanes[laneIndex].slide[(size_t) step],
-                              laneTriggerStepPpq[laneIndex],
                               begin, begin + voiceLimit);
                 }
             }
             else if (triggered)
             {
                 // The note belongs to whichever step of whichever lane triggered it, so that
-                // step's accent, gate and slide all apply even though the pitch came from the
+                // step's accent and gate both apply even though the pitch came from the
                 // combined mix.
-                fireNote (0, mix,
+                fireNote (mix,
                           velocityFor (s, triggerLane, triggerStep),
                           gateSamplesFor (triggerStepPpq, gateFor (s, triggerLane, triggerStep)),
-                          s.lanes[triggerLane].slide[(size_t) triggerStep],
-                          triggerStepPpq,
                           0, voiceLimit);
             }
         }

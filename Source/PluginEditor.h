@@ -110,9 +110,9 @@ private:
     void applyLaneCount (int newCount);
 
     /** Hides the per-step layer selector while Notes is off, where a lane is a plain value
-        sequencer -- velocity, gate and slide are only ever read on the note path. Applied
-        from the constructor as well as the timer, so an editor opened with Notes off never
-        shows the selector even briefly. */
+        sequencer -- velocity and gate are only ever read on the note path. Applied from the
+        constructor as well as the timer, so an editor opened with Notes off never shows the
+        selector even briefly. */
     void applyNotesOn (bool notesOn);
 
     /** Takes out the lane a lane's own Remove button belongs to. Lives here rather than in
@@ -154,8 +154,8 @@ private:
     std::atomic<float>* polyModeParam = nullptr;
     int lastPolyMode = -1;
 
-    // Watched because it decides which per-step layers a lane can usefully edit: velocity,
-    // gate and slide are read only on the note path.
+    // Watched because it decides which per-step layers a lane can usefully edit: velocity
+    // and gate are read only on the note path.
     std::atomic<float>* notesOnParam = nullptr;
     int lastNotesOn = -1;
 

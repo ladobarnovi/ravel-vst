@@ -2,8 +2,8 @@
 
 namespace
 {
-    // Tall enough for the left column's five layer buttons (Value, Velocity, Prob, Gate,
-    // Slide) plus the lane number above them; the step bars take whatever is left, so a taller
+    // Tall enough for the left column's four layer buttons (Value, Velocity, Prob, Gate)
+    // plus the lane number above them; the step bars take whatever is left, so a taller
     // lane just makes them taller.
     constexpr int laneHeight    = 150;
     constexpr int headerHeight  = 26;
@@ -306,11 +306,10 @@ void RavelAudioProcessorEditor::applyLaneCount (int newCount)
 
 void RavelAudioProcessorEditor::applyNotesOn (bool notesOn)
 {
-    // With Notes off a lane is a plain value sequencer. Velocity, gate and slide are unread
-    // there -- all three are only ever arguments to startNote -- and the selector is not
-    // wanted for chance alone, so it goes entirely and the bars edit Value. Chance does still
-    // gate the mix, and so still shapes the CC stream, which is why the slots go on drawing
-    // its ticks.
+    // With Notes off a lane is a plain value sequencer. Velocity and gate are unread there --
+    // both are only ever arguments to startNote -- and the selector is not wanted for chance
+    // alone, so it goes entirely and the bars edit Value. Chance does still gate the mix, and
+    // so still shapes the CC stream, which is why the slots go on drawing its ticks.
     for (auto* lane : lanes)
         lane->setLayerSelectionAvailable (notesOn);
 }

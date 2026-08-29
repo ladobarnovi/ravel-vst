@@ -18,7 +18,6 @@ RavelAudioProcessor::RavelAudioProcessor()
             lp.chance[step]  = apvts.getRawParameterValue (params::stepChanceId (lane, step));
             lp.stepVelocity[step] = apvts.getRawParameterValue (params::stepVelocityId (lane, step));
             lp.stepGate[step] = apvts.getRawParameterValue (params::stepGateId (lane, step));
-            lp.stepSlide[step] = apvts.getRawParameterValue (params::stepSlideId (lane, step));
         }
 
         lp.active    = apvts.getRawParameterValue (params::laneOnId (lane));
@@ -98,7 +97,6 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
             ls.chance[step]  = lp.chance[step]->load();
             ls.velocity[step] = lp.stepVelocity[step]->load();
             ls.gate[step]     = lp.stepGate[step]->load();
-            ls.slide[step]    = lp.stepSlide[step]->load();
         }
 
         // A lane the instance has not been given yet is inert in exactly the same way a

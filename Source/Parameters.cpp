@@ -16,7 +16,6 @@ juce::String stepOnId       (int lane, int step) { return stepPrefix (lane, step
 juce::String stepChanceId   (int lane, int step) { return stepPrefix (lane, step) + "_chance"; }
 juce::String stepVelocityId (int lane, int step) { return stepPrefix (lane, step) + "_vel"; }
 juce::String stepGateId     (int lane, int step) { return stepPrefix (lane, step) + "_gate"; }
-juce::String stepSlideId    (int lane, int step) { return stepPrefix (lane, step) + "_slide"; }
 juce::String laneOnId       (int lane)           { return lanePrefix (lane) + "_on"; }
 juce::String laneLengthId   (int lane)           { return lanePrefix (lane) + "_length"; }
 juce::String laneDivId      (int lane)           { return lanePrefix (lane) + "_div"; }
@@ -116,17 +115,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
                 60.0f,
                 juce::AudioParameterFloatAttributes().withStringFromValueFunction (
                     [] (float v, int) { return juce::String (juce::roundToInt (v)) + " %"; })));
-
-            // How long the pitch takes to glide into this step's note from the previous one.
-            // 0% is the default: the note lands on pitch immediately, exactly as before this
-            // existed. Higher values are longer glides, measured against the step's own length
-            // (see the engine), so the wall-clock time tracks tempo and the lane's rate.
-            layout.add (std::make_unique<juce::AudioParameterFloat> (
-                juce::ParameterID { stepSlideId (lane, step), versionHint },
-                stepName + " Slide",
-                juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f),
-                0.0f,
-                juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
         }
 
         // The lane's own mute. True is "playing", and it is what a session saved before this
@@ -340,7 +328,6 @@ void rotateLane (juce::AudioProcessorValueTreeState& state, int lane, int direct
         setParam (state, stepChanceId   (lane, step), pattern.chance[source]);
         setParam (state, stepVelocityId (lane, step), pattern.velocity[source]);
         setParam (state, stepGateId     (lane, step), pattern.gate[source]);
-        setParam (state, stepSlideId    (lane, step), pattern.slide[source]);
     }
 }
 
@@ -356,7 +343,7 @@ namespace
     std::vector<juce::String> laneParameterIds (int lane)
     {
         std::vector<juce::String> ids;
-        ids.reserve ((size_t) (numSteps * 6 + 11));
+        ids.reserve ((size_t) (numSteps * 5 + 11));
 
         for (int step = 0; step < numSteps; ++step)
         {
@@ -365,7 +352,6 @@ namespace
             ids.push_back (stepChanceId   (lane, step));
             ids.push_back (stepVelocityId (lane, step));
             ids.push_back (stepGateId     (lane, step));
-            ids.push_back (stepSlideId    (lane, step));
         }
 
         ids.push_back (laneOnId       (lane));
@@ -455,7 +441,6 @@ LanePattern copyLane (juce::AudioProcessorValueTreeState& state, int lane)
         pattern.chance[step]   = getParam (state, stepChanceId (lane, step));
         pattern.velocity[step] = getParam (state, stepVelocityId (lane, step));
         pattern.gate[step]     = getParam (state, stepGateId (lane, step));
-        pattern.slide[step]    = getParam (state, stepSlideId (lane, step));
     }
 
     pattern.valid = true;
@@ -474,7 +459,6 @@ void pasteLane (juce::AudioProcessorValueTreeState& state, int lane, const LaneP
         setParam (state, stepChanceId   (lane, step), pattern.chance[step]);
         setParam (state, stepVelocityId (lane, step), pattern.velocity[step]);
         setParam (state, stepGateId     (lane, step), pattern.gate[step]);
-        setParam (state, stepSlideId    (lane, step), pattern.slide[step]);
     }
 }
 

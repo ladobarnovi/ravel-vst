@@ -259,7 +259,6 @@ juce::String stepOnId       (int lane, int step);
 juce::String stepChanceId   (int lane, int step);
 juce::String stepVelocityId (int lane, int step);
 juce::String stepGateId     (int lane, int step);
-juce::String stepSlideId    (int lane, int step);
 juce::String laneOnId       (int lane);
 juce::String laneLengthId   (int lane);
 juce::String laneDivId      (int lane);
@@ -345,7 +344,6 @@ struct LanePattern
     float chance[numSteps] {};
     float velocity[numSteps] {};
     float gate[numSteps] {};
-    float slide[numSteps] {};
     bool  valid = false;
 };
 

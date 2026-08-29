@@ -39,8 +39,8 @@ selected show as faint ticks across the bars, and only where they are away from 
 so an untouched lane stays clean.
 
 **With Notes off the selector disappears and the bars edit Value.** A lane is a plain value
-sequencer there: velocity, gate and slide are only ever read when a note is started, so with
-Notes off none of them does anything, and their ticks come off with the selector. Chance is
+sequencer there: velocity and gate are only ever read when a note is started, so with Notes
+off neither does anything, and their ticks come off with the selector. Chance is
 different — it decides whether a step reaches the mix at all, and the mix drives the CC output
 too, so it goes on working even though there is no longer a button for it. Its ticks stay
 drawn for exactly that reason: a step whose probability is still making the CC output jump
