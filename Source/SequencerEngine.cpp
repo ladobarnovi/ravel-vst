@@ -579,8 +579,13 @@ void SequencerEngine::process (const Snapshot& s,
 
         if (ccEnabled)
             for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
-                laneSlewedValue[laneIndex] += (laneHeldValue[laneIndex] - laneSlewedValue[laneIndex])
-                                            * slewCoeff;
+            {
+                // Offset applies here the same way it applies to the mix above, so a lane's
+                // own CC shifts together with the Mix CC and pitch rather than being the one
+                // output Offset misses.
+                const float target = juce::jlimit (0.0f, 1.0f, laneHeldValue[laneIndex] + s.offset);
+                laneSlewedValue[laneIndex] += (target - laneSlewedValue[laneIndex]) * slewCoeff;
+            }
 
         //----------------------------------------------------------------------
         if (notesEnabled)

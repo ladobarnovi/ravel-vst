@@ -1306,6 +1306,34 @@ int main()
     }
 
     //==========================================================================
+    section ("Global Offset shifts per-lane CC too");
+    {
+        auto s = baseSnapshot();
+        s.lanes[0].length = 1;
+        s.lanes[0].values[0] = 0.0f;
+        s.lanes[0].depth = 0.0f;       // lane CC ignores Depth, same as the test above
+        s.lanes[0].ccOn = true;
+        s.lanes[0].ccNumber = 20;
+        s.notesOn = false;
+        s.ccOn = true;
+        s.offset = 0.25f;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto ccs = only (run (engine, s, 4 * samplesPerStep), controller);
+
+        int laneMax = -1;
+
+        for (const auto& e : ccs)
+            if (e.number == 20)
+                laneMax = juce::jmax (laneMax, e.value);
+
+        check (laneMax == (int) std::lround (0.25 * 127.0),
+              "a step at value 0 with Offset 0.25 sends lane CC at ~32, not 0");
+    }
+
+    //==========================================================================
     section ("Voices = 1 keeps the original monophonic behaviour");
     {
         auto s = baseSnapshot();
