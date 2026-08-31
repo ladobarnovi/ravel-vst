@@ -48,6 +48,10 @@ public:
         bool  ccOn      = false;
         int   ccNumber  = 20;
         int   ccChannel = 1;
+
+        /** Shifts this lane's own CC output, independent of the other lanes and of the
+            global Offset (which only ever touches pitch and the Mix CC). */
+        float ccOffset  = 0.0f;
     };
 
     struct Snapshot

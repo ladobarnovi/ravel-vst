@@ -27,6 +27,7 @@ juce::String laneHumanizeId (int lane)           { return lanePrefix (lane) + "_
 juce::String laneCcOnId     (int lane)           { return lanePrefix (lane) + "_cc_on"; }
 juce::String laneCcNumId    (int lane)           { return lanePrefix (lane) + "_cc_num"; }
 juce::String laneCcChanId   (int lane)           { return lanePrefix (lane) + "_cc_chan"; }
+juce::String laneCcOffsetId (int lane)           { return lanePrefix (lane) + "_cc_offset"; }
 
 namespace
 {
@@ -171,6 +172,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         layout.add (std::make_unique<juce::AudioParameterInt> (
             juce::ParameterID { laneCcChanId (lane), versionHint },
             laneName + "CC Channel", 1, 16, 1));
+
+        // Own offset per lane rather than sharing the global Offset, so each lane's CC can be
+        // recentred independently -- the global one still shifts pitch and the Mix CC only.
+        layout.add (std::make_unique<juce::AudioParameterFloat> (
+            juce::ParameterID { laneCcOffsetId (lane), versionHint },
+            laneName + "CC Offset",
+            juce::NormalisableRange<float> (-1.0f, 1.0f, 0.001f), 0.0f,
+            juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
     }
 
     //==========================================================================
@@ -343,7 +352,7 @@ namespace
     std::vector<juce::String> laneParameterIds (int lane)
     {
         std::vector<juce::String> ids;
-        ids.reserve ((size_t) (numSteps * 5 + 11));
+        ids.reserve ((size_t) (numSteps * 5 + 12));
 
         for (int step = 0; step < numSteps; ++step)
         {
@@ -365,6 +374,7 @@ namespace
         ids.push_back (laneCcOnId     (lane));
         ids.push_back (laneCcNumId    (lane));
         ids.push_back (laneCcChanId   (lane));
+        ids.push_back (laneCcOffsetId (lane));
 
         return ids;
     }

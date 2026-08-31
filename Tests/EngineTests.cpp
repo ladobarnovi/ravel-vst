@@ -1306,7 +1306,7 @@ int main()
     }
 
     //==========================================================================
-    section ("Global Offset shifts per-lane CC too");
+    section ("Per-lane CC Offset shifts that lane's own CC");
     {
         auto s = baseSnapshot();
         s.lanes[0].length = 1;
@@ -1314,9 +1314,9 @@ int main()
         s.lanes[0].depth = 0.0f;       // lane CC ignores Depth, same as the test above
         s.lanes[0].ccOn = true;
         s.lanes[0].ccNumber = 20;
+        s.lanes[0].ccOffset = 0.25f;
         s.notesOn = false;
         s.ccOn = true;
-        s.offset = 0.25f;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1330,7 +1330,36 @@ int main()
                 laneMax = juce::jmax (laneMax, e.value);
 
         check (laneMax == (int) std::lround (0.25 * 127.0),
-              "a step at value 0 with Offset 0.25 sends lane CC at ~32, not 0");
+              "a step at value 0 with CC Offset 0.25 sends lane CC at ~32, not 0");
+    }
+
+    //==========================================================================
+    section ("The global Offset does not leak into per-lane CC");
+    {
+        auto s = baseSnapshot();
+        s.lanes[0].length = 1;
+        s.lanes[0].values[0] = 0.0f;
+        s.lanes[0].depth = 0.0f;
+        s.lanes[0].ccOn = true;
+        s.lanes[0].ccNumber = 20;
+        s.notesOn = false;
+        s.ccOn = true;
+        s.offset = 0.25f;      // the Pitch tab's Offset, not this lane's own CC Offset
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto ccs = only (run (engine, s, 4 * samplesPerStep), controller);
+
+        int laneMax = -1;
+
+        for (const auto& e : ccs)
+            if (e.number == 20)
+                laneMax = juce::jmax (laneMax, e.value);
+
+        check (laneMax <= 0,
+              "a step at value 0 stays at lane CC 0 -- the global Offset only touches "
+              "pitch and the Mix CC");
     }
 
     //==========================================================================

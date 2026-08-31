@@ -580,10 +580,11 @@ void SequencerEngine::process (const Snapshot& s,
         if (ccEnabled)
             for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
             {
-                // Offset applies here the same way it applies to the mix above, so a lane's
-                // own CC shifts together with the Mix CC and pitch rather than being the one
-                // output Offset misses.
-                const float target = juce::jlimit (0.0f, 1.0f, laneHeldValue[laneIndex] + s.offset);
+                // Each lane's own CC Offset, not the global one -- the global Offset already
+                // has a job (pitch and the Mix CC) and moving every lane's CC by the same
+                // amount would leave no way to recentre just one of them.
+                const float target = juce::jlimit (0.0f, 1.0f,
+                                                   laneHeldValue[laneIndex] + s.lanes[laneIndex].ccOffset);
                 laneSlewedValue[laneIndex] += (target - laneSlewedValue[laneIndex]) * slewCoeff;
             }
 

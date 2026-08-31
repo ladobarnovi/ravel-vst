@@ -270,6 +270,7 @@ juce::String laneHumanizeId (int lane);
 juce::String laneCcOnId     (int lane);
 juce::String laneCcNumId    (int lane);
 juce::String laneCcChanId   (int lane);
+juce::String laneCcOffsetId (int lane);
 
 // Global / output-section parameter IDs. Notes and CC are independent switches -- both can
 // be on together, so one instance can drive a note track and a CC loopback at once.

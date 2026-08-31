@@ -72,6 +72,7 @@ private:
         std::atomic<float>* ccOn      = nullptr;
         std::atomic<float>* ccNumber  = nullptr;
         std::atomic<float>* ccChannel = nullptr;
+        std::atomic<float>* ccOffset  = nullptr;
     };
 
     SequencerEngine::Snapshot buildSnapshot() const;

@@ -31,6 +31,7 @@ RavelAudioProcessor::RavelAudioProcessor()
         lp.ccOn      = apvts.getRawParameterValue (params::laneCcOnId (lane));
         lp.ccNumber  = apvts.getRawParameterValue (params::laneCcNumId (lane));
         lp.ccChannel = apvts.getRawParameterValue (params::laneCcChanId (lane));
+        lp.ccOffset  = apvts.getRawParameterValue (params::laneCcOffsetId (lane));
     }
 
     pNotesOn     = apvts.getRawParameterValue (params::notesOnId);
@@ -112,6 +113,7 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
         ls.ccOn      = lp.ccOn->load() > 0.5f;
         ls.ccNumber  = (int) std::lround (lp.ccNumber->load());
         ls.ccChannel = (int) std::lround (lp.ccChannel->load());
+        ls.ccOffset  = lp.ccOffset->load();
     }
 
     s.notesOn       = pNotesOn->load() > 0.5f;

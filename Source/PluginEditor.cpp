@@ -208,6 +208,9 @@ void RavelAudioProcessorEditor::buildTabs()
               ->setTooltip ("Send this lane's own value as CC, independent of Depth");
         column.add (params::laneCcNumId (lane),  "CC number");
         column.add (params::laneCcChanId (lane), "CC channel");
+        column.add (params::laneCcOffsetId (lane), "CC offset")
+              ->setTooltip ("Shifts this lane's own CC output. Independent of the Pitch tab's "
+                           "Offset, which only ever touches pitch and the Mix CC");
     }
 
     //--------------------------------------------------------------------------
