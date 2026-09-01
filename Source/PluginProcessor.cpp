@@ -41,11 +41,7 @@ RavelAudioProcessor::RavelAudioProcessor()
         cp.active    = apvts.getRawParameterValue (params::laneOnId (lane, params::LaneKind::cc));
         cp.length    = apvts.getRawParameterValue (params::laneLengthId (lane, params::LaneKind::cc));
         cp.division  = apvts.getRawParameterValue (params::laneDivId (lane, params::LaneKind::cc));
-        cp.direction = apvts.getRawParameterValue (params::laneDirId (lane, params::LaneKind::cc));
         cp.depth     = apvts.getRawParameterValue (params::laneDepthId (lane, params::LaneKind::cc));
-        cp.mode      = apvts.getRawParameterValue (params::laneModeId (lane, params::LaneKind::cc));
-        cp.nudge     = apvts.getRawParameterValue (params::laneNudgeId (lane, params::LaneKind::cc));
-        cp.humanize  = apvts.getRawParameterValue (params::laneHumanizeId (lane, params::LaneKind::cc));
         cp.ccOn      = apvts.getRawParameterValue (params::laneCcOnId (lane));
         cp.ccNumber  = apvts.getRawParameterValue (params::laneCcNumId (lane));
         cp.ccChannel = apvts.getRawParameterValue (params::laneCcChanId (lane));
@@ -145,11 +141,11 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
         cs.active    = lane < ccLaneCount && cp.active->load() > 0.5f;
         cs.length    = (int) std::lround (cp.length->load());
         cs.division  = (int) std::lround (cp.division->load());
-        cs.direction = (int) std::lround (cp.direction->load());
         cs.depth     = cp.depth->load();
-        cs.mode      = (int) std::lround (cp.mode->load());
-        cs.nudge     = cp.nudge->load();
-        cs.humanize  = cp.humanize->load();
+
+        // No Direction/Mode/Nudge/Humanize parameter for a CC lane -- it folds Forward/Add
+        // with no nudge or jitter, which is exactly what LaneSnapshot's own defaults already
+        // give cs here.
         cs.ccOn      = cp.ccOn->load() > 0.5f;
         cs.ccNumber  = (int) std::lround (cp.ccNumber->load());
         cs.ccChannel = (int) std::lround (cp.ccChannel->load());

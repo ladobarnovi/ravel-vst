@@ -115,18 +115,19 @@ private:
 //==============================================================================
 /** A full lane: 16 steps plus the feel parameters worth reaching for while it plays.
 
-    A Note lane and a CC lane share the same Length/Rate/Direction/Depth/Mix-mode/Nudge/
-    Humanize block -- both fold into a mix the same way -- but only a CC lane also carries
-    its own Send/Number/Channel/Offset, since only CC has a per-lane destination independent
-    of that fold. See LaneKind.
+    A Note lane and a CC lane share the same Length/Rate/Depth. Direction, Mix mode, Nudge
+    and Humanize are Note-only -- a CC lane always folds Forward/Add with no nudge or
+    jitter. Only a CC lane also carries its own Send/Number/Channel/Offset, since only CC
+    has a per-lane destination independent of that fold. See LaneKind.
 */
 class LaneComponent final : public juce::Component
 {
 public:
     /** For a CC-kind lane, no layer selector is ever created -- the bars always edit Value
-        -- and the parameter block gains the lane's own Send/Number/Channel/Offset alongside
-        the usual Length/Rate/Direction/Depth/Mix-mode/Nudge/Humanize: a CC lane both folds
-        into the Mix CC like any lane folds into a mix, and keeps its own direct tap. */
+        -- and the parameter block trades Direction/Mix-mode/Nudge/Humanize for the lane's
+        own Send/Number/Channel/Offset: a CC lane still folds into the Mix CC like any lane
+        folds into a mix (always Forward/Add with no nudge or jitter), and keeps its own
+        direct tap besides. */
     LaneComponent (juce::AudioProcessorValueTreeState& state, int laneIndex,
                    params::LanePattern& sharedClipboard,
                    params::LaneKind kind = params::LaneKind::note);

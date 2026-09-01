@@ -4,15 +4,11 @@ namespace
 {
     // Tall enough for the left column's four layer buttons (Value, Velocity, Prob, Gate)
     // plus the lane number above them; the step bars take whatever is left, so a taller
-    // lane just makes them taller.
+    // lane just makes them taller. Also covers a CC lane's own parameter block: Length/
+    // Rate/Depth plus Send/Number/Channel/Offset is 7 rows on ControlGroup's 2-column grid,
+    // the same 4 rows tall as a Note lane's Length/Rate/Direction/Depth/Mix mode/Nudge/
+    // Humanise -- so one constant now fits both.
     constexpr int laneHeight    = 150;
-
-    // A CC lane's own parameter block is Length/Rate/Direction/Depth/Mix mode/Nudge/
-    // Humanise plus Send/Number/Channel/Offset -- 11 rows on ControlGroup's 2-column grid,
-    // so 6 rows tall against a Note lane's 4 (heightForRows(6, false) = 6*18 + 5*3 = 123,
-    // +2 row-gaps +1 row for the action buttons = 147 needed against a Note lane's 105).
-    // 190 leaves it roughly the same headroom above that as laneHeight leaves a Note lane.
-    constexpr int ccLaneHeight  = 190;
 
     constexpr int headerHeight  = 26;
     constexpr int laneBarHeight = 22;
@@ -398,7 +394,7 @@ void RavelAudioProcessorEditor::updateSizeConstraints()
 
     nativeContentHeight = outputTabs.getSelectedIndex() == 0
         ? windowHeightForWorkspace (noteLaneCount, laneHeight, settingsPanelHeightFor (notesSettingsPage))
-        : windowHeightForWorkspace (ccLaneCount, ccLaneHeight, settingsPanelHeightFor (ccSettingsPage));
+        : windowHeightForWorkspace (ccLaneCount, laneHeight, settingsPanelHeightFor (ccSettingsPage));
 
     // Locked so a drag-resize zooms uniformly rather than stretching bars into ellipses.
     sizeConstrainer.setFixedAspectRatio ((double) nativeContentWidth / (double) nativeContentHeight);
@@ -493,7 +489,7 @@ void RavelAudioProcessorEditor::layoutContent()
     ccWorkspace.setBounds (r);
 
     layoutWorkspace (r, noteLaneCount, laneHeight, noteLanes, addNoteLaneButton, notesSettingsPage);
-    layoutWorkspace (r, ccLaneCount, ccLaneHeight, ccLanes, addCcLaneButton, ccSettingsPage);
+    layoutWorkspace (r, ccLaneCount, laneHeight, ccLanes, addCcLaneButton, ccSettingsPage);
 }
 
 //==============================================================================

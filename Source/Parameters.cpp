@@ -163,10 +163,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
                 juce::ParameterID { laneDivId (lane, kind), versionHint },
                 laneName + "Division", divisionNames, defaultDivision[lane]));
 
-            layout.add (std::make_unique<juce::AudioParameterChoice> (
-                juce::ParameterID { laneDirId (lane, kind), versionHint },
-                laneName + "Direction", directionNames, 0));
-
             layout.add (std::make_unique<juce::AudioParameterFloat> (
                 juce::ParameterID { laneDepthId (lane, kind), versionHint },
                 laneName + "Depth",
@@ -174,21 +170,32 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
                 defaultDepth[lane],
                 juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
 
-            layout.add (std::make_unique<juce::AudioParameterChoice> (
-                juce::ParameterID { laneModeId (lane, kind), versionHint },
-                laneName + "Mode", modeNames, modeAdd));
+            // Direction, Mix mode, Nudge and Humanize only ever shaped how a lane's own steps
+            // traverse and fold -- a Note lane's nuance. A CC lane still folds into the Mix CC
+            // the same way, just always Forward/Add/no-nudge/no-jitter: see LaneSnapshot's own
+            // defaults, which is what an absent parameter here now leaves it reading.
+            if (! isCc)
+            {
+                layout.add (std::make_unique<juce::AudioParameterChoice> (
+                    juce::ParameterID { laneDirId (lane, kind), versionHint },
+                    laneName + "Direction", directionNames, 0));
 
-            layout.add (std::make_unique<juce::AudioParameterFloat> (
-                juce::ParameterID { laneNudgeId (lane, kind), versionHint },
-                laneName + "Nudge",
-                juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f,
-                juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
+                layout.add (std::make_unique<juce::AudioParameterChoice> (
+                    juce::ParameterID { laneModeId (lane, kind), versionHint },
+                    laneName + "Mode", modeNames, modeAdd));
 
-            layout.add (std::make_unique<juce::AudioParameterFloat> (
-                juce::ParameterID { laneHumanizeId (lane, kind), versionHint },
-                laneName + "Humanize",
-                juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.0f,
-                juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
+                layout.add (std::make_unique<juce::AudioParameterFloat> (
+                    juce::ParameterID { laneNudgeId (lane, kind), versionHint },
+                    laneName + "Nudge",
+                    juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f,
+                    juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
+
+                layout.add (std::make_unique<juce::AudioParameterFloat> (
+                    juce::ParameterID { laneHumanizeId (lane, kind), versionHint },
+                    laneName + "Humanize",
+                    juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.0f,
+                    juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
+            }
 
             if (! isCc)
                 continue;
@@ -419,11 +426,15 @@ namespace
         ids.push_back (laneOnId       (lane, kind));
         ids.push_back (laneLengthId   (lane, kind));
         ids.push_back (laneDivId      (lane, kind));
-        ids.push_back (laneDirId      (lane, kind));
         ids.push_back (laneDepthId    (lane, kind));
-        ids.push_back (laneModeId     (lane, kind));
-        ids.push_back (laneNudgeId    (lane, kind));
-        ids.push_back (laneHumanizeId (lane, kind));
+
+        if (kind == LaneKind::note)
+        {
+            ids.push_back (laneDirId      (lane, kind));
+            ids.push_back (laneModeId     (lane, kind));
+            ids.push_back (laneNudgeId    (lane, kind));
+            ids.push_back (laneHumanizeId (lane, kind));
+        }
 
         if (kind == LaneKind::cc)
         {
