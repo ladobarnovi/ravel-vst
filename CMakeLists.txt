@@ -149,7 +149,8 @@ if(RAVEL_SNAPSHOT_SOURCE)
         Source/UndoHistory.cpp)
     target_include_directories(RavelSnapshot PRIVATE Source)
     target_compile_definitions(RavelSnapshot PRIVATE
-        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Ravel")
+        JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Ravel"
+        JUCE_MODAL_LOOPS_PERMITTED=1)
     target_link_libraries(RavelSnapshot
         PRIVATE juce::juce_audio_utils juce::juce_audio_processors juce::juce_gui_extra
         PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)

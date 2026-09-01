@@ -152,7 +152,7 @@ int main()
             return p != nullptr ? p->load() : -1.0f;
         };
 
-        check ((int) std::lround (value (params::laneCountId)) == 1, "one lane");
+        check ((int) std::lround (value (params::noteLaneCountId)) == 1, "one lane");
         check (value (params::freeRunId) < 0.5f, "Free Run off, so it follows the transport");
 
         bool flat = true, fullLength = true;
@@ -465,7 +465,7 @@ int main()
         // lane 2, at 1/8, twice.
         setChoice (processor, params::polyModeId, 1);
 
-        setChoice (processor, params::laneCountId, 1);
+        setChoice (processor, params::noteLaneCountId, 1);
         const auto one = runProcessor (processor, playHead, true, 4 * 6000);
 
         check (one.noteOns == 4, "a one-lane instance plays only lane 1");
@@ -475,56 +475,11 @@ int main()
         second.prepareToPlay (48000.0, 512);
         second.setPlayHead (&playHead);
         setChoice (second, params::polyModeId, 1);
-        setChoice (second, params::laneCountId, 2);
+        setChoice (second, params::noteLaneCountId, 2);
 
         const auto two = runProcessor (second, playHead, true, 4 * 6000);
 
         check (two.noteOns == 6, "adding a lane brings its own clock in with it");
-    }
-
-    //==========================================================================
-    section ("State saved before lanes were countable");
-    {
-        // Such a session has no lane_count at all, and would otherwise load as the
-        // one-lane default with its other two patterns hidden.
-        RavelAudioProcessor a;
-        setChoice (a, params::triggerSrcId, 3);      // "Any Lane" on the old four-item list
-
-        juce::MemoryBlock state;
-        a.getStateInformation (state);
-
-        auto xml = juce::AudioProcessor::getXmlFromBinary (state.getData(), (int) state.getSize());
-        check (xml != nullptr, "state can be reopened as XML");
-
-        if (xml != nullptr)
-        {
-            for (auto* child : xml->getChildIterator())
-            {
-                if (child->getStringAttribute ("id") == params::laneCountId)
-                {
-                    xml->removeChildElement (child, true);
-                    break;
-                }
-            }
-
-            juce::MemoryBlock old;
-            juce::AudioProcessor::copyXmlToBinary (*xml, old);
-
-            RavelAudioProcessor b;
-            b.setStateInformation (old.getData(), (int) old.getSize());
-
-            const auto value = [&b] (const juce::String& id)
-            {
-                const auto* p = b.apvts.getRawParameterValue (id);
-                return p != nullptr ? (int) std::lround (p->load()) : -1;
-            };
-
-            check (value (params::laneCountId) == 3,
-                   "it comes back with the three lanes it was written with");
-
-            check (value (params::triggerSrcId) == params::numLanes,
-                   "and its trigger still means Any Lane, not the newly added Lane 4");
-        }
     }
 
     //==========================================================================
@@ -717,7 +672,7 @@ int main()
             return processor.apvts.getRawParameterValue (id)->load();
         };
 
-        set (params::laneCountId, 3.0f);
+        set (params::noteLaneCountId, 3.0f);
 
         // Each lane is stamped with something recognisable, in a step value and in a lane
         // control, so a shift that moved only the pattern would still be caught.
@@ -730,7 +685,7 @@ int main()
 
         params::removeLane (processor.apvts, 1);
 
-        check ((int) std::lround (get (params::laneCountId)) == 2,
+        check ((int) std::lround (get (params::noteLaneCountId)) == 2,
                "removing a lane drops the lane count by one");
 
         check (std::abs (get (params::stepValueId (0, 0)) - 0.1f) < 0.01f,
@@ -770,11 +725,11 @@ int main()
 
         params::removeLane (processor.apvts, 0);
 
-        check ((int) std::lround (get (params::laneCountId)) == 1,
+        check ((int) std::lround (get (params::noteLaneCountId)) == 1,
                "the last remaining lane cannot be removed");
 
         //----------------------------------------------------------------------
-        if (auto* p = processor.apvts.getParameter (params::laneCountId))
+        if (auto* p = processor.apvts.getParameter (params::noteLaneCountId))
             p->setValueNotifyingHost (p->convertTo0to1 (3.0f));
 
         if (auto* p = processor.apvts.getParameter (params::stepValueId (1, 0)))
@@ -784,7 +739,7 @@ int main()
 
         params::removeLane (processor.apvts, 3);
 
-        check ((int) std::lround (get (params::laneCountId)) == 3,
+        check ((int) std::lround (get (params::noteLaneCountId)) == 3,
                "a lane this instance does not have cannot be removed either");
 
         //----------------------------------------------------------------------
@@ -797,7 +752,7 @@ int main()
 
         processor.undoHistory.undo();
 
-        check ((int) std::lround (get (params::laneCountId)) == 3,
+        check ((int) std::lround (get (params::noteLaneCountId)) == 3,
                "undoing a removal brings the lane count back");
 
         check (std::abs (get (params::stepValueId (1, 0)) - 0.5f) < 0.01f,

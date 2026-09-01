@@ -127,26 +127,33 @@ namespace
     void useLanes (SequencerEngine::Snapshot& s, int count)
     {
         for (int lane = count; lane < params::numLanes; ++lane)
-            s.lanes[lane].active = false;
+            s.noteLanes[lane].active = false;
     }
 
     /** Sets every step's gate on one lane to the same percentage -- Gate is per-step now,
         where the tests used to set one value for the whole plugin. */
     void setLaneGate (SequencerEngine::Snapshot& s, int lane, float percent)
     {
-        for (auto& g : s.lanes[lane].gate)
+        for (auto& g : s.noteLanes[lane].gate)
             g = percent;
     }
 
     /** Lane 1 drives at full depth, lanes 2 and 3 are inert. Chromatic scale so a
         scale degree maps 1:1 onto a semitone, keeping expected pitches obvious.
+
+        Both pools get the same base setup -- a default-constructed LaneSnapshot leaves
+        every step disabled and at zero chance, which would fire nothing regardless of what
+        a test then sets `values` to, whichever pool it is testing.
     */
     SequencerEngine::Snapshot baseSnapshot()
     {
         SequencerEngine::Snapshot s;
 
-        for (auto& lane : s.lanes)
+        for (auto* lanes : { s.noteLanes, s.ccLanes })
+        for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
         {
+            auto& lane = lanes[laneIndex];
+
             for (int i = 0; i < params::numSteps; ++i)
             {
                 lane.values[i]  = 0.0f;
@@ -172,14 +179,15 @@ namespace
             lane.ccOn      = false;
         }
 
-        s.swing      = 0.0f;
+        s.noteSwing  = 0.0f;
+        s.ccSwing    = 0.0f;
         s.voiceCount = 1;
 
-        s.lanes[0].depth = 1.0f;
+        s.noteLanes[0].depth = 1.0f;
 
         s.notesOn       = true;
         s.ccOn          = false;
-        s.triggerSource = 0;
+        s.noteTriggerSource = 0;
         s.root          = 48;
         s.rangeSteps    = 12;
         s.scale         = 0;        // Chromatic
@@ -187,7 +195,8 @@ namespace
         s.midiChannel   = 1;
         s.ccNumber      = 1;
         s.ccChannel     = 1;
-        s.offset        = 0.0f;
+        s.noteOffset    = 0.0f;
+        s.ccOffset      = 0.0f;
         s.slewMs        = 0.0f;
         s.quantize      = true;
         s.bendRange     = 2;
@@ -205,11 +214,11 @@ int main()
     section ("Step timing and pitch mapping (4-step lane at 1/16)");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 4;
-        s.lanes[0].values[0] = 0.00f;   // degree 0  -> note 48
-        s.lanes[0].values[1] = 0.25f;   // degree 3  -> note 51
-        s.lanes[0].values[2] = 0.50f;   // degree 6  -> note 54
-        s.lanes[0].values[3] = 0.75f;   // degree 9  -> note 57
+        s.noteLanes[0].length = 4;
+        s.noteLanes[0].values[0] = 0.00f;   // degree 0  -> note 48
+        s.noteLanes[0].values[1] = 0.25f;   // degree 3  -> note 51
+        s.noteLanes[0].values[2] = 0.50f;   // degree 6  -> note 54
+        s.noteLanes[0].values[3] = 0.75f;   // degree 9  -> note 57
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -240,7 +249,7 @@ int main()
     section ("Gate length");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 4;
+        s.noteLanes[0].length = 4;
         // baseSnapshot() defaults every step's gate to 60%, i.e. 3600 of 6000 samples.
 
         SequencerEngine engine;
@@ -264,10 +273,10 @@ int main()
     section ("Independent lane length (polyrhythm)");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 5;
+        s.noteLanes[0].length = 5;
 
         for (int i = 0; i < 5; ++i)
-            s.lanes[0].values[i] = (float) i / 12.0f;   // degrees 0..4 -> notes 48..52
+            s.noteLanes[0].values[i] = (float) i / 12.0f;   // degrees 0..4 -> notes 48..52
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -290,10 +299,10 @@ int main()
     {
         // Lane 1 at 1/16 inert, lane 2 at 1/4 is the trigger source.
         auto s = baseSnapshot();
-        s.lanes[1].division = params::divIndex_1_4;
-        s.lanes[1].depth    = 1.0f;
-        s.lanes[0].depth    = 0.0f;
-        s.triggerSource     = 1;
+        s.noteLanes[1].division = params::divIndex_1_4;
+        s.noteLanes[1].depth    = 1.0f;
+        s.noteLanes[0].depth    = 0.0f;
+        s.noteTriggerSource     = 1;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -309,9 +318,9 @@ int main()
     section ("Disabled steps are transparent and fire nothing");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 4;
-        s.lanes[0].enabled[1] = false;
-        s.lanes[0].enabled[3] = false;
+        s.noteLanes[0].length = 4;
+        s.noteLanes[0].enabled[1] = false;
+        s.noteLanes[0].enabled[3] = false;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -336,11 +345,11 @@ int main()
     {
         // Lane 2 multiplies the chain by zero, so every note collapses to the root.
         auto s = baseSnapshot();
-        s.lanes[0].length = 4;
-        s.lanes[0].values[1] = 0.5f;
-        s.lanes[0].values[2] = 1.0f;
-        s.lanes[1].mode  = params::modeMultiply;
-        s.lanes[1].depth = 1.0f;   // all lane-2 values are 0.0
+        s.noteLanes[0].length = 4;
+        s.noteLanes[0].values[1] = 0.5f;
+        s.noteLanes[0].values[2] = 1.0f;
+        s.noteLanes[1].mode  = params::modeMultiply;
+        s.noteLanes[1].depth = 1.0f;   // all lane-2 values are 0.0
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -359,10 +368,10 @@ int main()
     section ("Multiply at zero depth is a no-op");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 4;
-        s.lanes[0].values[1] = 0.5f;      // degree 6 -> note 54
-        s.lanes[1].mode  = params::modeMultiply;
-        s.lanes[1].depth = 0.0f;
+        s.noteLanes[0].length = 4;
+        s.noteLanes[0].values[1] = 0.5f;      // degree 6 -> note 54
+        s.noteLanes[1].mode  = params::modeMultiply;
+        s.noteLanes[1].depth = 0.0f;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -377,7 +386,7 @@ int main()
     section ("Transport jump");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 4;
+        s.noteLanes[0].length = 4;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -403,7 +412,7 @@ int main()
     section ("Transport stop releases the held note");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 4;
+        s.noteLanes[0].length = 4;
         setLaneGate (s, 0, 200.0f);   // long enough that the note is still held
 
         SequencerEngine engine;
@@ -437,8 +446,9 @@ int main()
     section ("CC output");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 4;
-        s.lanes[0].values[1] = 1.0f;
+        s.ccLanes[0].length = 4;
+        s.ccLanes[0].values[1] = 1.0f;
+        s.ccLanes[0].depth = 1.0f;   // baseSnapshot only gives noteLanes[0] full depth
         s.notesOn = false;
         s.ccOn = true;
         s.ccNumber = 74;
@@ -469,11 +479,11 @@ int main()
     section ("Reverse direction");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 4;
-        s.lanes[0].direction = 1;
+        s.noteLanes[0].length = 4;
+        s.noteLanes[0].direction = 1;
 
         for (int i = 0; i < 4; ++i)
-            s.lanes[0].values[i] = (float) i / 12.0f;   // notes 48..51
+            s.noteLanes[0].values[i] = (float) i / 12.0f;   // notes 48..51
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -488,11 +498,11 @@ int main()
     section ("Random direction is locked to the timeline");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 8;
-        s.lanes[0].direction = 3;
+        s.noteLanes[0].length = 8;
+        s.noteLanes[0].direction = 3;
 
         for (int i = 0; i < 8; ++i)
-            s.lanes[0].values[i] = (float) i / 12.0f;
+            s.noteLanes[0].values[i] = (float) i / 12.0f;
 
         SequencerEngine engineA, engineB;
         engineA.prepare (sampleRate);
@@ -521,7 +531,7 @@ int main()
     section ("Semitone pitch mode (default)");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 4;
+        s.noteLanes[0].length = 4;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -543,8 +553,8 @@ int main()
     section ("Continuous pitch lands exactly on a degree");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 1;
-        s.lanes[0].values[0] = 0.25f;   // 0.25 * 12 = exactly 3 semitones
+        s.noteLanes[0].length = 1;
+        s.noteLanes[0].values[0] = 0.25f;   // 0.25 * 12 = exactly 3 semitones
         s.scale      = 0;
         s.rangeSteps = 12;
         s.root       = 48;
@@ -577,7 +587,7 @@ int main()
         const auto pitchesForScale = [] (int scaleIndex)
         {
             auto s = baseSnapshot();
-            s.lanes[0].length = 4;
+            s.noteLanes[0].length = 4;
             s.scale      = scaleIndex;
             s.rangeSteps = 12;
             s.root       = 48;
@@ -585,7 +595,7 @@ int main()
             s.bendRange  = 2;
 
             for (int i = 0; i < 4; ++i)
-                s.lanes[0].values[i] = (float) i * 0.1f;
+                s.noteLanes[0].values[i] = (float) i * 0.1f;
 
             SequencerEngine engine;
             engine.prepare (sampleRate);
@@ -632,9 +642,9 @@ int main()
     section ("Pitch is static for the duration of a step (no glide)");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 2;
-        s.lanes[0].values[0] = 0.17f;
-        s.lanes[0].values[1] = 0.61f;
+        s.noteLanes[0].length = 2;
+        s.noteLanes[0].values[0] = 0.17f;
+        s.noteLanes[0].values[1] = 0.61f;
         s.scale      = 0;
         s.rangeSteps = 12;
         s.quantize   = false;
@@ -664,8 +674,8 @@ int main()
     section ("Continuous pitch via mono pitch bend");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 1;
-        s.lanes[0].values[0] = 0.3f;   // -> 51.6 semitones with Chromatic, range 12, root 48
+        s.noteLanes[0].length = 1;
+        s.noteLanes[0].values[0] = 0.3f;   // -> 51.6 semitones with Chromatic, range 12, root 48
         s.scale       = 0;
         s.rangeSteps  = 12;
         s.root        = 48;
@@ -759,7 +769,7 @@ int main()
     section ("Continuous mapping is linear across a range of values");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 4;
+        s.noteLanes[0].length = 4;
         s.scale      = 0;      // Chromatic
         s.rangeSteps = 24;
         s.root       = 36;
@@ -767,7 +777,7 @@ int main()
         s.bendRange  = 2;
 
         for (int i = 0; i < 4; ++i)
-            s.lanes[0].values[i] = (float) i * 0.1f;   // 0.0, 0.1, 0.2, 0.3
+            s.noteLanes[0].values[i] = (float) i * 0.1f;   // 0.0, 0.1, 0.2, 0.3
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -803,8 +813,8 @@ int main()
         // again, so without an explicit recentre every following note would play detuned.
         auto s = baseSnapshot();
         s.quantize = false;
-        s.lanes[0].length = 1;
-        s.lanes[0].values[0] = 0.3f;    // a value with a fractional semitone, so bend != centre
+        s.noteLanes[0].length = 1;
+        s.noteLanes[0].values[0] = 0.3f;    // a value with a fractional semitone, so bend != centre
         s.rangeSteps = 12;
 
         SequencerEngine engine;
@@ -913,14 +923,14 @@ int main()
         s.root       = 48;
         s.rangeSteps = 19;      // one 19-EDO octave over the full mix range
         s.bendRange  = 2;
-        s.lanes[0].length = 4;
+        s.noteLanes[0].length = 4;
 
         // Degrees 0, 1, 7 and 19: the root, one step up, a scale note that falls between two
         // MIDI keys, and the octave.
         const int degrees[] { 0, 1, 7, 19 };
 
         for (int i = 0; i < 4; ++i)
-            s.lanes[0].values[i] = (float) degrees[i] / 19.0f;
+            s.noteLanes[0].values[i] = (float) degrees[i] / 19.0f;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1008,8 +1018,8 @@ int main()
         // so the bend the last 19-EDO note left behind would detune everything after it.
         auto s = baseSnapshot();
         s.scale = params::scaleNames.indexOf ("19 Chromatic");
-        s.lanes[0].length = 1;
-        s.lanes[0].values[0] = 7.0f / 19.0f;    // a degree that sits between two keys
+        s.noteLanes[0].length = 1;
+        s.noteLanes[0].values[0] = 7.0f / 19.0f;    // a degree that sits between two keys
         s.rangeSteps = 19;
 
         SequencerEngine engine;
@@ -1054,10 +1064,10 @@ int main()
         const auto countNotesWithChance = [] (float chance)
         {
             auto s = baseSnapshot();
-            s.lanes[0].length = 8;
+            s.noteLanes[0].length = 8;
 
             for (int i = 0; i < params::numSteps; ++i)
-                s.lanes[0].chance[i] = chance;
+                s.noteLanes[0].chance[i] = chance;
 
             SequencerEngine engine;
             engine.prepare (sampleRate);
@@ -1076,10 +1086,10 @@ int main()
     section ("Probability is locked to the timeline");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 8;
+        s.noteLanes[0].length = 8;
 
         for (int i = 0; i < params::numSteps; ++i)
-            s.lanes[0].chance[i] = 0.5f;
+            s.noteLanes[0].chance[i] = 0.5f;
 
         SequencerEngine engineA, engineB;
         engineA.prepare (sampleRate);
@@ -1101,19 +1111,19 @@ int main()
     {
         // Lane 1 multiplies by zero, but with chance 0 it must not touch the mix at all.
         auto s = baseSnapshot();
-        s.lanes[0].length = 4;
-        s.lanes[0].values[1] = 0.5f;     // -> note 54 with range 12, chromatic
+        s.noteLanes[0].length = 4;
+        s.noteLanes[0].values[1] = 0.5f;     // -> note 54 with range 12, chromatic
         s.scale = 0;
-        s.lanes[1].mode   = params::modeMultiply;
-        s.lanes[1].depth  = 1.0f;
-        s.lanes[1].chance[0] = 0.0f;
-        s.lanes[1].chance[1] = 0.0f;
-        s.lanes[1].chance[2] = 0.0f;
-        s.lanes[1].chance[3] = 0.0f;
-        s.lanes[1].chance[4] = 0.0f;
-        s.lanes[1].chance[5] = 0.0f;
-        s.lanes[1].chance[6] = 0.0f;
-        s.lanes[1].chance[7] = 0.0f;
+        s.noteLanes[1].mode   = params::modeMultiply;
+        s.noteLanes[1].depth  = 1.0f;
+        s.noteLanes[1].chance[0] = 0.0f;
+        s.noteLanes[1].chance[1] = 0.0f;
+        s.noteLanes[1].chance[2] = 0.0f;
+        s.noteLanes[1].chance[3] = 0.0f;
+        s.noteLanes[1].chance[4] = 0.0f;
+        s.noteLanes[1].chance[5] = 0.0f;
+        s.noteLanes[1].chance[6] = 0.0f;
+        s.noteLanes[1].chance[7] = 0.0f;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1130,11 +1140,11 @@ int main()
         // Lane 2 multiplies the chain by zero, which would collapse every note to the root.
         // Muted, it must leave the mix exactly as an absent lane would.
         auto s = baseSnapshot();
-        s.lanes[0].length = 4;
-        s.lanes[0].values[1] = 0.5f;     // -> note 54 with range 12, chromatic
-        s.lanes[1].mode   = params::modeMultiply;
-        s.lanes[1].depth  = 1.0f;
-        s.lanes[1].active = false;
+        s.noteLanes[0].length = 4;
+        s.noteLanes[0].values[1] = 0.5f;     // -> note 54 with range 12, chromatic
+        s.noteLanes[1].mode   = params::modeMultiply;
+        s.noteLanes[1].depth  = 1.0f;
+        s.noteLanes[1].active = false;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1146,8 +1156,8 @@ int main()
 
         // Muting the lane that drives the notes silences the sequencer, in both modes.
         auto muted = baseSnapshot();
-        muted.lanes[0].length = 4;
-        muted.lanes[0].active = false;
+        muted.noteLanes[0].length = 4;
+        muted.noteLanes[0].active = false;
 
         SequencerEngine mono;
         mono.prepare (sampleRate);
@@ -1156,8 +1166,8 @@ int main()
                "muting the trigger lane stops the notes");
 
         muted.polyMode = true;
-        muted.lanes[1].depth  = 1.0f;
-        muted.lanes[1].length = 4;
+        muted.noteLanes[1].depth  = 1.0f;
+        muted.noteLanes[1].length = 4;
 
         SequencerEngine poly;
         poly.prepare (sampleRate);
@@ -1172,8 +1182,8 @@ int main()
     section ("Swing shifts alternate steps");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 4;
-        s.swing = 0.5f;      // delay every other step by 25% of a step
+        s.noteLanes[0].length = 4;
+        s.noteSwing = 0.5f;      // delay every other step by 25% of a step
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1202,9 +1212,9 @@ int main()
     section ("Zero swing and nudge reproduce the plain grid");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 4;
-        s.swing = 0.0f;
-        s.lanes[0].nudge = 0.0f;
+        s.noteLanes[0].length = 4;
+        s.noteSwing = 0.0f;
+        s.noteLanes[0].nudge = 0.0f;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1223,8 +1233,8 @@ int main()
     section ("Per-lane nudge shifts the whole lane");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 4;
-        s.lanes[0].nudge = 0.4f;   // 20% of a step late
+        s.noteLanes[0].length = 4;
+        s.noteLanes[0].nudge = 0.4f;   // 20% of a step late
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1251,13 +1261,13 @@ int main()
     section ("Per-lane CC output");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 2;
-        s.lanes[0].values[0] = 0.0f;
-        s.lanes[0].values[1] = 1.0f;
-        s.lanes[0].depth = 0.0f;       // deliberately zero: lane CC ignores Depth
-        s.lanes[0].ccOn = true;
-        s.lanes[0].ccNumber = 20;
-        s.lanes[0].ccChannel = 3;
+        s.ccLanes[0].length = 2;
+        s.ccLanes[0].values[0] = 0.0f;
+        s.ccLanes[0].values[1] = 1.0f;
+        s.ccLanes[0].depth = 0.0f;       // deliberately zero: lane CC ignores Depth
+        s.ccLanes[0].ccOn = true;
+        s.ccLanes[0].ccNumber = 20;
+        s.ccLanes[0].ccChannel = 3;
         s.notesOn = false;
         s.ccOn = true;
 
@@ -1284,10 +1294,10 @@ int main()
     section ("Lane CC stays silent when disabled");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 2;
-        s.lanes[0].values[1] = 1.0f;
-        s.lanes[0].ccOn = false;
-        s.lanes[0].ccNumber = 20;
+        s.ccLanes[0].length = 2;
+        s.ccLanes[0].values[1] = 1.0f;
+        s.ccLanes[0].ccOn = false;
+        s.ccLanes[0].ccNumber = 20;
         s.notesOn = false;
         s.ccOn = true;
 
@@ -1309,12 +1319,12 @@ int main()
     section ("Per-lane CC Offset shifts that lane's own CC");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 1;
-        s.lanes[0].values[0] = 0.0f;
-        s.lanes[0].depth = 0.0f;       // lane CC ignores Depth, same as the test above
-        s.lanes[0].ccOn = true;
-        s.lanes[0].ccNumber = 20;
-        s.lanes[0].ccOffset = 0.25f;
+        s.ccLanes[0].length = 1;
+        s.ccLanes[0].values[0] = 0.0f;
+        s.ccLanes[0].depth = 0.0f;       // lane CC ignores Depth, same as the test above
+        s.ccLanes[0].ccOn = true;
+        s.ccLanes[0].ccNumber = 20;
+        s.ccLanes[0].ccOffset = 0.25f;
         s.notesOn = false;
         s.ccOn = true;
 
@@ -1334,17 +1344,17 @@ int main()
     }
 
     //==========================================================================
-    section ("The global Offset does not leak into per-lane CC");
+    section ("The CC tab's own Offset does not leak into per-lane CC");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 1;
-        s.lanes[0].values[0] = 0.0f;
-        s.lanes[0].depth = 0.0f;
-        s.lanes[0].ccOn = true;
-        s.lanes[0].ccNumber = 20;
+        s.ccLanes[0].length = 1;
+        s.ccLanes[0].values[0] = 0.0f;
+        s.ccLanes[0].depth = 0.0f;
+        s.ccLanes[0].ccOn = true;
+        s.ccLanes[0].ccNumber = 20;
         s.notesOn = false;
         s.ccOn = true;
-        s.offset = 0.25f;      // the Pitch tab's Offset, not this lane's own CC Offset
+        s.ccOffset = 0.25f;      // shifts the Mix CC, not this lane's own CC Offset
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1358,21 +1368,21 @@ int main()
                 laneMax = juce::jmax (laneMax, e.value);
 
         check (laneMax <= 0,
-              "a step at value 0 stays at lane CC 0 -- the global Offset only touches "
-              "pitch and the Mix CC");
+              "a step at value 0 stays at lane CC 0 -- the CC tab's own Offset only touches "
+              "the Mix CC");
     }
 
     //==========================================================================
     section ("Voices = 1 keeps the original monophonic behaviour");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 4;
+        s.noteLanes[0].length = 4;
         s.scale = 0;
         setLaneGate (s, 0, 180.0f);   // would overlap if polyphony were allowed
         s.voiceCount = 1;
 
         for (int i = 0; i < 4; ++i)
-            s.lanes[0].values[i] = (float) (i + 1) / 12.0f;   // distinct pitches
+            s.noteLanes[0].values[i] = (float) (i + 1) / 12.0f;   // distinct pitches
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1398,13 +1408,13 @@ int main()
     section ("Polyphony lets a long gate overlap");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 4;
+        s.noteLanes[0].length = 4;
         s.scale = 0;
         setLaneGate (s, 0, 180.0f);   // 1.8 steps long, so each note laps into the next
         s.voiceCount = 4;
 
         for (int i = 0; i < 4; ++i)
-            s.lanes[0].values[i] = (float) (i + 1) / 12.0f;
+            s.noteLanes[0].values[i] = (float) (i + 1) / 12.0f;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1440,13 +1450,13 @@ int main()
     section ("Voice count is respected as a ceiling");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 8;
+        s.noteLanes[0].length = 8;
         s.scale = 0;
         setLaneGate (s, 0, 200.0f);
         s.voiceCount = 2;
 
         for (int i = 0; i < params::numSteps; ++i)
-            s.lanes[0].values[i] = (float) (i + 1) / 24.0f;
+            s.noteLanes[0].values[i] = (float) (i + 1) / 24.0f;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1473,8 +1483,8 @@ int main()
         // Every step is the same pitch on the same channel with a long gate. MIDI cannot
         // distinguish two identical notes, so the engine must retrigger rather than stack.
         auto s = baseSnapshot();
-        s.lanes[0].length = 1;
-        s.lanes[0].values[0] = 0.25f;
+        s.noteLanes[0].length = 1;
+        s.noteLanes[0].values[0] = 0.25f;
         s.scale = 0;
         setLaneGate (s, 0, 190.0f);
         s.voiceCount = 4;
@@ -1502,13 +1512,13 @@ int main()
     section ("Transport stop releases every voice");
     {
         auto s = baseSnapshot();
-        s.lanes[0].length = 4;
+        s.noteLanes[0].length = 4;
         s.scale = 0;
         setLaneGate (s, 0, 190.0f);
         s.voiceCount = 4;
 
         for (int i = 0; i < 4; ++i)
-            s.lanes[0].values[i] = (float) (i + 1) / 12.0f;
+            s.noteLanes[0].values[i] = (float) (i + 1) / 12.0f;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1556,18 +1566,18 @@ int main()
 
         for (int lane = 0; lane < params::numLanes; ++lane)
         {
-            s.lanes[lane].length = 1;
-            s.lanes[lane].depth  = 1.0f;
+            s.noteLanes[lane].length = 1;
+            s.noteLanes[lane].depth  = 1.0f;
             setLaneGate (s, lane, 50.0f);
         }
 
-        s.lanes[0].values[0] = 0.0f;             // root, 48
-        s.lanes[1].values[0] = 4.0f / 12.0f;     // +4, 52
-        s.lanes[2].values[0] = 7.0f / 12.0f;     // +7, 55
+        s.noteLanes[0].values[0] = 0.0f;             // root, 48
+        s.noteLanes[1].values[0] = 4.0f / 12.0f;     // +4, 52
+        s.noteLanes[2].values[0] = 7.0f / 12.0f;     // +7, 55
 
-        s.lanes[0].division = params::divIndex_1_16;
-        s.lanes[1].division = params::divIndex_1_8;
-        s.lanes[2].division = params::divIndex_1_4;
+        s.noteLanes[0].division = params::divIndex_1_16;
+        s.noteLanes[1].division = params::divIndex_1_8;
+        s.noteLanes[2].division = params::divIndex_1_4;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1610,15 +1620,15 @@ int main()
         s.scale = 0;
         s.velocity = 100;
         setLaneGate (s, 0, 40.0f);
-        s.lanes[0].length = 4;
+        s.noteLanes[0].length = 4;
 
         for (int i = 0; i < 4; ++i)
-            s.lanes[0].values[i] = (float) i / 12.0f;
+            s.noteLanes[0].values[i] = (float) i / 12.0f;
 
-        s.lanes[0].velocity[0] = 1.0f;     // 100, unity
-        s.lanes[0].velocity[1] = 0.25f;    // 25
-        s.lanes[0].velocity[2] = 0.6f;     // 60
-        s.lanes[0].velocity[3] = 0.0f;     // clamps up to 1, never 0
+        s.noteLanes[0].velocity[0] = 1.0f;     // 100, unity
+        s.noteLanes[0].velocity[1] = 0.25f;    // 25
+        s.noteLanes[0].velocity[2] = 0.6f;     // 60
+        s.noteLanes[0].velocity[3] = 0.0f;     // clamps up to 1, never 0
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1646,9 +1656,9 @@ int main()
         s.scale = 0;
         s.velocity = 80;
         setLaneGate (s, 0, 40.0f);
-        s.lanes[0].length = 1;
-        s.lanes[0].values[0] = 0.0f;
-        s.lanes[0].velocity[0] = 1.0f;
+        s.noteLanes[0].length = 1;
+        s.noteLanes[0].values[0] = 0.0f;
+        s.noteLanes[0].velocity[0] = 1.0f;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1658,7 +1668,7 @@ int main()
         check (! ons.empty() && ons[0].value == 80,
                "a step at full accent plays at exactly the global velocity");
 
-        s.lanes[0].velocity[0] = 0.5f;      // step accent
+        s.noteLanes[0].velocity[0] = 0.5f;      // step accent
 
         SequencerEngine scaled;
         scaled.prepare (sampleRate);
@@ -1679,14 +1689,14 @@ int main()
 
         for (int lane = 0; lane < params::numLanes; ++lane)
         {
-            s.lanes[lane].length = 1;
-            s.lanes[lane].values[0] = (float) lane / 12.0f;
+            s.noteLanes[lane].length = 1;
+            s.noteLanes[lane].values[0] = (float) lane / 12.0f;
             setLaneGate (s, lane, 50.0f);
         }
 
-        s.lanes[0].depth = 1.0f;
-        s.lanes[1].depth = 0.05f;   // barely in the mix, but still a full-velocity note
-        s.lanes[2].depth = 0.0f;    // silent
+        s.noteLanes[0].depth = 1.0f;
+        s.noteLanes[1].depth = 0.05f;   // barely in the mix, but still a full-velocity note
+        s.noteLanes[2].depth = 0.0f;    // silent
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1717,17 +1727,17 @@ int main()
         auto s = baseSnapshot();
         s.scale = 0;
         s.velocity = 100;
-        s.triggerSource = params::numLanes;    // Any Lane
+        s.noteTriggerSource = params::numLanes;    // Any Lane
         s.voiceCount = 4;
 
-        s.lanes[0].length = 1;
-        s.lanes[0].division = params::divIndex_1_16;
-        s.lanes[0].velocity[0] = 1.0f;
+        s.noteLanes[0].length = 1;
+        s.noteLanes[0].division = params::divIndex_1_16;
+        s.noteLanes[0].velocity[0] = 1.0f;
         setLaneGate (s, 0, 40.0f);
 
-        s.lanes[1].length = 1;
-        s.lanes[1].division = params::divIndex_1_4;
-        s.lanes[1].velocity[0] = 0.3f;
+        s.noteLanes[1].length = 1;
+        s.noteLanes[1].division = params::divIndex_1_4;
+        s.noteLanes[1].velocity[0] = 0.3f;
         setLaneGate (s, 1, 40.0f);
 
         // Under Any Lane every lane is a trigger lane and the last one to advance at a given
@@ -1735,7 +1745,7 @@ int main()
         // or it would claim every trigger and supply its own velocity. The instance has two
         // lanes, which takes care of lane 4 the same way.
         for (int i = 0; i < params::numSteps; ++i)
-            s.lanes[2].enabled[i] = false;
+            s.noteLanes[2].enabled[i] = false;
 
         useLanes (s, 3);
 
@@ -1766,16 +1776,16 @@ int main()
         s.scale = 0;
         s.voiceCount = 1;
 
-        s.lanes[0].length = 1;
-        s.lanes[0].values[0] = 0.0f;             // note 48
-        s.lanes[0].division = params::divIndex_1_4;
-        s.lanes[0].depth = 1.0f;
+        s.noteLanes[0].length = 1;
+        s.noteLanes[0].values[0] = 0.0f;             // note 48
+        s.noteLanes[0].division = params::divIndex_1_4;
+        s.noteLanes[0].depth = 1.0f;
         setLaneGate (s, 0, 400.0f);   // four steps long
 
-        s.lanes[1].length = 1;
-        s.lanes[1].values[0] = 9.0f / 12.0f;     // note 57
-        s.lanes[1].division = params::divIndex_1_16;
-        s.lanes[1].depth = 1.0f;
+        s.noteLanes[1].length = 1;
+        s.noteLanes[1].values[0] = 9.0f / 12.0f;     // note 57
+        s.noteLanes[1].division = params::divIndex_1_16;
+        s.noteLanes[1].depth = 1.0f;
         setLaneGate (s, 1, 400.0f);
 
         SequencerEngine engine;
@@ -1803,8 +1813,8 @@ int main()
         auto s = baseSnapshot();
         s.scale = 0;
         s.voiceCount = 4;
-        s.lanes[0].length = 1;
-        s.lanes[0].values[0] = 0.0f;
+        s.noteLanes[0].length = 1;
+        s.noteLanes[0].values[0] = 0.0f;
         setLaneGate (s, 0, 400.0f);
 
         SequencerEngine engine;

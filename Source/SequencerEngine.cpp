@@ -73,12 +73,13 @@ void SequencerEngine::prepare (double sampleRate)
 
 void SequencerEngine::reset()
 {
-    for (auto& lane : lanes)
-    {
-        lane.lastGlobalIndex = std::numeric_limits<std::int64_t>::min();
-        lane.step = 0;
-        lane.held = 0.0f;
-    }
+    for (auto* states : { noteLaneStates, ccLaneStates })
+        for (int lane = 0; lane < params::numLanes; ++lane)
+        {
+            states[lane].lastGlobalIndex = std::numeric_limits<std::int64_t>::min();
+            states[lane].step = 0;
+            states[lane].held = 0.0f;
+        }
 
     for (auto& voice : voices)
     {
@@ -97,9 +98,9 @@ void SequencerEngine::reset()
 
     for (int lane = 0; lane < params::numLanes; ++lane)
     {
-        laneHeldValue[lane]   = 0.0f;
-        laneSlewedValue[lane] = 0.0f;
-        laneLastCcValue[lane] = -1;
+        ccLaneHeldValue[lane]   = 0.0f;
+        ccLaneSlewedValue[lane] = 0.0f;
+        ccLaneLastCcValue[lane] = -1;
     }
 }
 
@@ -328,7 +329,7 @@ SequencerEngine::PitchResult SequencerEngine::pitchFor (float value, const Snaps
 
 int SequencerEngine::velocityFor (const Snapshot& s, int laneIndex, int stepIndex) noexcept
 {
-    const auto& ln = s.lanes[(size_t) juce::jlimit (0, params::numLanes - 1, laneIndex)];
+    const auto& ln = s.noteLanes[(size_t) juce::jlimit (0, params::numLanes - 1, laneIndex)];
     const float step = ln.velocity[(size_t) juce::jlimit (0, params::numSteps - 1, stepIndex)];
 
     // The global Velocity is the master and the step carries the accent, which defaults to
@@ -343,7 +344,7 @@ int SequencerEngine::velocityFor (const Snapshot& s, int laneIndex, int stepInde
 
 float SequencerEngine::gateFor (const Snapshot& s, int laneIndex, int stepIndex) noexcept
 {
-    const auto& ln = s.lanes[(size_t) juce::jlimit (0, params::numLanes - 1, laneIndex)];
+    const auto& ln = s.noteLanes[(size_t) juce::jlimit (0, params::numLanes - 1, laneIndex)];
     return ln.gate[(size_t) juce::jlimit (0, params::numSteps - 1, stepIndex)];
 }
 
@@ -441,7 +442,8 @@ void SequencerEngine::process (const Snapshot& s,
         }
     }
 
-    // One-pole slew coefficient, computed per block rather than per sample.
+    // One-pole slew coefficient, computed per block rather than per sample. Shared by the
+    // Mix CC and every CC lane's own tap -- Slew never touches pitch.
     const float slewCoeff = s.slewMs <= 0.01f
                               ? 1.0f
                               : 1.0f - std::exp (-1.0f / (float) (s.slewMs * 0.001 * currentSampleRate));
@@ -450,11 +452,15 @@ void SequencerEngine::process (const Snapshot& s,
     {
         const double ppq = ppqAtBlockStart + ppqPerSample * (double) n;
 
-        float accumulator   = 0.0f;
-        bool  triggered     = false;
-        int   triggerLane   = 0;
-        int   triggerStep   = 0;
-        double triggerStepPpq = params::divisionPpq[params::divIndex_1_16];
+        //----------------------------------------------------------------------
+        // Note-lane fold. Runs every sample regardless of notesOn, the same way the shared
+        // lane loop always used to: a muted output still keeps its own step position live,
+        // exactly as a muted lane keeps its playhead moving in the editor.
+        float noteAccumulator = 0.0f;
+        bool  triggered        = false;
+        int   triggerLane      = 0;
+        int   triggerStep      = 0;
+        double triggerStepPpq  = params::divisionPpq[params::divIndex_1_16];
 
         // Poly mode: each lane's own trigger, collected here rather than emitted inside the
         // lane loop, because advanceVoices() below has to order its expiring note-offs
@@ -464,11 +470,10 @@ void SequencerEngine::process (const Snapshot& s,
         int    laneTriggerStep[params::numLanes] {};
         double laneTriggerStepPpq[params::numLanes] {};
 
-        //----------------------------------------------------------------------
         for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
         {
-            const auto& ln    = s.lanes[laneIndex];
-            auto&       state = lanes[laneIndex];
+            const auto& ln    = s.noteLanes[laneIndex];
+            auto&       state = noteLaneStates[laneIndex];
 
             const double stepPpq = params::divisionPpq[(size_t) juce::jlimit (
                 0, (int) params::divisionNames.size() - 1, ln.division)];
@@ -478,7 +483,7 @@ void SequencerEngine::process (const Snapshot& s,
             // under an integer whenever the numbers aren't exactly representable in binary
             // -- ppqPerSample is 1/24000 at 120bpm/48kHz -- which pushed boundaries a
             // sample late and made step lengths alternate between 5999 and 6001 samples.
-            const auto globalIndex = resolveGlobalIndex (ppq, stepPpq, ln, s.swing, laneIndex);
+            const auto globalIndex = resolveGlobalIndex (ppq, stepPpq, ln, s.noteSwing, laneIndex);
             const bool advanced    = (globalIndex != state.lastGlobalIndex);
 
             const int step = stepIndexFor (globalIndex, length, ln.direction, laneIndex);
@@ -505,13 +510,7 @@ void SequencerEngine::process (const Snapshot& s,
                 // Sample & Hold captures the chain as it stands *at this lane's*
                 // clock, which is what lets a slow lane re-time faster ones.
                 if (ln.mode == params::modeSampleHold && stepOn)
-                    state.held = accumulator;
-
-                // Per-lane CC follows the lane's own step value, independent of Depth --
-                // Depth governs the lane's share of the mix, not its own output. Inactive
-                // steps latch the previous level instead of dropping to zero.
-                if (stepOn)
-                    laneHeldValue[laneIndex] = value;
+                    state.held = noteAccumulator;
             }
 
             if (stepOn)
@@ -519,23 +518,23 @@ void SequencerEngine::process (const Snapshot& s,
                 switch (ln.mode)
                 {
                     case params::modeAdd:
-                        accumulator += ln.depth * value;
+                        noteAccumulator += ln.depth * value;
                         break;
 
                     case params::modeMultiply:
                     {
                         // depth 0 is a no-op, depth 1 is a full multiply.
                         const float d = std::abs (ln.depth);
-                        accumulator *= (1.0f - d + d * value);
+                        noteAccumulator *= (1.0f - d + d * value);
                         break;
                     }
 
                     case params::modeMax:
-                        accumulator = juce::jmax (accumulator, ln.depth * value);
+                        noteAccumulator = juce::jmax (noteAccumulator, ln.depth * value);
                         break;
 
                     case params::modeSampleHold:
-                        accumulator = state.held;
+                        noteAccumulator = state.held;
                         break;
 
                     default:
@@ -559,8 +558,8 @@ void SequencerEngine::process (const Snapshot& s,
             else
             {
                 // Trigger source: a specific lane, or any lane that just advanced.
-                const bool isTriggerLane = s.triggerSource >= params::numLanes
-                                             || laneIndex == s.triggerSource;
+                const bool isTriggerLane = s.noteTriggerSource >= params::numLanes
+                                             || laneIndex == s.noteTriggerSource;
 
                 if (advanced && stepOn && isTriggerLane)
                 {
@@ -572,21 +571,93 @@ void SequencerEngine::process (const Snapshot& s,
             }
         }
 
+        const float noteMix = juce::jlimit (0.0f, 1.0f, noteAccumulator + s.noteOffset);
+
         //----------------------------------------------------------------------
-        const float mix = juce::jlimit (0.0f, 1.0f, accumulator + s.offset);
+        // CC-lane fold. Same shape as the note-lane fold above -- Add/Multiply/Max/S&H over
+        // Depth -- but over the CC pool's own lanes and its own Swing, with no Trigger
+        // concept: CC output is never "triggered", it continuously reflects the fold.
+        float ccAccumulator = 0.0f;
 
-        slewedValue += (mix - slewedValue) * slewCoeff;
+        for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
+        {
+            const auto& ln    = s.ccLanes[laneIndex];
+            auto&       state = ccLaneStates[laneIndex];
 
-        if (ccEnabled)
-            for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
+            const double stepPpq = params::divisionPpq[(size_t) juce::jlimit (
+                0, (int) params::divisionNames.size() - 1, ln.division)];
+            const int length = juce::jlimit (1, params::numSteps, ln.length);
+
+            const auto globalIndex = resolveGlobalIndex (ppq, stepPpq, ln, s.ccSwing, laneIndex);
+            const bool advanced    = (globalIndex != state.lastGlobalIndex);
+
+            const int step = stepIndexFor (globalIndex, length, ln.direction, laneIndex);
+
+            const float value  = ln.values[(size_t) step];
+            const float chance = ln.chance[(size_t) step];
+
+            bool stepOn = ln.active && ln.enabled[(size_t) step];
+
+            if (stepOn && chance < 0.999f)
+                stepOn = hashToUnitFloat (globalIndex, laneIndex, probabilitySalt) < chance;
+
+            if (advanced)
             {
-                // Each lane's own CC Offset, not the global one -- the global Offset already
-                // has a job (pitch and the Mix CC) and moving every lane's CC by the same
-                // amount would leave no way to recentre just one of them.
-                const float target = juce::jlimit (0.0f, 1.0f,
-                                                   laneHeldValue[laneIndex] + s.lanes[laneIndex].ccOffset);
-                laneSlewedValue[laneIndex] += (target - laneSlewedValue[laneIndex]) * slewCoeff;
+                state.lastGlobalIndex = globalIndex;
+                state.step = step;
+
+                if (ln.mode == params::modeSampleHold && stepOn)
+                    state.held = ccAccumulator;
+
+                // The lane's own tap follows its own step value, independent of Depth --
+                // Depth governs the lane's share of the Mix CC, not its own tap. Inactive
+                // steps latch the previous level instead of dropping to zero.
+                if (stepOn)
+                    ccLaneHeldValue[laneIndex] = value;
             }
+
+            if (stepOn)
+            {
+                switch (ln.mode)
+                {
+                    case params::modeAdd:
+                        ccAccumulator += ln.depth * value;
+                        break;
+
+                    case params::modeMultiply:
+                    {
+                        const float d = std::abs (ln.depth);
+                        ccAccumulator *= (1.0f - d + d * value);
+                        break;
+                    }
+
+                    case params::modeMax:
+                        ccAccumulator = juce::jmax (ccAccumulator, ln.depth * value);
+                        break;
+
+                    case params::modeSampleHold:
+                        ccAccumulator = state.held;
+                        break;
+
+                    default:
+                        break;
+                }
+            }
+        }
+
+        const float ccMix = juce::jlimit (0.0f, 1.0f, ccAccumulator + s.ccOffset);
+
+        slewedValue += (ccMix - slewedValue) * slewCoeff;
+
+        for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
+        {
+            // Each CC lane's own Offset, not the CC tab's own one -- that already has a job
+            // (the Mix CC) and moving every lane's tap by the same amount would leave no way
+            // to recentre just one of them.
+            const float target = juce::jlimit (0.0f, 1.0f,
+                                               ccLaneHeldValue[laneIndex] + s.ccLanes[laneIndex].ccOffset);
+            ccLaneSlewedValue[laneIndex] += (target - ccLaneSlewedValue[laneIndex]) * slewCoeff;
+        }
 
         //----------------------------------------------------------------------
         if (notesEnabled)
@@ -618,7 +689,7 @@ void SequencerEngine::process (const Snapshot& s,
                     // The lane's own value drives its pitch, and Offset applies to it the
                     // same way it applies to the mix in the other mode.
                     const float value = juce::jlimit (0.0f, 1.0f,
-                                                      laneTriggerValue[laneIndex] + s.offset);
+                                                      laneTriggerValue[laneIndex] + s.noteOffset);
 
                     const int begin = laneIndex * voicesPerLane;
 
@@ -633,7 +704,7 @@ void SequencerEngine::process (const Snapshot& s,
                 // The note belongs to whichever step of whichever lane triggered it, so that
                 // step's accent and gate both apply even though the pitch came from the
                 // combined mix.
-                fireNote (mix,
+                fireNote (noteMix,
                           velocityFor (s, triggerLane, triggerStep),
                           gateSamplesFor (triggerStepPpq, gateFor (s, triggerLane, triggerStep)),
                           0, voiceLimit);
@@ -659,21 +730,21 @@ void SequencerEngine::process (const Snapshot& s,
                                                                  ccValue), n);
             }
 
-            // Each lane can also drive its own destination, so one instance can modulate
-            // several parameters rather than only the combined mix.
+            // Each CC lane can also drive its own destination, so one instance can modulate
+            // several parameters rather than only the Mix CC.
             for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
             {
-                const auto& ln = s.lanes[laneIndex];
+                const auto& ln = s.ccLanes[laneIndex];
 
                 if (! ln.ccOn)
                     continue;
 
                 const int laneCc = juce::jlimit (0, 127,
-                                                 (int) std::lround (laneSlewedValue[laneIndex] * 127.0f));
+                                                 (int) std::lround (ccLaneSlewedValue[laneIndex] * 127.0f));
 
-                if (laneCc != laneLastCcValue[laneIndex])
+                if (laneCc != ccLaneLastCcValue[laneIndex])
                 {
-                    laneLastCcValue[laneIndex] = laneCc;
+                    ccLaneLastCcValue[laneIndex] = laneCc;
                     out.addEvent (juce::MidiMessage::controllerEvent (juce::jlimit (1, 16, ln.ccChannel),
                                                                      juce::jlimit (0, 127, ln.ccNumber),
                                                                      laneCc), n);
@@ -683,5 +754,8 @@ void SequencerEngine::process (const Snapshot& s,
     }
 
     for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
-        uiStep[laneIndex].store (lanes[laneIndex].step, std::memory_order_relaxed);
+    {
+        noteUiStep[laneIndex].store (noteLaneStates[laneIndex].step, std::memory_order_relaxed);
+        ccUiStep[laneIndex].store (ccLaneStates[laneIndex].step, std::memory_order_relaxed);
+    }
 }

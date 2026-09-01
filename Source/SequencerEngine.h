@@ -45,24 +45,31 @@ public:
         float nudge     = 0.0f;
         float humanize  = 0.0f;
 
+        // Only ever meaningful on a CC lane: a Note lane never has these parameters, and
+        // this stays at its default for one.
         bool  ccOn      = false;
         int   ccNumber  = 20;
         int   ccChannel = 1;
 
-        /** Shifts this lane's own CC output, independent of the other lanes and of the
-            global Offset (which only ever touches pitch and the Mix CC). */
+        /** Shifts this CC lane's own tap, independent of the other CC lanes and of the CC
+            tab's own Offset (which shifts the Mix CC instead). */
         float ccOffset  = 0.0f;
     };
 
     struct Snapshot
     {
-        LaneSnapshot lanes[params::numLanes];
+        LaneSnapshot noteLanes[params::numLanes];
+        LaneSnapshot ccLanes[params::numLanes];
 
         // Independent -- both can be on together, and both can be off to mute the instance
         // entirely.
         bool  notesOn       = true;
         bool  ccOn          = false;
-        int   triggerSource = 0;
+
+        // Which Note lane's advance fires the shared note in mixed (non-poly) mode. CC has
+        // no equivalent: its output is never "triggered", it continuously reflects the fold.
+        int   noteTriggerSource = 0;
+
         bool  quantize      = true;
         int   bendRange     = 2;
         int   root          = 48;
@@ -70,11 +77,26 @@ public:
         int   scale         = 4;
         int   velocity      = 100;
         int   midiChannel   = 1;
+
+        // The CC tab's own Mix destination, fed by the CC-lane fold.
         int   ccNumber      = 1;
         int   ccChannel     = 1;
-        float offset        = 0.0f;
+
+        // Shifts the Note-lane mix before it becomes pitch.
+        float noteOffset    = 0.0f;
+
+        // Shifts the CC-lane mix before it becomes the Mix CC. Independent of any CC
+        // lane's own ccOffset, which shifts that lane's own tap instead.
+        float ccOffset      = 0.0f;
+
+        // Smooths the Mix CC and every CC lane's own tap. Never touches pitch.
         float slewMs        = 0.0f;
-        float swing         = 0.0f;
+
+        // Each pool answers to its own clock, so Swing is independent per pool -- a Note
+        // lane and a CC lane can be shifted differently, or not at all.
+        float noteSwing     = 0.0f;
+        float ccSwing       = 0.0f;
+
         int   voiceCount    = 1;
 
         /** False: the lanes are mixed into one value that drives one note.
@@ -115,7 +137,11 @@ public:
     //==========================================================================
     // Read by the editor's timer. Plain relaxed atomics: a torn read just means
     // one stale repaint frame.
-    int   getCurrentStep (int lane) const noexcept { return uiStep[lane].load (std::memory_order_relaxed); }
+    int getCurrentStep (int lane, params::LaneKind kind = params::LaneKind::note) const noexcept
+    {
+        return (kind == params::LaneKind::cc ? ccUiStep[lane] : noteUiStep[lane])
+                 .load (std::memory_order_relaxed);
+    }
 
 private:
     //==========================================================================
@@ -152,7 +178,8 @@ private:
         float held = 0.0f;
     };
 
-    LaneState lanes[params::numLanes];
+    LaneState noteLaneStates[params::numLanes];
+    LaneState ccLaneStates[params::numLanes];
 
     double currentSampleRate = 44100.0;
 
@@ -213,11 +240,11 @@ private:
     int   ccCountdown = 0;
     int   ccIntervalSamples = 32;
 
-    // Per-lane CC streams. heldValue latches on inactive steps so a skipped step holds
+    // Per-CC-lane tap streams. heldValue latches on inactive steps so a skipped step holds
     // its level rather than dropping to zero.
-    float laneHeldValue[params::numLanes] {};
-    float laneSlewedValue[params::numLanes] {};
-    int   laneLastCcValue[params::numLanes] { -1, -1, -1, -1 };
+    float ccLaneHeldValue[params::numLanes] {};
+    float ccLaneSlewedValue[params::numLanes] {};
+    int   ccLaneLastCcValue[params::numLanes] { -1, -1, -1, -1 };
 
     // What the receiving instrument has already been told, so the RPNs are re-sent only
     // when the mode, range or target channel actually changes.
@@ -231,5 +258,6 @@ private:
     // switch is flipped is released rather than left for the other mode to inherit.
     int   configuredPolyMode  = -1;
 
-    std::atomic<int>   uiStep[params::numLanes] {};
+    std::atomic<int>   noteUiStep[params::numLanes] {};
+    std::atomic<int>   ccUiStep[params::numLanes] {};
 };

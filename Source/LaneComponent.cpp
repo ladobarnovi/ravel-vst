@@ -12,8 +12,12 @@ namespace
 }
 
 //==============================================================================
-StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, int stepIndex)
-    : accent (theme::laneAccent (laneIndex))
+StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, int stepIndex,
+                    params::LaneKind kind)
+    : accent (theme::laneAccent (laneIndex)),
+      // A CC step never has a selector to switch it away from Value, and it has no
+      // Velocity/Gate parameter to show a tick for regardless -- see setNoteLayersAvailable.
+      noteLayersAvailable (kind == params::LaneKind::note)
 {
     struct LayerSetup
     {
@@ -23,12 +27,18 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
         const char*   tooltip;
     };
 
+    // Velocity and Gate are note-only parameters -- a CC lane's step has neither (see
+    // Parameters.cpp) -- so for a CC-kind slot only Value and Chance get built at all.
+    const bool isCc = kind == params::LaneKind::cc;
+
     const LayerSetup setups[]
     {
-        { valueSlider,    params::stepValueId (laneIndex, stepIndex),    0.0,  "Step value -- drives pitch" },
-        { velocitySlider, params::stepVelocityId (laneIndex, stepIndex), 1.0,  "This step's accent, as a trim on the global Velocity" },
-        { chanceSlider,   params::stepChanceId (laneIndex, stepIndex),   1.0,  "Probability this step fires" },
-        { gateSlider,     params::stepGateId (laneIndex, stepIndex),     60.0, "How long this step's note is held, as % of the step" },
+        { valueSlider,    params::stepValueId (laneIndex, stepIndex, kind),  0.0,  "Step value -- drives pitch" },
+        { velocitySlider, isCc ? juce::String() : params::stepVelocityId (laneIndex, stepIndex),
+          1.0,  "This step's accent, as a trim on the global Velocity" },
+        { chanceSlider,   params::stepChanceId (laneIndex, stepIndex, kind), 1.0,  "Probability this step fires" },
+        { gateSlider,     isCc ? juce::String() : params::stepGateId (laneIndex, stepIndex),
+          60.0, "How long this step's note is held, as % of the step" },
     };
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>* attachments[]
@@ -36,6 +46,12 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
 
     for (int i = 0; i < numStepLayers; ++i)
     {
+        // Velocity (1) and Gate (3): skipped entirely for a CC lane, rather than attached
+        // to the note lane of the same number that stepVelocityId/stepGateId would
+        // otherwise silently resolve to.
+        if (isCc && (i == (int) StepLayer::velocity || i == (int) StepLayer::gate))
+            continue;
+
         auto& slider = setups[i].slider;
 
         slider.setSliderStyle (juce::Slider::LinearBarVertical);
@@ -58,7 +74,7 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
     addAndMakeVisible (onButton);
 
     onAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
-        state, params::stepOnId (laneIndex, stepIndex), onButton);
+        state, params::stepOnId (laneIndex, stepIndex, kind), onButton);
 
     // ButtonAttachment listens through addListener rather than through either callback,
     // so onStateChange is free for the lane's own use.
@@ -230,8 +246,8 @@ void StepSlot::setPlaying (bool shouldBePlaying)
 
 //==============================================================================
 LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int laneIndex,
-                              params::LanePattern& sharedClipboard)
-    : apvts (state), lane (laneIndex), accent (theme::laneAccent (laneIndex)),
+                              params::LanePattern& sharedClipboard, params::LaneKind kind)
+    : apvts (state), lane (laneIndex), kind (kind), accent (theme::laneAccent (laneIndex)),
       clipboard (sharedClipboard), paramGroup (state)
 {
     numberLabel.setText (juce::String (laneIndex + 1), juce::dontSendNotification);
@@ -247,39 +263,53 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
     addAndMakeVisible (onButton);
 
     onAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
-        state, params::laneOnId (laneIndex), onButton);
+        state, params::laneOnId (laneIndex, kind), onButton);
 
     // As in StepSlot: the attachment listens through addListener, so onStateChange is ours.
     onButton.onStateChange = [this] { applyLaneState(); };
 
     for (int step = 0; step < params::numSteps; ++step)
-        addAndMakeVisible (slots.add (new StepSlot (state, laneIndex, step)));
+        addAndMakeVisible (slots.add (new StepSlot (state, laneIndex, step, kind)));
 
     //--------------------------------------------------------------------------
     // Two columns, filled left to right then wrapping, so each row pairs a structural
-    // parameter with one that shapes the lane's feel.
-    auto* lengthRow = paramGroup.add (params::laneLengthId (laneIndex), "Length");
+    // parameter with one that shapes the lane's feel. A Note lane and a CC lane share this
+    // block -- both fold the same way -- and a CC lane goes on to add its own destination.
+    auto* lengthRow = paramGroup.add (params::laneLengthId (laneIndex, kind), "Length");
     lengthRow->setTooltip ("How many of the eight steps the lane cycles through");
-    paramGroup.add (params::laneDivId (laneIndex),    "Rate");
-    paramGroup.add (params::laneDirId (laneIndex),    "Direction");
-    paramGroup.add (params::laneDepthId (laneIndex),  "Depth");
-    paramGroup.add (params::laneModeId (laneIndex),   "Mix mode");
-    paramGroup.add (params::laneNudgeId (laneIndex),  "Nudge")
+    paramGroup.add (params::laneDivId (laneIndex, kind),    "Rate");
+    paramGroup.add (params::laneDirId (laneIndex, kind),    "Direction");
+    paramGroup.add (params::laneDepthId (laneIndex, kind),  "Depth");
+    paramGroup.add (params::laneModeId (laneIndex, kind),   "Mix mode");
+    paramGroup.add (params::laneNudgeId (laneIndex, kind),  "Nudge")
               ->setTooltip ("Shift this whole lane earlier or later, up to half a step");
-    paramGroup.add (params::laneHumanizeId (laneIndex), "Humanise")
+    paramGroup.add (params::laneHumanizeId (laneIndex, kind), "Humanise")
               ->setTooltip ("Random timing jitter, repeatable per bar");
+
+    if (kind == params::LaneKind::cc)
+    {
+        paramGroup.add (params::laneCcOnId (laneIndex), "Send")
+                  ->setTooltip ("Send this lane's own value as its own CC, independent of "
+                               "the Mix CC");
+        paramGroup.add (params::laneCcNumId (laneIndex), "Number");
+        paramGroup.add (params::laneCcChanId (laneIndex), "Channel");
+        paramGroup.add (params::laneCcOffsetId (laneIndex), "Offset")
+                  ->setTooltip ("Shifts this lane's own tap. Independent of the CC tab's own "
+                               "Offset, which shifts the Mix CC instead");
+    }
+
     paramGroup.setColumns (2);
     addAndMakeVisible (paramGroup);
 
     //--------------------------------------------------------------------------
     randomiseButton.setTooltip ("Randomize this lane's 8 step values");
     theme::styleActionButton (randomiseButton);
-    randomiseButton.onClick = [this] { params::randomiseLaneValues (apvts, lane, random); };
+    randomiseButton.onClick = [this, kind] { params::randomiseLaneValues (apvts, lane, random, kind); };
     addAndMakeVisible (randomiseButton);
 
     clearButton.setTooltip ("Zero this lane's 8 step values");
     theme::styleActionButton (clearButton);
-    clearButton.onClick = [this] { params::clearLaneValues (apvts, lane); };
+    clearButton.onClick = [this, kind] { params::clearLaneValues (apvts, lane, kind); };
     addAndMakeVisible (clearButton);
 
     menuButton.setTooltip ("Rotate, invert, copy and paste this lane's pattern");
@@ -296,22 +326,33 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
     addChildComponent (removeButton);
 
     //--------------------------------------------------------------------------
-    static const char* layerTooltips[]
+    if (kind == params::LaneKind::note)
     {
-        "Bars edit each step's value, which drives pitch",
-        "Bars edit each step's velocity accent",
-        "Bars edit each step's probability of firing",
-        "Bars edit each step's gate, how long its note is held",
-    };
+        static const char* layerTooltips[]
+        {
+            "Bars edit each step's value, which drives pitch",
+            "Bars edit each step's velocity accent",
+            "Bars edit each step's probability of firing",
+            "Bars edit each step's gate, how long its note is held",
+        };
 
-    for (int i = 0; i < numStepLayers; ++i)
+        for (int i = 0; i < numStepLayers; ++i)
+        {
+            auto& button = layerButtons[i];
+
+            button.setTooltip (layerTooltips[i]);
+            button.setClickingTogglesState (false);
+            button.onClick = [this, i] { setLayer ((StepLayer) i); };
+            addAndMakeVisible (button);
+        }
+    }
+    else
     {
-        auto& button = layerButtons[i];
-
-        button.setTooltip (layerTooltips[i]);
-        button.setClickingTogglesState (false);
-        button.onClick = [this, i] { setLayer ((StepLayer) i); };
-        addAndMakeVisible (button);
+        // A CC lane has no layer to select -- the bars always edit Value -- so the selector
+        // never appears, leaving its column blank rather than four buttons that would do
+        // nothing.
+        for (auto& button : layerButtons)
+            button.setVisible (false);
     }
 
     // The attachment drives the slider through Slider::Listener, the same way the step
@@ -398,14 +439,15 @@ void LaneComponent::showActionsMenu()
 
                             auto& state = safeThis->apvts;
                             const int laneIndex = safeThis->lane;
+                            const auto kind = safeThis->kind;
 
                             switch (result)
                             {
-                                case 1: params::rotateLane (state, laneIndex, -1); break;
-                                case 2: params::rotateLane (state, laneIndex, 1); break;
-                                case 3: params::invertLaneValues (state, laneIndex); break;
-                                case 4: safeThis->clipboard = params::copyLane (state, laneIndex); break;
-                                case 5: params::pasteLane (state, laneIndex, safeThis->clipboard); break;
+                                case 1: params::rotateLane (state, laneIndex, -1, kind); break;
+                                case 2: params::rotateLane (state, laneIndex, 1, kind); break;
+                                case 3: params::invertLaneValues (state, laneIndex, kind); break;
+                                case 4: safeThis->clipboard = params::copyLane (state, laneIndex, kind); break;
+                                case 5: params::pasteLane (state, laneIndex, safeThis->clipboard, kind); break;
                                 default: break;
                             }
                         });

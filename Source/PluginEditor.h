@@ -27,14 +27,15 @@ public:
 private:
     void timerCallback() override;
 
-    /** Fills in the three tab pages. Split out only because listing 28 parameters inline
-        buries the layout code in the constructor. */
-    void buildTabs();
+    /** Fills in each workspace's own flat settings page. Split out only because listing this
+        many parameters inline would bury the layout code in the constructor. */
+    void buildWorkspaces();
 
-    /** Recomputes the natural (100%-zoom) size for the current lane count, updates the
-        resize constrainer to match, and rescales the actual window to hold the user's
-        current zoom level rather than snapping back to 100% -- which is what a plain
-        setSize() here would do every time a lane is added or removed. */
+    /** Recomputes the natural (100%-zoom) size for whichever workspace is currently
+        selected, updates the resize constrainer to match, and rescales the actual window
+        to hold the user's current zoom level rather than snapping back to 100% -- which is
+        what a plain setSize() here would do every time a lane is added or removed, or the
+        top-level tab is switched to a workspace with a different lane count. */
     void updateSizeConstraints();
 
     /** The layout that used to live in resized(), now run against content's native bounds
@@ -92,25 +93,31 @@ private:
     // Last states actually applied. setEnabled repaints, and this is polled at 30Hz.
     int appliedCanUndo = -1, appliedCanRedo = -1;
 
-    // Shared by all lanes, so a pattern can be copied from one and pasted onto another.
-    params::LanePattern patternClipboard;
+    // One clipboard per pool: pasting a Note lane's pattern onto a CC lane (or the reverse)
+    // is a cross-domain operation that doesn't mean anything -- a CC lane never reads
+    // velocity or gate -- so the two kinds don't share one.
+    params::LanePattern noteClipboard, ccClipboard;
 
-    // Every lane is built up front, because their parameters exist up front; the count only
-    // decides how many are shown and heard.
-    juce::OwnedArray<LaneComponent> lanes;
+    // Every lane in both pools is built up front, because their parameters exist up front;
+    // each pool's own count only decides how many of its own lanes are shown and heard.
+    juce::OwnedArray<LaneComponent> noteLanes, ccLanes;
 
-    juce::TextButton addLaneButton { "+ Add lane" };
+    juce::TextButton addNoteLaneButton { "+ Add lane" }, addCcLaneButton { "+ Add lane" };
 
     /** Writes the new count through the parameter rather than straight into the members, so
         the host records it as an edit and the editor picks it up on the next tick like any
         other parameter change. */
-    void setLaneCount (int newCount);
+    void setNoteLaneCount (int newCount);
+    void setCcLaneCount (int newCount);
 
-    /** Shows that many lanes, and resizes the window to fit. */
-    void applyLaneCount (int newCount);
+    /** Shows that many lanes of the given pool, and resizes the window to fit if that pool's
+        workspace is the one currently selected. */
+    void applyNoteLaneCount (int newCount);
+    void applyCcLaneCount (int newCount);
 
-    /** Hides the per-step layer selector while Notes is off, where a lane is a plain value
-        sequencer -- velocity and gate are only ever read on the note path. Applied from the
+    /** Hides the per-step layer selector on every Note lane while Notes is off, where a lane
+        is a plain value sequencer -- velocity and gate are only ever read on the note path.
+        CC lanes never have a selector to hide in the first place. Applied from the
         constructor as well as the timer, so an editor opened with Notes off never shows the
         selector even briefly. */
     void applyNotesOn (bool notesOn);
@@ -118,30 +125,37 @@ private:
     /** Takes out the lane a lane's own Remove button belongs to. Lives here rather than in
         LaneComponent because it is the stack that changes: every lane above this one moves
         down, and the window shrinks by one lane. */
-    void removeLane (int laneIndex);
+    void removeNoteLane (int laneIndex);
+    void removeCcLane (int laneIndex);
 
-    std::atomic<float>* laneCountParam = nullptr;
-    int laneCount = 0;
+    std::atomic<float>* noteLaneCountParam = nullptr;
+    std::atomic<float>* ccLaneCountParam   = nullptr;
+    int noteLaneCount = 0;
+    int ccLaneCount   = 0;
 
     // Output mode is the one global that changes what the plugin *is*, so it stays in the
     // header rather than going behind a tab with the rest of the setup.
     ControlGroup outputGroup;
 
-    TabPage pitchPage, timingPage, routingPage;
-    TabStrip tabs;
+    // The top-level split: which workspace -- Note lanes or CC lanes -- is currently shown.
+    // Opens on Notes. Reuses TabStrip/TabPage exactly as the old Pitch/Timing/Routing strip
+    // did; the difference is that a "page" here is a whole workspace (lane stack, add
+    // button and settings) rather than only a settings column.
+    juce::Component notesWorkspace, ccWorkspace;
+    TabStrip outputTabs;
 
-    // Non-owning; point into the tab pages. Dimmed when the current mode ignores them.
+    // Watched on the timer, the same way lane count and the output switches already are, so
+    // a tab switch resizes the window through the same path a lane-count change does.
+    int lastOutputTab = -1;
+
+    // Each workspace's own flat settings -- no further sub-tab strip underneath either, since
+    // the top-level split already separates what Pitch/Timing/Routing used to.
+    TabPage notesSettingsPage, ccSettingsPage;
+
+    // Non-owning; point into notesSettingsPage. Dimmed when the current mode ignores them.
     ControlRow* scaleRow = nullptr;
     ControlRow* bendRangeRow = nullptr;
-    ControlRow* quantizeRow = nullptr;
     ControlRow* triggerRow = nullptr;
-
-    // Slew only ever smooths the CC output, so it goes dim whenever CC is off -- otherwise
-    // it looks live while doing nothing.
-    ControlRow* slewRow = nullptr;
-
-    // One per lane, dimmed while the instance does not have that lane.
-    ControlGroup* laneRoutingColumns[params::numLanes] {};
 
     std::atomic<float>* quantizeParam = nullptr;
     int lastQuantize = -1;
@@ -154,12 +168,11 @@ private:
     std::atomic<float>* polyModeParam = nullptr;
     int lastPolyMode = -1;
 
-    // Watched because it decides which per-step layers a lane can usefully edit: velocity
-    // and gate are read only on the note path.
+    // Watched to dim the whole Notes workspace, and to gate the per-lane layer selector.
     std::atomic<float>* notesOnParam = nullptr;
     int lastNotesOn = -1;
 
-    // Watched because it decides whether Slew is doing anything.
+    // Watched to dim the whole CC workspace.
     std::atomic<float>* ccOnParam = nullptr;
     int lastCcOn = -1;
 

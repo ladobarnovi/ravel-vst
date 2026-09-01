@@ -9,50 +9,71 @@ RavelAudioProcessor::RavelAudioProcessor()
 {
     for (int lane = 0; lane < params::numLanes; ++lane)
     {
-        auto& lp = laneParams[lane];
+        auto& np = noteLaneParams[lane];
 
         for (int step = 0; step < params::numSteps; ++step)
         {
-            lp.values[step]  = apvts.getRawParameterValue (params::stepValueId (lane, step));
-            lp.enabled[step] = apvts.getRawParameterValue (params::stepOnId (lane, step));
-            lp.chance[step]  = apvts.getRawParameterValue (params::stepChanceId (lane, step));
-            lp.stepVelocity[step] = apvts.getRawParameterValue (params::stepVelocityId (lane, step));
-            lp.stepGate[step] = apvts.getRawParameterValue (params::stepGateId (lane, step));
+            np.values[step]  = apvts.getRawParameterValue (params::stepValueId (lane, step));
+            np.enabled[step] = apvts.getRawParameterValue (params::stepOnId (lane, step));
+            np.chance[step]  = apvts.getRawParameterValue (params::stepChanceId (lane, step));
+            np.stepVelocity[step] = apvts.getRawParameterValue (params::stepVelocityId (lane, step));
+            np.stepGate[step] = apvts.getRawParameterValue (params::stepGateId (lane, step));
         }
 
-        lp.active    = apvts.getRawParameterValue (params::laneOnId (lane));
-        lp.length    = apvts.getRawParameterValue (params::laneLengthId (lane));
-        lp.division  = apvts.getRawParameterValue (params::laneDivId (lane));
-        lp.direction = apvts.getRawParameterValue (params::laneDirId (lane));
-        lp.depth     = apvts.getRawParameterValue (params::laneDepthId (lane));
-        lp.mode      = apvts.getRawParameterValue (params::laneModeId (lane));
-        lp.nudge     = apvts.getRawParameterValue (params::laneNudgeId (lane));
-        lp.humanize  = apvts.getRawParameterValue (params::laneHumanizeId (lane));
-        lp.ccOn      = apvts.getRawParameterValue (params::laneCcOnId (lane));
-        lp.ccNumber  = apvts.getRawParameterValue (params::laneCcNumId (lane));
-        lp.ccChannel = apvts.getRawParameterValue (params::laneCcChanId (lane));
-        lp.ccOffset  = apvts.getRawParameterValue (params::laneCcOffsetId (lane));
+        np.active    = apvts.getRawParameterValue (params::laneOnId (lane));
+        np.length    = apvts.getRawParameterValue (params::laneLengthId (lane));
+        np.division  = apvts.getRawParameterValue (params::laneDivId (lane));
+        np.direction = apvts.getRawParameterValue (params::laneDirId (lane));
+        np.depth     = apvts.getRawParameterValue (params::laneDepthId (lane));
+        np.mode      = apvts.getRawParameterValue (params::laneModeId (lane));
+        np.nudge     = apvts.getRawParameterValue (params::laneNudgeId (lane));
+        np.humanize  = apvts.getRawParameterValue (params::laneHumanizeId (lane));
+
+        auto& cp = ccLaneParams[lane];
+
+        for (int step = 0; step < params::numSteps; ++step)
+        {
+            cp.values[step]  = apvts.getRawParameterValue (params::stepValueId (lane, step, params::LaneKind::cc));
+            cp.enabled[step] = apvts.getRawParameterValue (params::stepOnId (lane, step, params::LaneKind::cc));
+            cp.chance[step]  = apvts.getRawParameterValue (params::stepChanceId (lane, step, params::LaneKind::cc));
+        }
+
+        cp.active    = apvts.getRawParameterValue (params::laneOnId (lane, params::LaneKind::cc));
+        cp.length    = apvts.getRawParameterValue (params::laneLengthId (lane, params::LaneKind::cc));
+        cp.division  = apvts.getRawParameterValue (params::laneDivId (lane, params::LaneKind::cc));
+        cp.direction = apvts.getRawParameterValue (params::laneDirId (lane, params::LaneKind::cc));
+        cp.depth     = apvts.getRawParameterValue (params::laneDepthId (lane, params::LaneKind::cc));
+        cp.mode      = apvts.getRawParameterValue (params::laneModeId (lane, params::LaneKind::cc));
+        cp.nudge     = apvts.getRawParameterValue (params::laneNudgeId (lane, params::LaneKind::cc));
+        cp.humanize  = apvts.getRawParameterValue (params::laneHumanizeId (lane, params::LaneKind::cc));
+        cp.ccOn      = apvts.getRawParameterValue (params::laneCcOnId (lane));
+        cp.ccNumber  = apvts.getRawParameterValue (params::laneCcNumId (lane));
+        cp.ccChannel = apvts.getRawParameterValue (params::laneCcChanId (lane));
+        cp.ccOffset  = apvts.getRawParameterValue (params::laneCcOffsetId (lane));
     }
 
-    pNotesOn     = apvts.getRawParameterValue (params::notesOnId);
-    pCcOn        = apvts.getRawParameterValue (params::ccOnId);
-    pTriggerSrc  = apvts.getRawParameterValue (params::triggerSrcId);
-    pQuantize    = apvts.getRawParameterValue (params::quantizeId);
-    pBendRange   = apvts.getRawParameterValue (params::bendRangeId);
-    pRootNote    = apvts.getRawParameterValue (params::rootNoteId);
-    pRangeSteps  = apvts.getRawParameterValue (params::rangeStepsId);
-    pScale       = apvts.getRawParameterValue (params::scaleId);
-    pVelocity    = apvts.getRawParameterValue (params::velocityId);
-    pMidiChannel = apvts.getRawParameterValue (params::midiChannelId);
-    pCcNumber    = apvts.getRawParameterValue (params::ccNumberId);
-    pCcChannel   = apvts.getRawParameterValue (params::ccChannelId);
-    pOffset      = apvts.getRawParameterValue (params::offsetId);
-    pSlew        = apvts.getRawParameterValue (params::slewId);
-    pFreeRun     = apvts.getRawParameterValue (params::freeRunId);
-    pSwing       = apvts.getRawParameterValue (params::swingId);
-    pVoiceCount  = apvts.getRawParameterValue (params::voiceCountId);
-    pPolyMode    = apvts.getRawParameterValue (params::polyModeId);
-    pLaneCount   = apvts.getRawParameterValue (params::laneCountId);
+    pNotesOn       = apvts.getRawParameterValue (params::notesOnId);
+    pCcOn          = apvts.getRawParameterValue (params::ccOnId);
+    pNoteTriggerSrc = apvts.getRawParameterValue (params::noteTriggerSrcId);
+    pQuantize      = apvts.getRawParameterValue (params::quantizeId);
+    pBendRange     = apvts.getRawParameterValue (params::bendRangeId);
+    pRootNote      = apvts.getRawParameterValue (params::rootNoteId);
+    pRangeSteps    = apvts.getRawParameterValue (params::rangeStepsId);
+    pScale         = apvts.getRawParameterValue (params::scaleId);
+    pVelocity      = apvts.getRawParameterValue (params::velocityId);
+    pMidiChannel   = apvts.getRawParameterValue (params::midiChannelId);
+    pCcNumber      = apvts.getRawParameterValue (params::ccNumberId);
+    pCcChannel     = apvts.getRawParameterValue (params::ccChannelId);
+    pNoteOffset    = apvts.getRawParameterValue (params::noteOffsetId);
+    pCcOffset      = apvts.getRawParameterValue (params::ccOffsetId);
+    pSlew          = apvts.getRawParameterValue (params::slewId);
+    pFreeRun       = apvts.getRawParameterValue (params::freeRunId);
+    pNoteSwing     = apvts.getRawParameterValue (params::noteSwingId);
+    pCcSwing       = apvts.getRawParameterValue (params::ccSwingId);
+    pVoiceCount    = apvts.getRawParameterValue (params::voiceCountId);
+    pPolyMode      = apvts.getRawParameterValue (params::polyModeId);
+    pNoteLaneCount = apvts.getRawParameterValue (params::noteLaneCountId);
+    pCcLaneCount   = apvts.getRawParameterValue (params::ccLaneCountId);
 }
 
 //==============================================================================
@@ -83,56 +104,79 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
 {
     SequencerEngine::Snapshot s;
 
-    const int laneCount = juce::jlimit (1, params::numLanes,
-                                        (int) std::lround (pLaneCount->load()));
+    const int noteLaneCount = juce::jlimit (1, params::numLanes,
+                                            (int) std::lround (pNoteLaneCount->load()));
+    const int ccLaneCount   = juce::jlimit (1, params::numLanes,
+                                            (int) std::lround (pCcLaneCount->load()));
 
     for (int lane = 0; lane < params::numLanes; ++lane)
     {
-        const auto& lp = laneParams[lane];
-        auto& ls = s.lanes[lane];
+        const auto& np = noteLaneParams[lane];
+        auto& ns = s.noteLanes[lane];
 
         for (int step = 0; step < params::numSteps; ++step)
         {
-            ls.values[step]  = lp.values[step]->load();
-            ls.enabled[step] = lp.enabled[step]->load() > 0.5f;
-            ls.chance[step]  = lp.chance[step]->load();
-            ls.velocity[step] = lp.stepVelocity[step]->load();
-            ls.gate[step]     = lp.stepGate[step]->load();
+            ns.values[step]  = np.values[step]->load();
+            ns.enabled[step] = np.enabled[step]->load() > 0.5f;
+            ns.chance[step]  = np.chance[step]->load();
+            ns.velocity[step] = np.stepVelocity[step]->load();
+            ns.gate[step]     = np.stepGate[step]->load();
         }
 
         // A lane the instance has not been given yet is inert in exactly the same way a
         // muted one is, so the engine needs to know about only the one flag.
-        ls.active    = lane < laneCount && lp.active->load() > 0.5f;
-        ls.length    = (int) std::lround (lp.length->load());
-        ls.division  = (int) std::lround (lp.division->load());
-        ls.direction = (int) std::lround (lp.direction->load());
-        ls.depth     = lp.depth->load();
-        ls.mode      = (int) std::lround (lp.mode->load());
-        ls.nudge     = lp.nudge->load();
-        ls.humanize  = lp.humanize->load();
-        ls.ccOn      = lp.ccOn->load() > 0.5f;
-        ls.ccNumber  = (int) std::lround (lp.ccNumber->load());
-        ls.ccChannel = (int) std::lround (lp.ccChannel->load());
-        ls.ccOffset  = lp.ccOffset->load();
+        ns.active    = lane < noteLaneCount && np.active->load() > 0.5f;
+        ns.length    = (int) std::lround (np.length->load());
+        ns.division  = (int) std::lround (np.division->load());
+        ns.direction = (int) std::lround (np.direction->load());
+        ns.depth     = np.depth->load();
+        ns.mode      = (int) std::lround (np.mode->load());
+        ns.nudge     = np.nudge->load();
+        ns.humanize  = np.humanize->load();
+
+        const auto& cp = ccLaneParams[lane];
+        auto& cs = s.ccLanes[lane];
+
+        for (int step = 0; step < params::numSteps; ++step)
+        {
+            cs.values[step]  = cp.values[step]->load();
+            cs.enabled[step] = cp.enabled[step]->load() > 0.5f;
+            cs.chance[step]  = cp.chance[step]->load();
+        }
+
+        cs.active    = lane < ccLaneCount && cp.active->load() > 0.5f;
+        cs.length    = (int) std::lround (cp.length->load());
+        cs.division  = (int) std::lround (cp.division->load());
+        cs.direction = (int) std::lround (cp.direction->load());
+        cs.depth     = cp.depth->load();
+        cs.mode      = (int) std::lround (cp.mode->load());
+        cs.nudge     = cp.nudge->load();
+        cs.humanize  = cp.humanize->load();
+        cs.ccOn      = cp.ccOn->load() > 0.5f;
+        cs.ccNumber  = (int) std::lround (cp.ccNumber->load());
+        cs.ccChannel = (int) std::lround (cp.ccChannel->load());
+        cs.ccOffset  = cp.ccOffset->load();
     }
 
-    s.notesOn       = pNotesOn->load() > 0.5f;
-    s.ccOn          = pCcOn->load() > 0.5f;
-    s.triggerSource = (int) std::lround (pTriggerSrc->load());
-    s.quantize      = pQuantize->load() > 0.5f;
-    s.bendRange     = (int) std::lround (pBendRange->load());
-    s.root          = (int) std::lround (pRootNote->load());
-    s.rangeSteps    = (int) std::lround (pRangeSteps->load());
-    s.scale         = (int) std::lround (pScale->load());
-    s.velocity      = (int) std::lround (pVelocity->load());
-    s.midiChannel   = (int) std::lround (pMidiChannel->load());
-    s.ccNumber      = (int) std::lround (pCcNumber->load());
-    s.ccChannel     = (int) std::lround (pCcChannel->load());
-    s.offset        = pOffset->load();
-    s.slewMs        = pSlew->load();
-    s.swing         = pSwing->load();
-    s.voiceCount    = (int) std::lround (pVoiceCount->load());
-    s.polyMode      = pPolyMode->load() > 0.5f;
+    s.notesOn           = pNotesOn->load() > 0.5f;
+    s.ccOn              = pCcOn->load() > 0.5f;
+    s.noteTriggerSource = (int) std::lround (pNoteTriggerSrc->load());
+    s.quantize          = pQuantize->load() > 0.5f;
+    s.bendRange         = (int) std::lround (pBendRange->load());
+    s.root              = (int) std::lround (pRootNote->load());
+    s.rangeSteps        = (int) std::lround (pRangeSteps->load());
+    s.scale             = (int) std::lround (pScale->load());
+    s.velocity          = (int) std::lround (pVelocity->load());
+    s.midiChannel       = (int) std::lround (pMidiChannel->load());
+    s.ccNumber          = (int) std::lround (pCcNumber->load());
+    s.ccChannel         = (int) std::lround (pCcChannel->load());
+    s.noteOffset        = pNoteOffset->load();
+    s.ccOffset          = pCcOffset->load();
+    s.slewMs            = pSlew->load();
+    s.noteSwing         = pNoteSwing->load();
+    s.ccSwing           = pCcSwing->load();
+    s.voiceCount        = (int) std::lround (pVoiceCount->load());
+    s.polyMode          = pPolyMode->load() > 0.5f;
 
     return s;
 }
@@ -230,40 +274,26 @@ void RavelAudioProcessor::setStateInformation (const void* data, int sizeInBytes
 //==============================================================================
 void RavelAudioProcessor::migrateLegacyState (juce::ValueTree& tree)
 {
-    // Anything APVTS does not find in the tree comes back as that parameter's default, so a
-    // session written before lanes were countable would silently load as a one-lane instance
-    // with its other two patterns hidden. The absence of lane_count is what identifies such a
-    // session, and three is what it was written with.
-    juce::ValueTree laneCount, trigger, outputMode;
+    // "Output" used to be one exclusive choice (0 Notes, 1 CC). It is now the two independent
+    // switches Notes and CC, so an old session's single value has to be split into both.
+    //
+    // The lane-count-and-trigger migration that used to live here (for sessions saved before
+    // lanes were countable at all) is retired along with lane_count itself: any session that
+    // old predates the Notes/CC lane-pool split too, and that split is not migrated -- it
+    // loads with the default one lane in each pool, same as any other pre-split session.
+    juce::ValueTree outputMode;
 
     for (int i = 0; i < tree.getNumChildren(); ++i)
     {
         const auto child = tree.getChild (i);
-        const auto id = child.getProperty ("id").toString();
 
-        if (id == params::laneCountId) laneCount = child;
-        else if (id == params::triggerSrcId) trigger = child;
-        else if (id == "out_mode") outputMode = child;
+        if (child.getProperty ("id").toString() == "out_mode")
+        {
+            outputMode = child;
+            break;
+        }
     }
 
-    if (! laneCount.isValid())
-    {
-        juce::ValueTree added ("PARAM");
-        added.setProperty ("id", params::laneCountId, nullptr);
-        added.setProperty ("value", 3.0f, nullptr);
-        tree.appendChild (added, nullptr);
-
-        // Trigger gained a "Lane 4" entry ahead of "Any Lane", so the old index for Any --
-        // which was the end of a three-lane list -- now names a lane instead of naming all
-        // of them.
-        if (trigger.isValid() && (int) std::lround ((float) trigger.getProperty ("value")) == 3)
-            trigger.setProperty ("value", (float) params::numLanes, nullptr);
-    }
-
-    // "Output" used to be one exclusive choice (0 Notes, 1 CC). It is now the two independent
-    // switches Notes and CC, so an old session's single value has to be split into both --
-    // this check is unrelated to lane_count above and has to run on any session, old or new,
-    // that still carries the retired id.
     if (outputMode.isValid())
     {
         const bool wasCC = (int) std::lround ((float) outputMode.getProperty ("value")) == 1;

@@ -252,21 +252,43 @@ inline float continuousSemitones (float mix, int rangeSemitones) noexcept
 }
 
 //==============================================================================
+/** Which pool a lane belongs to. Notes and CC each have their own independent stack of up
+    to numLanes lanes -- a Note lane's mix drives pitch (and poly-mode note triggering); a
+    CC lane's mix drives the Mix CC, and each CC lane also keeps its own direct tap onto its
+    own CC number, independent of that fold. A VST3 cannot grow its parameter list at
+    runtime, so both pools' parameters exist for all numLanes lanes from the start -- this
+    is what selects which pool's ID a given lane/step belongs to.
+*/
+enum class LaneKind { note, cc };
+
+//==============================================================================
 // Per-lane parameter IDs. Lanes and steps are 1-based in the ID strings so the
 // host's parameter list reads the same way the UI does.
-juce::String stepValueId    (int lane, int step);
-juce::String stepOnId       (int lane, int step);
-juce::String stepChanceId   (int lane, int step);
+//
+// The shared ones default to LaneKind::note so that every pre-existing call site --
+// PluginEditor's note-lane code, the pattern-action helpers, the tests -- keeps compiling
+// and keeps meaning exactly what it means today; only new CC code passes LaneKind::cc.
+juce::String stepValueId    (int lane, int step, LaneKind kind = LaneKind::note);
+juce::String stepOnId       (int lane, int step, LaneKind kind = LaneKind::note);
+juce::String stepChanceId   (int lane, int step, LaneKind kind = LaneKind::note);
+
+// A CC lane's steps carry no velocity or gate -- both are only ever arguments to
+// startNote, and a CC lane never starts one -- so these parameters are note-only and
+// never need to address a CC lane at all.
 juce::String stepVelocityId (int lane, int step);
 juce::String stepGateId     (int lane, int step);
-juce::String laneOnId       (int lane);
-juce::String laneLengthId   (int lane);
-juce::String laneDivId      (int lane);
-juce::String laneDirId      (int lane);
-juce::String laneDepthId    (int lane);
-juce::String laneModeId     (int lane);
-juce::String laneNudgeId    (int lane);
-juce::String laneHumanizeId (int lane);
+
+juce::String laneOnId       (int lane, LaneKind kind = LaneKind::note);
+juce::String laneLengthId   (int lane, LaneKind kind = LaneKind::note);
+juce::String laneDivId      (int lane, LaneKind kind = LaneKind::note);
+juce::String laneDirId      (int lane, LaneKind kind = LaneKind::note);
+juce::String laneDepthId    (int lane, LaneKind kind = LaneKind::note);
+juce::String laneModeId     (int lane, LaneKind kind = LaneKind::note);
+juce::String laneNudgeId    (int lane, LaneKind kind = LaneKind::note);
+juce::String laneHumanizeId (int lane, LaneKind kind = LaneKind::note);
+
+// A CC lane's own destination -- not an optional tap on any lane any more, but the whole
+// reason a CC lane exists. Note lanes never have these.
 juce::String laneCcOnId     (int lane);
 juce::String laneCcNumId    (int lane);
 juce::String laneCcChanId   (int lane);
@@ -276,7 +298,11 @@ juce::String laneCcOffsetId (int lane);
 // be on together, so one instance can drive a note track and a CC loopback at once.
 inline constexpr auto notesOnId      = "notes_on";
 inline constexpr auto ccOnId         = "cc_on";
-inline constexpr auto triggerSrcId   = "trig_src";
+
+// Which Note lane's advance fires the shared note in mixed (non-poly) mode. CC output has
+// no equivalent: it is never "triggered", it continuously reflects the fold.
+inline constexpr auto noteTriggerSrcId = "trig_src";
+
 inline constexpr auto quantizeId     = "quantize";
 inline constexpr auto bendRangeId    = "bend_range";
 inline constexpr auto rootNoteId     = "root_note";
@@ -284,17 +310,38 @@ inline constexpr auto rangeStepsId   = "range_steps";
 inline constexpr auto scaleId         = "scale";
 inline constexpr auto velocityId     = "velocity";
 inline constexpr auto midiChannelId  = "midi_ch";
+
+// The CC tab's own Mix destination -- fed by the CC-lane fold, the same way pitch is fed
+// by the Note-lane fold.
 inline constexpr auto ccNumberId     = "cc_num";
 inline constexpr auto ccChannelId    = "cc_ch";
-inline constexpr auto offsetId       = "offset";
+
+// Shifts the Note-lane mix before it becomes pitch.
+inline constexpr auto noteOffsetId   = "offset";
+
+// Shifts the CC-lane mix before it becomes the Mix CC. Independent of any CC lane's own
+// laneCcOffsetId, which shifts that lane's own tap instead.
+inline constexpr auto ccOffsetId     = "cc_offset";
+
+// Smooths the Mix CC and every CC lane's own tap. Never touches pitch.
 inline constexpr auto slewId         = "slew";
+
+// Whether the sequencer keeps stepping while the host transport is stopped. One shared
+// switch: splitting it in two would mean running two independent timelines through the
+// whole engine (voice allocation, the CC slew countdown and every lane's step resolution
+// all key off a single ppq today) for a narrow benefit.
 inline constexpr auto freeRunId      = "free_run";
-inline constexpr auto swingId        = "swing";
+
+inline constexpr auto noteSwingId    = "swing";
+inline constexpr auto ccSwingId      = "cc_swing";
+
 inline constexpr auto voiceCountId   = "voices";
 inline constexpr auto polyModeId     = "poly_mode";
 
-/** How many lanes this instance currently has, 1 to numLanes. */
-inline constexpr auto laneCountId    = "lane_count";
+/** How many lanes this instance currently has in each pool, 1 to numLanes. Independent --
+    growing one stack does not cost the other any room. */
+inline constexpr auto noteLaneCountId = "note_lane_count";
+inline constexpr auto ccLaneCountId   = "cc_lane_count";
 
 juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
@@ -305,20 +352,23 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 // so a lane's rhythm survives a re-roll.
 
 /** Gives every step in the lane a new random value. */
-void randomiseLaneValues (juce::AudioProcessorValueTreeState& state, int lane, juce::Random& random);
+void randomiseLaneValues (juce::AudioProcessorValueTreeState& state, int lane, juce::Random& random,
+                          LaneKind kind = LaneKind::note);
 
 /** Zeroes every step value in the lane. */
-void clearLaneValues (juce::AudioProcessorValueTreeState& state, int lane);
+void clearLaneValues (juce::AudioProcessorValueTreeState& state, int lane, LaneKind kind = LaneKind::note);
 
 /** Mirrors every step value about the midpoint (value -> 1 - value). */
-void invertLaneValues (juce::AudioProcessorValueTreeState& state, int lane);
+void invertLaneValues (juce::AudioProcessorValueTreeState& state, int lane, LaneKind kind = LaneKind::note);
 
 /** Shifts the lane's steps round by one. Negative rotates left, positive rotates right.
 
-    Value, on/off, chance, velocity and gate move together -- rotating only the values would
-    slide a pattern out from under its own rhythm, accents and note lengths.
+    Value, on/off and chance move together -- rotating only the values would slide a pattern
+    out from under its own rhythm and accents. A note lane's velocity and gate move with them
+    too; a CC lane has neither.
 */
-void rotateLane (juce::AudioProcessorValueTreeState& state, int lane, int direction);
+void rotateLane (juce::AudioProcessorValueTreeState& state, int lane, int direction,
+                 LaneKind kind = LaneKind::note);
 
 /** Takes a lane out of the instance, closing the gap behind it.
 
@@ -335,9 +385,11 @@ void rotateLane (juce::AudioProcessorValueTreeState& state, int lane, int direct
 
     Does nothing at a lane count of 1, or for a lane this instance does not have.
 */
-void removeLane (juce::AudioProcessorValueTreeState& state, int lane);
+void removeLane (juce::AudioProcessorValueTreeState& state, int lane, LaneKind kind = LaneKind::note);
 
-/** A whole lane's step data, for copy/paste between lanes. */
+/** A whole lane's step data, for copy/paste between lanes of the same kind. Velocity and
+    gate are along for a note lane's ride and simply unused when the pattern came from, or
+    is pasted onto, a CC lane. */
 struct LanePattern
 {
     float values[numSteps] {};
@@ -348,7 +400,8 @@ struct LanePattern
     bool  valid = false;
 };
 
-LanePattern copyLane (juce::AudioProcessorValueTreeState& state, int lane);
-void pasteLane (juce::AudioProcessorValueTreeState& state, int lane, const LanePattern& pattern);
+LanePattern copyLane (juce::AudioProcessorValueTreeState& state, int lane, LaneKind kind = LaneKind::note);
+void pasteLane (juce::AudioProcessorValueTreeState& state, int lane, const LanePattern& pattern,
+                LaneKind kind = LaneKind::note);
 
 } // namespace params

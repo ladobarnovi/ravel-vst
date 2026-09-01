@@ -59,8 +59,11 @@ private:
         std::atomic<float>* values[params::numSteps] {};
         std::atomic<float>* enabled[params::numSteps] {};
         std::atomic<float>* chance[params::numSteps] {};
+
+        // Note lanes only -- a CC lane has neither parameter.
         std::atomic<float>* stepVelocity[params::numSteps] {};
         std::atomic<float>* stepGate[params::numSteps] {};
+
         std::atomic<float>* active    = nullptr;
         std::atomic<float>* length    = nullptr;
         std::atomic<float>* division  = nullptr;
@@ -69,6 +72,8 @@ private:
         std::atomic<float>* mode      = nullptr;
         std::atomic<float>* nudge     = nullptr;
         std::atomic<float>* humanize  = nullptr;
+
+        // CC lanes only -- a note lane no longer has a CC output of its own.
         std::atomic<float>* ccOn      = nullptr;
         std::atomic<float>* ccNumber  = nullptr;
         std::atomic<float>* ccChannel = nullptr;
@@ -77,32 +82,36 @@ private:
 
     SequencerEngine::Snapshot buildSnapshot() const;
 
-    /** Patches up state saved by an older version of the plugin: a fixed three lanes before
-        the lane count existed, or the single exclusive Output choice before Notes and CC
-        became independent switches. See the definition for what is inferred and why. */
+    /** Patches up state saved by an older version of the plugin -- currently just the single
+        exclusive Output choice from before Notes and CC became independent switches. See the
+        definition for what is inferred and why. */
     static void migrateLegacyState (juce::ValueTree& tree);
 
-    LaneParams laneParams[params::numLanes];
+    LaneParams noteLaneParams[params::numLanes];
+    LaneParams ccLaneParams[params::numLanes];
 
-    std::atomic<float>* pNotesOn    = nullptr;
-    std::atomic<float>* pCcOn       = nullptr;
-    std::atomic<float>* pTriggerSrc  = nullptr;
-    std::atomic<float>* pQuantize    = nullptr;
-    std::atomic<float>* pBendRange   = nullptr;
-    std::atomic<float>* pRootNote    = nullptr;
-    std::atomic<float>* pRangeSteps  = nullptr;
-    std::atomic<float>* pScale       = nullptr;
-    std::atomic<float>* pVelocity    = nullptr;
-    std::atomic<float>* pMidiChannel = nullptr;
-    std::atomic<float>* pCcNumber    = nullptr;
-    std::atomic<float>* pCcChannel   = nullptr;
-    std::atomic<float>* pOffset      = nullptr;
-    std::atomic<float>* pSlew        = nullptr;
-    std::atomic<float>* pFreeRun     = nullptr;
-    std::atomic<float>* pSwing       = nullptr;
-    std::atomic<float>* pVoiceCount  = nullptr;
-    std::atomic<float>* pPolyMode    = nullptr;
-    std::atomic<float>* pLaneCount   = nullptr;
+    std::atomic<float>* pNotesOn      = nullptr;
+    std::atomic<float>* pCcOn         = nullptr;
+    std::atomic<float>* pNoteTriggerSrc = nullptr;
+    std::atomic<float>* pQuantize     = nullptr;
+    std::atomic<float>* pBendRange    = nullptr;
+    std::atomic<float>* pRootNote     = nullptr;
+    std::atomic<float>* pRangeSteps   = nullptr;
+    std::atomic<float>* pScale        = nullptr;
+    std::atomic<float>* pVelocity     = nullptr;
+    std::atomic<float>* pMidiChannel  = nullptr;
+    std::atomic<float>* pCcNumber     = nullptr;
+    std::atomic<float>* pCcChannel    = nullptr;
+    std::atomic<float>* pNoteOffset   = nullptr;
+    std::atomic<float>* pCcOffset     = nullptr;
+    std::atomic<float>* pSlew         = nullptr;
+    std::atomic<float>* pFreeRun      = nullptr;
+    std::atomic<float>* pNoteSwing    = nullptr;
+    std::atomic<float>* pCcSwing      = nullptr;
+    std::atomic<float>* pVoiceCount   = nullptr;
+    std::atomic<float>* pPolyMode     = nullptr;
+    std::atomic<float>* pNoteLaneCount = nullptr;
+    std::atomic<float>* pCcLaneCount   = nullptr;
 
     SequencerEngine engine;
 

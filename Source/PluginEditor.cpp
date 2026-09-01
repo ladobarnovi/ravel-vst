@@ -6,16 +6,25 @@ namespace
     // plus the lane number above them; the step bars take whatever is left, so a taller
     // lane just makes them taller.
     constexpr int laneHeight    = 150;
+
+    // A CC lane's own parameter block is Length/Rate/Direction/Depth/Mix mode/Nudge/
+    // Humanise plus Send/Number/Channel/Offset -- 11 rows on ControlGroup's 2-column grid,
+    // so 6 rows tall against a Note lane's 4 (heightForRows(6, false) = 6*18 + 5*3 = 123,
+    // +2 row-gaps +1 row for the action buttons = 147 needed against a Note lane's 105).
+    // 190 leaves it roughly the same headroom above that as laneHeight leaves a Note lane.
+    constexpr int ccLaneHeight  = 190;
+
     constexpr int headerHeight  = 26;
     constexpr int laneBarHeight = 22;
-    constexpr int panelHeight   = 152;
     constexpr int gap           = 8;
     constexpr int margin        = 12;
 
     // The window's native (100%-zoom) width: whatever a lane needs to draw 16 steps at
     // lane::stepSlotWidth, plus the margin either side. Derived rather than typed in, so
     // changing the step width moves the window with it instead of leaving a gap between
-    // the last step and the parameter block. The user can zoom in or out from here; see
+    // the last step and the parameter block. Both workspaces share it -- a CC lane's own
+    // destination fields replace Note-only screen space rather than adding any -- so
+    // neither tab is ever wider than the other. The user can zoom in or out from here; see
     // RavelAudioProcessorEditor::updateSizeConstraints().
     constexpr int nativeContentWidth = margin * 2 + lane::nativeWidth;
 
@@ -31,21 +40,34 @@ namespace
     /** The window grows and shrinks with the lane count rather than the lanes sharing a
         fixed height between them: one lane in a window sized for four would be mostly empty
         panel, and four lanes squeezed into one lane's height would cost the step bars the
-        resolution that makes them worth dragging.
+        resolution that makes them worth dragging. Also grows and shrinks with which
+        workspace is selected -- a CC lane is taller than a Note lane, and each workspace's
+        own settings panel is only as tall as its own columns need.
     */
-    int windowHeightForLanes (int numLanes)
+    int windowHeightForWorkspace (int numActiveLanes, int laneHeightForKind, int settingsPanelHeight)
     {
         return margin * 2 + headerHeight + gap
-                 + numLanes * (laneHeight + gap)
+                 + TabStrip::height + gap
+                 + numActiveLanes * (laneHeightForKind + gap)
                  + laneBarHeight + gap
-                 + panelHeight;
+                 + settingsPanelHeight;
+    }
+
+    /** A settings page's own panel height: the reduced(14, 8) margin layoutContent() applies
+        (8 top, 8 bottom) plus however tall its tallest column actually is -- there is no
+        longer a sub-tab strip to add on top of that, since the top-level Notes/CC split
+        already separates what Pitch/Timing/Routing used to.
+    */
+    int settingsPanelHeightFor (const TabPage& page)
+    {
+        return 16 + page.getPreferredHeight();
     }
 }
 
 //==============================================================================
 RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
     : AudioProcessorEditor (&p), processorRef (p),
-      outputGroup (p.apvts), pitchPage (p.apvts), timingPage (p.apvts), routingPage (p.apvts)
+      outputGroup (p.apvts), notesSettingsPage (p.apvts), ccSettingsPage (p.apvts)
 {
     setLookAndFeel (&lookAndFeel);
 
@@ -84,63 +106,89 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
 
     auto& state = processorRef.apvts;
 
-    // The top-level switches: what the plugin emits, and whether the lanes are mixed into
-    // one voice or run independently. Notes and CC are independent of each other -- both can
+    // The top-level switches: what the plugin emits. Independent of each other -- both can
     // be on together, so one instance can drive a note track and a CC loopback at once.
+    // Poly lives on the Notes tab's own Voice column now: it only ever changes which lane
+    // triggers a note, so it has no business in a header shared with CC.
     outputGroup.add (params::notesOnId, "Notes")
-               ->setTooltip ("Emit MIDI notes for the mixed pitch, or each lane's own note "
-                             "in Poly");
+               ->setTooltip ("Emit MIDI notes from the Notes tab's lanes");
     outputGroup.add (params::ccOnId, "CC")
-               ->setTooltip ("Emit the mix CC, and any lane with its own CC switched on");
-    outputGroup.add (params::polyModeId, "Poly")
-               ->setTooltip ("Each lane triggers its own note off its own clock, instead of "
-                             "the three mixing into one");
-    outputGroup.setColumns (3);
+               ->setTooltip ("Emit CC from the CC tab's lanes");
+    outputGroup.setColumns (2);
     content.addAndMakeVisible (outputGroup);
+
+    //--------------------------------------------------------------------------
+    // Note lanes and CC lanes are two completely separate stacks, each built up front for
+    // the same reason the old single stack was: a VST3 cannot add parameters later, so both
+    // pools exist at full size from the start and each pool's own count decides how many of
+    // its own lanes are shown and heard.
+    for (int lane = 0; lane < params::numLanes; ++lane)
+    {
+        auto* component = noteLanes.add (new LaneComponent (state, lane, noteClipboard, params::LaneKind::note));
+        component->onRemove = [this, lane] { removeNoteLane (lane); };
+
+        notesWorkspace.addChildComponent (component);
+    }
+
+    addNoteLaneButton.setTooltip ("Add a lane at the bottom of the stack. Each lane carries "
+                                  "its own Remove button");
+    theme::styleActionButton (addNoteLaneButton);
+    addNoteLaneButton.onClick = [this] { setNoteLaneCount (noteLaneCount + 1); };
+    notesWorkspace.addChildComponent (addNoteLaneButton);
 
     for (int lane = 0; lane < params::numLanes; ++lane)
     {
-        auto* component = lanes.add (new LaneComponent (state, lane, patternClipboard));
-        component->onRemove = [this, lane] { removeLane (lane); };
+        auto* component = ccLanes.add (new LaneComponent (state, lane, ccClipboard, params::LaneKind::cc));
+        component->onRemove = [this, lane] { removeCcLane (lane); };
 
-        content.addChildComponent (component);
+        ccWorkspace.addChildComponent (component);
     }
 
-    addLaneButton.setTooltip ("Add a lane at the bottom of the stack. Each lane carries its "
-                              "own Remove button");
-    theme::styleActionButton (addLaneButton);
-    addLaneButton.onClick = [this] { setLaneCount (laneCount + 1); };
-    content.addChildComponent (addLaneButton);
+    addCcLaneButton.setTooltip ("Add a lane at the bottom of the stack. Each lane carries "
+                                "its own Remove button");
+    theme::styleActionButton (addCcLaneButton);
+    addCcLaneButton.onClick = [this] { setCcLaneCount (ccLaneCount + 1); };
+    ccWorkspace.addChildComponent (addCcLaneButton);
 
-    buildTabs();
+    buildWorkspaces();
+
+    content.addAndMakeVisible (notesWorkspace);
+    content.addChildComponent (ccWorkspace);
+
+    outputTabs.addTab ("Notes", notesWorkspace);
+    outputTabs.addTab ("CC",    ccWorkspace);
+    content.addAndMakeVisible (outputTabs);
 
     // Polled on the timer rather than via a parameter listener, because listener
     // callbacks arrive on the audio thread and must not touch components.
-    quantizeParam   = state.getRawParameterValue (params::quantizeId);
-    scaleParam      = state.getRawParameterValue (params::scaleId);
-    polyModeParam   = state.getRawParameterValue (params::polyModeId);
-    notesOnParam    = state.getRawParameterValue (params::notesOnId);
-    ccOnParam       = state.getRawParameterValue (params::ccOnId);
-    laneCountParam  = state.getRawParameterValue (params::laneCountId);
+    quantizeParam    = state.getRawParameterValue (params::quantizeId);
+    scaleParam       = state.getRawParameterValue (params::scaleId);
+    polyModeParam    = state.getRawParameterValue (params::polyModeId);
+    notesOnParam     = state.getRawParameterValue (params::notesOnId);
+    ccOnParam        = state.getRawParameterValue (params::ccOnId);
+    noteLaneCountParam = state.getRawParameterValue (params::noteLaneCountId);
+    ccLaneCountParam   = state.getRawParameterValue (params::ccLaneCountId);
 
     // Sizes the window as a side effect, so this stands in for the setSize() a
     // fixed-height editor would do here. Leaves it at 100% zoom, which the restore below
-    // then overrides if the session remembers something else.
-    applyLaneCount ((int) std::lround (laneCountParam->load()));
+    // then overrides if the session remembers something else. Notes is applied second so
+    // its (default-selected) count is the one that actually triggers the resize.
+    applyCcLaneCount ((int) std::lround (ccLaneCountParam->load()));
+    applyNoteLaneCount ((int) std::lround (noteLaneCountParam->load()));
 
     // Up front rather than left to the first timer tick, so an editor reopened on a session
     // with Notes off never flashes a selector it is about to take away.
     lastNotesOn = notesOnParam->load() > 0.5f ? 1 : 0;
     applyNotesOn (lastNotesOn != 0);
+    notesWorkspace.setAlpha (lastNotesOn != 0 ? 1.0f : 0.4f);
 
     lastCcOn = ccOnParam->load() > 0.5f ? 1 : 0;
-    if (slewRow != nullptr)
-        slewRow->setDimmed (lastCcOn == 0);
+    ccWorkspace.setAlpha (lastCcOn != 0 ? 1.0f : 0.4f);
 
     // The zoom the window was last closed at, stored as plain properties on the state tree
     // rather than as a parameter: it's UI state, not something a host should automate or
     // recall through undo. Absent on a session saved before this existed, in which case the
-    // 100% size applyLaneCount() just set is already correct.
+    // 100% size applyNoteLaneCount() just set is already correct.
     const int savedWidth  = (int) state.state.getProperty ("editorWidth",  0);
     const int savedHeight = (int) state.state.getProperty ("editorHeight", 0);
 
@@ -163,65 +211,57 @@ RavelAudioProcessorEditor::~RavelAudioProcessorEditor()
 }
 
 //==============================================================================
-void RavelAudioProcessorEditor::buildTabs()
+void RavelAudioProcessorEditor::buildWorkspaces()
 {
-    auto& notes = pitchPage.addColumn ("Notes");
-    notes.add (params::rootNoteId,   "Root");
-    scaleRow = notes.add (params::scaleId, "Scale");
+    // No sub-tab strip under either page any more: the top-level Notes/CC split already
+    // separates what Pitch/Timing/Routing used to, so what is left under each tab is short
+    // enough to lay out as one flat row of columns.
+    auto& pitch = notesSettingsPage.addColumn ("Pitch");
+    pitch.add (params::rootNoteId,   "Root");
+    scaleRow = pitch.add (params::scaleId, "Scale");
     scaleRow->setTooltip ("Scales named 19, 23, 31, 41 or 53 divide the octave into that many "
                           "equal steps. Their degrees land between the keys, so they play as a "
                           "note plus pitch bend -- one microtone at a time per channel");
-    notes.add (params::rangeStepsId, "Range");
-    quantizeRow = notes.add (params::quantizeId, "Quantize");
-    quantizeRow->setTooltip ("On: pitch snaps to the selected scale. Off: continuous "
-                             "microtonal pitch, sent as a note plus pitch bend");
+    pitch.add (params::rangeStepsId, "Range");
+    pitch.add (params::quantizeId, "Quantize")
+         ->setTooltip ("On: pitch snaps to the selected scale. Off: continuous microtonal "
+                       "pitch, sent as a note plus pitch bend");
 
-    auto& bend = pitchPage.addColumn ("Bend");
-    bendRangeRow = bend.add (params::bendRangeId, "Bend range");
-    bend.add (params::offsetId, "Offset");
-    slewRow = bend.add (params::slewId, "Slew");
-    slewRow->setTooltip ("Smooths the CC output only -- never touches pitch. Dimmed while "
-                         "CC is off, since it has nothing to smooth");
+    auto& output = notesSettingsPage.addColumn ("Output");
+    bendRangeRow = output.add (params::bendRangeId, "Bend range");
+    output.add (params::midiChannelId, "Note channel");
+    output.add (params::noteOffsetId, "Offset");
 
-    auto& voice = pitchPage.addColumn ("Voice");
+    auto& voice = notesSettingsPage.addColumn ("Voice");
     voice.add (params::velocityId,   "Velocity");
     voice.add (params::voiceCountId, "Voices");
+    voice.add (params::polyModeId, "Poly")
+         ->setTooltip ("Each lane triggers its own note off its own clock, instead of the "
+                       "stack mixing into one");
+
+    auto& clock = notesSettingsPage.addColumn ("Clock");
+    clock.add (params::noteSwingId,  "Swing");
+    clock.add (params::freeRunId,    "Free run");
+    triggerRow = clock.add (params::noteTriggerSrcId, "Trigger");
+
+    notesWorkspace.addAndMakeVisible (notesSettingsPage);
 
     //--------------------------------------------------------------------------
-    auto& clock = timingPage.addColumn ("Clock");
-    clock.add (params::swingId,   "Swing");
-    clock.add (params::freeRunId, "Free run");
-    triggerRow = clock.add (params::triggerSrcId, "Trigger");
+    // The CC tab's own Mix destination: the CC-lane fold's output, same idea as pitch is the
+    // Note-lane fold's output. Each CC lane's own destination lives on its own strip instead
+    // of here -- see LaneComponent.
+    auto& ccOutput = ccSettingsPage.addColumn ("Output");
+    ccOutput.add (params::ccNumberId,  "Number");
+    ccOutput.add (params::ccChannelId, "Channel");
+    ccOutput.add (params::ccOffsetId,  "Offset");
+    ccOutput.add (params::slewId, "Slew")
+            ->setTooltip ("Smooths the Mix CC and every CC lane's own tap. Never touches "
+                         "pitch");
 
-    //--------------------------------------------------------------------------
-    auto& global = routingPage.addColumn ("Notes and mix");
-    global.add (params::midiChannelId, "Note channel");
-    global.add (params::ccNumberId,  "Mix CC");
-    global.add (params::ccChannelId, "Mix CC channel");
+    auto& ccClock = ccSettingsPage.addColumn ("Clock");
+    ccClock.add (params::ccSwingId, "Swing");
 
-    for (int lane = 0; lane < params::numLanes; ++lane)
-    {
-        auto& column = routingPage.addColumn ("Lane " + juce::String (lane + 1));
-        laneRoutingColumns[lane] = &column;
-
-        column.add (params::laneCcOnId (lane), "Send CC")
-              ->setTooltip ("Send this lane's own value as CC, independent of Depth");
-        column.add (params::laneCcNumId (lane),  "CC number");
-        column.add (params::laneCcChanId (lane), "CC channel");
-        column.add (params::laneCcOffsetId (lane), "CC offset")
-              ->setTooltip ("Shifts this lane's own CC output. Independent of the Pitch tab's "
-                           "Offset, which only ever touches pitch and the Mix CC");
-    }
-
-    //--------------------------------------------------------------------------
-    content.addAndMakeVisible (pitchPage);
-    content.addChildComponent (timingPage);
-    content.addChildComponent (routingPage);
-
-    tabs.addTab ("Pitch",   pitchPage);
-    tabs.addTab ("Timing",  timingPage);
-    tabs.addTab ("Routing", routingPage);
-    content.addAndMakeVisible (tabs);
+    ccWorkspace.addAndMakeVisible (ccSettingsPage);
 }
 
 //==============================================================================
@@ -260,11 +300,11 @@ bool RavelAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
 }
 
 //==============================================================================
-void RavelAudioProcessorEditor::setLaneCount (int newCount)
+void RavelAudioProcessorEditor::setNoteLaneCount (int newCount)
 {
     newCount = juce::jlimit (1, params::numLanes, newCount);
 
-    if (auto* parameter = processorRef.apvts.getParameter (params::laneCountId))
+    if (auto* parameter = processorRef.apvts.getParameter (params::noteLaneCountId))
     {
         // Through the parameter rather than straight into the member, so the host records
         // it as an edit and can automate and undo it like anything else.
@@ -273,38 +313,69 @@ void RavelAudioProcessorEditor::setLaneCount (int newCount)
         parameter->endChangeGesture();
     }
 
-    applyLaneCount (newCount);
+    applyNoteLaneCount (newCount);
 }
 
-void RavelAudioProcessorEditor::applyLaneCount (int newCount)
+void RavelAudioProcessorEditor::setCcLaneCount (int newCount)
 {
     newCount = juce::jlimit (1, params::numLanes, newCount);
 
-    if (laneCount == newCount)
+    if (auto* parameter = processorRef.apvts.getParameter (params::ccLaneCountId))
+    {
+        parameter->beginChangeGesture();
+        parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) newCount));
+        parameter->endChangeGesture();
+    }
+
+    applyCcLaneCount (newCount);
+}
+
+void RavelAudioProcessorEditor::applyNoteLaneCount (int newCount)
+{
+    newCount = juce::jlimit (1, params::numLanes, newCount);
+
+    if (noteLaneCount == newCount)
         return;
 
-    laneCount = newCount;
+    noteLaneCount = newCount;
 
-    for (int lane = 0; lane < lanes.size(); ++lane)
+    for (int lane = 0; lane < noteLanes.size(); ++lane)
     {
-        lanes[lane]->setVisible (lane < laneCount);
+        noteLanes[lane]->setVisible (lane < noteLaneCount);
 
         // Every lane can go except the last one standing, so this is a property of the count
         // rather than of which lane it is.
-        lanes[lane]->setCanRemove (laneCount > 1);
+        noteLanes[lane]->setCanRemove (noteLaneCount > 1);
     }
 
-    // A lane the instance does not have has nothing to route, so its column reads as
-    // unavailable instead of as three controls that quietly do nothing.
-    for (int lane = 0; lane < params::numLanes; ++lane)
-        if (laneRoutingColumns[lane] != nullptr)
-            laneRoutingColumns[lane]->setDimmed (lane >= laneCount);
+    addNoteLaneButton.setVisible (noteLaneCount < params::numLanes);
 
-    addLaneButton.setVisible (laneCount < params::numLanes);
+    // Only resizes the window if Notes is the workspace actually on screen -- a background
+    // tab's count changing (through undo, or host automation) should not jump the window
+    // the user is not even looking at.
+    if (outputTabs.getSelectedIndex() == 0)
+        updateSizeConstraints();
+}
 
-    // Every count maps to a different native height, so the constrainer and the window both
-    // need to move to match -- at whatever zoom the user currently has, not back to 100%.
-    updateSizeConstraints();
+void RavelAudioProcessorEditor::applyCcLaneCount (int newCount)
+{
+    newCount = juce::jlimit (1, params::numLanes, newCount);
+
+    if (ccLaneCount == newCount)
+        return;
+
+    ccLaneCount = newCount;
+
+    for (int lane = 0; lane < ccLanes.size(); ++lane)
+    {
+        ccLanes[lane]->setVisible (lane < ccLaneCount);
+        ccLanes[lane]->setCanRemove (ccLaneCount > 1);
+    }
+
+    addCcLaneButton.setVisible (ccLaneCount < params::numLanes);
+
+    if (outputTabs.getSelectedIndex() == 1)
+        updateSizeConstraints();
 }
 
 void RavelAudioProcessorEditor::applyNotesOn (bool notesOn)
@@ -312,20 +383,31 @@ void RavelAudioProcessorEditor::applyNotesOn (bool notesOn)
     // With Notes off a lane is a plain value sequencer. Velocity and gate are unread there --
     // both are only ever arguments to startNote -- and the selector is not wanted for chance
     // alone, so it goes entirely and the bars edit Value. Chance does still gate the mix, and
-    // so still shapes the CC stream, which is why the slots go on drawing its ticks.
-    for (auto* lane : lanes)
+    // so still shapes the CC stream, which is why the slots go on drawing its ticks. CC lanes
+    // never have a selector to begin with, so there is nothing to apply this to over there.
+    for (auto* lane : noteLanes)
         lane->setLayerSelectionAvailable (notesOn);
 }
 
 //==============================================================================
-void RavelAudioProcessorEditor::removeLane (int laneIndex)
+void RavelAudioProcessorEditor::removeNoteLane (int laneIndex)
 {
     // The shift and the new lane count are both written from inside this one callback, so the
     // history coalesces them into a single step and one Ctrl+Z puts the lane back.
-    params::removeLane (processorRef.apvts, laneIndex);
+    params::removeLane (processorRef.apvts, laneIndex, params::LaneKind::note);
 
-    if (laneCountParam != nullptr)
-        applyLaneCount ((int) std::lround (laneCountParam->load()));
+    if (noteLaneCountParam != nullptr)
+        applyNoteLaneCount ((int) std::lround (noteLaneCountParam->load()));
+
+    updateHistoryButtons();
+}
+
+void RavelAudioProcessorEditor::removeCcLane (int laneIndex)
+{
+    params::removeLane (processorRef.apvts, laneIndex, params::LaneKind::cc);
+
+    if (ccLaneCountParam != nullptr)
+        applyCcLaneCount ((int) std::lround (ccLaneCountParam->load()));
 
     updateHistoryButtons();
 }
@@ -341,13 +423,15 @@ void RavelAudioProcessorEditor::paint (juce::Graphics& g)
 
 void RavelAudioProcessorEditor::updateSizeConstraints()
 {
-    // Preserves the user's current zoom across a lane-count change rather than snapping the
-    // window back to 100% every time a lane is added or removed.
+    // Preserves the user's current zoom across a lane-count change (or a tab switch) rather
+    // than snapping the window back to 100% every time either happens.
     const double previousScale = nativeContentHeight > 0 && getHeight() > 0
                                     ? (double) getHeight() / (double) nativeContentHeight
                                     : 1.0;
 
-    nativeContentHeight = windowHeightForLanes (laneCount);
+    nativeContentHeight = outputTabs.getSelectedIndex() == 0
+        ? windowHeightForWorkspace (noteLaneCount, laneHeight, settingsPanelHeightFor (notesSettingsPage))
+        : windowHeightForWorkspace (ccLaneCount, ccLaneHeight, settingsPanelHeightFor (ccSettingsPage));
 
     // Locked so a drag-resize zooms uniformly rather than stretching bars into ellipses.
     sizeConstrainer.setFixedAspectRatio ((double) nativeContentWidth / (double) nativeContentHeight);
@@ -364,7 +448,7 @@ void RavelAudioProcessorEditor::updateSizeConstraints()
 void RavelAudioProcessorEditor::resized()
 {
     if (nativeContentHeight <= 0)
-        return; // Constructor hasn't run applyLaneCount() yet, so there's nothing to scale.
+        return; // Constructor hasn't run applyNoteLaneCount() yet, so there's nothing to scale.
 
     // content stays at native pixel size always; only its transform changes, so none of its
     // children's layout math needs to know zoom exists.
@@ -376,6 +460,37 @@ void RavelAudioProcessorEditor::resized()
     // window reopens at the size it was left, not back at 100%.
     processorRef.apvts.state.setProperty ("editorWidth",  getWidth(),  nullptr);
     processorRef.apvts.state.setProperty ("editorHeight", getHeight(), nullptr);
+}
+
+namespace
+{
+    /** The lane-stack-plus-add-button-plus-settings layout, run once for whichever workspace
+        owns the bounds it's given. Both workspaces get this same shape -- only the lane kind,
+        lane height and settings page differ -- so it is written once rather than duplicated
+        for Notes and for CC.
+    */
+    void layoutWorkspace (juce::Rectangle<int> area, int activeLaneCount, int laneHeightForKind,
+                         juce::OwnedArray<LaneComponent>& lanesArray, juce::TextButton& addButton,
+                         TabPage& settingsPage)
+    {
+        auto r = area.withPosition (0, 0);
+
+        for (int lane = 0; lane < juce::jmin (activeLaneCount, lanesArray.size()); ++lane)
+        {
+            lanesArray[lane]->setBounds (r.removeFromTop (laneHeightForKind));
+            r.removeFromTop (gap);
+        }
+
+        // Add sits where the next lane would go, so the button that makes a lane appear is
+        // already standing in its place. Removing is a per-lane button, inside the lane it
+        // takes out, so nothing else shares this bar.
+        auto laneBar = r.removeFromTop (laneBarHeight);
+        addButton.setBounds (laneBar.removeFromLeft (86));
+
+        r.removeFromTop (gap);
+
+        settingsPage.setBounds (r.reduced (14, 8));
+    }
 }
 
 void RavelAudioProcessorEditor::layoutContent()
@@ -399,38 +514,24 @@ void RavelAudioProcessorEditor::layoutContent()
 
     header.removeFromLeft (14);
 
-    outputGroup.setBounds (header.removeFromLeft (370)
-                                 .withSizeKeepingCentre (370, theme::rowHeight));
+    outputGroup.setBounds (header.removeFromLeft (250)
+                                 .withSizeKeepingCentre (250, theme::rowHeight));
 
     r.removeFromTop (gap);
 
     //--------------------------------------------------------------------------
-    for (int lane = 0; lane < juce::jmin (laneCount, lanes.size()); ++lane)
-    {
-        lanes[lane]->setBounds (r.removeFromTop (laneHeight));
-        r.removeFromTop (gap);
-    }
-
-    //--------------------------------------------------------------------------
-    // Add sits where the next lane would go, so the button that makes a lane appear is
-    // already standing in its place. Removing is a per-lane button now, inside the lane it
-    // takes out, so nothing else shares this bar.
-    auto laneBar = r.removeFromTop (laneBarHeight);
-    addLaneButton.setBounds (laneBar.removeFromLeft (86));
-
+    outputTabs.setBounds (r.removeFromTop (TabStrip::height));
     r.removeFromTop (gap);
 
-    //--------------------------------------------------------------------------
+    // Both workspaces get the same remaining bounds; the tab strip decides which one is
+    // visible. The panel background itself tracks whichever is actually on screen.
     content.panelArea = r;
 
-    auto panel = r.reduced (14, 8);
-    tabs.setBounds (panel.removeFromTop (TabStrip::height));
-    panel.removeFromTop (6);
+    notesWorkspace.setBounds (r);
+    ccWorkspace.setBounds (r);
 
-    // Every page gets the same bounds; the tab strip decides which one is visible.
-    pitchPage.setBounds (panel);
-    timingPage.setBounds (panel);
-    routingPage.setBounds (panel);
+    layoutWorkspace (r, noteLaneCount, laneHeight, noteLanes, addNoteLaneButton, notesSettingsPage);
+    layoutWorkspace (r, ccLaneCount, ccLaneHeight, ccLanes, addCcLaneButton, ccSettingsPage);
 }
 
 //==============================================================================
@@ -462,8 +563,11 @@ void RavelAudioProcessorEditor::timerCallback()
     // coming past the buttons.
     updateHistoryButtons();
 
-    for (int lane = 0; lane < lanes.size(); ++lane)
-        lanes[lane]->setPlayingStep (engine.getCurrentStep (lane));
+    for (int lane = 0; lane < noteLanes.size(); ++lane)
+        noteLanes[lane]->setPlayingStep (engine.getCurrentStep (lane, params::LaneKind::note));
+
+    for (int lane = 0; lane < ccLanes.size(); ++lane)
+        ccLanes[lane]->setPlayingStep (engine.getCurrentStep (lane, params::LaneKind::cc));
 
     if (quantizeParam != nullptr && scaleParam != nullptr)
     {
@@ -484,10 +588,24 @@ void RavelAudioProcessorEditor::timerCallback()
         }
     }
 
-    // Polled like the rest: the count can also move through host automation or an undo,
+    // Polled like the rest: either count can also move through host automation or an undo,
     // neither of which comes back through the buttons.
-    if (laneCountParam != nullptr)
-        applyLaneCount ((int) std::lround (laneCountParam->load()));
+    if (noteLaneCountParam != nullptr)
+        applyNoteLaneCount ((int) std::lround (noteLaneCountParam->load()));
+
+    if (ccLaneCountParam != nullptr)
+        applyCcLaneCount ((int) std::lround (ccLaneCountParam->load()));
+
+    // A tab switch resizes the window through the same path a lane-count change does, since
+    // it really is a different lane count (and a different lane height, and a different
+    // settings panel) coming on screen.
+    const int currentTab = outputTabs.getSelectedIndex();
+
+    if (currentTab != lastOutputTab)
+    {
+        lastOutputTab = currentTab;
+        updateSizeConstraints();
+    }
 
     if (notesOnParam != nullptr)
     {
@@ -497,17 +615,18 @@ void RavelAudioProcessorEditor::timerCallback()
         {
             lastNotesOn = notesOn;
             applyNotesOn (notesOn != 0);
+            notesWorkspace.setAlpha (notesOn != 0 ? 1.0f : 0.4f);
         }
     }
 
-    if (ccOnParam != nullptr && slewRow != nullptr)
+    if (ccOnParam != nullptr)
     {
         const int ccOn = ccOnParam->load() > 0.5f ? 1 : 0;
 
         if (ccOn != lastCcOn)
         {
             lastCcOn = ccOn;
-            slewRow->setDimmed (ccOn == 0);
+            ccWorkspace.setAlpha (ccOn != 0 ? 1.0f : 0.4f);
         }
     }
 

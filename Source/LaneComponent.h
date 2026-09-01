@@ -50,7 +50,11 @@ inline constexpr int numStepLayers = 4;
 class StepSlot final : public juce::Component
 {
 public:
-    StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, int stepIndex);
+    /** For a CC-kind slot, only the Value and Chance sliders get an attachment and become
+        visible at all -- a CC lane never starts a note, so it has no Velocity or Gate
+        parameter to bind to in the first place (see Parameters.cpp). */
+    StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, int stepIndex,
+             params::LaneKind kind = params::LaneKind::note);
 
     void paintOverChildren (juce::Graphics&) override;
     void resized() override;
@@ -109,18 +113,23 @@ private:
 };
 
 //==============================================================================
-/** A full lane: 8 steps plus the six parameters worth reaching for while it plays.
+/** A full lane: 16 steps plus the feel parameters worth reaching for while it plays.
 
-    The lane's routing parameters (its CC number, CC channel and CC enable) and its
-    humanise amount live in the editor's tab pages instead: they are set once when the
-    track is wired up, and keeping them here is what made every lane read as a wall of
-    identical controls.
+    A Note lane and a CC lane share the same Length/Rate/Direction/Depth/Mix-mode/Nudge/
+    Humanize block -- both fold into a mix the same way -- but only a CC lane also carries
+    its own Send/Number/Channel/Offset, since only CC has a per-lane destination independent
+    of that fold. See LaneKind.
 */
 class LaneComponent final : public juce::Component
 {
 public:
+    /** For a CC-kind lane, no layer selector is ever created -- the bars always edit Value
+        -- and the parameter block gains the lane's own Send/Number/Channel/Offset alongside
+        the usual Length/Rate/Direction/Depth/Mix-mode/Nudge/Humanize: a CC lane both folds
+        into the Mix CC like any lane folds into a mix, and keeps its own direct tap. */
     LaneComponent (juce::AudioProcessorValueTreeState& state, int laneIndex,
-                   params::LanePattern& sharedClipboard);
+                   params::LanePattern& sharedClipboard,
+                   params::LaneKind kind = params::LaneKind::note);
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -150,6 +159,7 @@ public:
 private:
     juce::AudioProcessorValueTreeState& apvts;
     const int lane;
+    const params::LaneKind kind;
     const juce::Colour accent;
 
     juce::Label numberLabel;
