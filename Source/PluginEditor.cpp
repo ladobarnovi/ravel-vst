@@ -67,7 +67,7 @@ namespace
 //==============================================================================
 RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
     : AudioProcessorEditor (&p), processorRef (p),
-      outputGroup (p.apvts), notesSettingsPage (p.apvts), ccSettingsPage (p.apvts)
+      notesSettingsPage (p.apvts), ccSettingsPage (p.apvts)
 {
     setLookAndFeel (&lookAndFeel);
 
@@ -105,17 +105,6 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
     updateHistoryButtons();
 
     auto& state = processorRef.apvts;
-
-    // The top-level switches: what the plugin emits. Independent of each other -- both can
-    // be on together, so one instance can drive a note track and a CC loopback at once.
-    // Poly lives on the Notes tab's own Voice column now: it only ever changes which lane
-    // triggers a note, so it has no business in a header shared with CC.
-    outputGroup.add (params::notesOnId, "Notes")
-               ->setTooltip ("Emit MIDI notes from the Notes tab's lanes");
-    outputGroup.add (params::ccOnId, "CC")
-               ->setTooltip ("Emit CC from the CC tab's lanes");
-    outputGroup.setColumns (2);
-    content.addAndMakeVisible (outputGroup);
 
     //--------------------------------------------------------------------------
     // Note lanes and CC lanes are two completely separate stacks, each built up front for
@@ -164,8 +153,6 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
     quantizeParam    = state.getRawParameterValue (params::quantizeId);
     scaleParam       = state.getRawParameterValue (params::scaleId);
     polyModeParam    = state.getRawParameterValue (params::polyModeId);
-    notesOnParam     = state.getRawParameterValue (params::notesOnId);
-    ccOnParam        = state.getRawParameterValue (params::ccOnId);
     noteLaneCountParam = state.getRawParameterValue (params::noteLaneCountId);
     ccLaneCountParam   = state.getRawParameterValue (params::ccLaneCountId);
 
@@ -175,15 +162,6 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
     // its (default-selected) count is the one that actually triggers the resize.
     applyCcLaneCount ((int) std::lround (ccLaneCountParam->load()));
     applyNoteLaneCount ((int) std::lround (noteLaneCountParam->load()));
-
-    // Up front rather than left to the first timer tick, so an editor reopened on a session
-    // with Notes off never flashes a selector it is about to take away.
-    lastNotesOn = notesOnParam->load() > 0.5f ? 1 : 0;
-    applyNotesOn (lastNotesOn != 0);
-    notesWorkspace.setAlpha (lastNotesOn != 0 ? 1.0f : 0.4f);
-
-    lastCcOn = ccOnParam->load() > 0.5f ? 1 : 0;
-    ccWorkspace.setAlpha (lastCcOn != 0 ? 1.0f : 0.4f);
 
     // The zoom the window was last closed at, stored as plain properties on the state tree
     // rather than as a parameter: it's UI state, not something a host should automate or
@@ -378,17 +356,6 @@ void RavelAudioProcessorEditor::applyCcLaneCount (int newCount)
         updateSizeConstraints();
 }
 
-void RavelAudioProcessorEditor::applyNotesOn (bool notesOn)
-{
-    // With Notes off a lane is a plain value sequencer. Velocity and gate are unread there --
-    // both are only ever arguments to startNote -- and the selector is not wanted for chance
-    // alone, so it goes entirely and the bars edit Value. Chance does still gate the mix, and
-    // so still shapes the CC stream, which is why the slots go on drawing its ticks. CC lanes
-    // never have a selector to begin with, so there is nothing to apply this to over there.
-    for (auto* lane : noteLanes)
-        lane->setLayerSelectionAvailable (notesOn);
-}
-
 //==============================================================================
 void RavelAudioProcessorEditor::removeNoteLane (int laneIndex)
 {
@@ -512,11 +479,6 @@ void RavelAudioProcessorEditor::layoutContent()
     history.removeFromLeft (4);
     redoButton.setBounds (history.removeFromLeft (historyButton));
 
-    header.removeFromLeft (14);
-
-    outputGroup.setBounds (header.removeFromLeft (250)
-                                 .withSizeKeepingCentre (250, theme::rowHeight));
-
     r.removeFromTop (gap);
 
     //--------------------------------------------------------------------------
@@ -605,29 +567,6 @@ void RavelAudioProcessorEditor::timerCallback()
     {
         lastOutputTab = currentTab;
         updateSizeConstraints();
-    }
-
-    if (notesOnParam != nullptr)
-    {
-        const int notesOn = notesOnParam->load() > 0.5f ? 1 : 0;
-
-        if (notesOn != lastNotesOn)
-        {
-            lastNotesOn = notesOn;
-            applyNotesOn (notesOn != 0);
-            notesWorkspace.setAlpha (notesOn != 0 ? 1.0f : 0.4f);
-        }
-    }
-
-    if (ccOnParam != nullptr)
-    {
-        const int ccOn = ccOnParam->load() > 0.5f ? 1 : 0;
-
-        if (ccOn != lastCcOn)
-        {
-            lastCcOn = ccOn;
-            ccWorkspace.setAlpha (ccOn != 0 ? 1.0f : 0.4f);
-        }
     }
 
     if (polyModeParam != nullptr)

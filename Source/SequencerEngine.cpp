@@ -397,9 +397,6 @@ void SequencerEngine::process (const Snapshot& s,
     // be let go or it would hang forever.
     retireUnownedVoices (out, 0, voiceLimit, s.polyMode);
 
-    const bool notesEnabled = s.notesOn;
-    const bool ccEnabled    = s.ccOn;
-
     const int noteChannel = juce::jlimit (1, 16, s.midiChannel);
     const int bendRange   = juce::jlimit (1, 48, s.bendRange);
 
@@ -410,7 +407,6 @@ void SequencerEngine::process (const Snapshot& s,
 
     // The receiving instrument has to be told the bend range: an instrument left at its own
     // default while we scale for +/-2 semitones plays the wrong interval.
-    if (notesEnabled)
     {
         const int wantedMode = wantsBend ? 0 : 1;
 
@@ -453,9 +449,7 @@ void SequencerEngine::process (const Snapshot& s,
         const double ppq = ppqAtBlockStart + ppqPerSample * (double) n;
 
         //----------------------------------------------------------------------
-        // Note-lane fold. Runs every sample regardless of notesOn, the same way the shared
-        // lane loop always used to: a muted output still keeps its own step position live,
-        // exactly as a muted lane keeps its playhead moving in the editor.
+        // Note-lane fold.
         float noteAccumulator = 0.0f;
         bool  triggered        = false;
         int   triggerLane      = 0;
@@ -660,7 +654,6 @@ void SequencerEngine::process (const Snapshot& s,
         }
 
         //----------------------------------------------------------------------
-        if (notesEnabled)
         {
             advanceVoices (out, n);
 
@@ -710,13 +703,9 @@ void SequencerEngine::process (const Snapshot& s,
                           0, voiceLimit);
             }
         }
-        else if (anyVoiceActive())
-        {
-            releaseAllVoices (out, n);
-        }
 
         //----------------------------------------------------------------------
-        if (ccEnabled && --ccCountdown <= 0)
+        if (--ccCountdown <= 0)
         {
             ccCountdown = ccIntervalSamples;
 

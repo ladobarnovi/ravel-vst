@@ -115,13 +115,6 @@ private:
     void applyNoteLaneCount (int newCount);
     void applyCcLaneCount (int newCount);
 
-    /** Hides the per-step layer selector on every Note lane while Notes is off, where a lane
-        is a plain value sequencer -- velocity and gate are only ever read on the note path.
-        CC lanes never have a selector to hide in the first place. Applied from the
-        constructor as well as the timer, so an editor opened with Notes off never shows the
-        selector even briefly. */
-    void applyNotesOn (bool notesOn);
-
     /** Takes out the lane a lane's own Remove button belongs to. Lives here rather than in
         LaneComponent because it is the stack that changes: every lane above this one moves
         down, and the window shrinks by one lane. */
@@ -132,10 +125,6 @@ private:
     std::atomic<float>* ccLaneCountParam   = nullptr;
     int noteLaneCount = 0;
     int ccLaneCount   = 0;
-
-    // Output mode is the one global that changes what the plugin *is*, so it stays in the
-    // header rather than going behind a tab with the rest of the setup.
-    ControlGroup outputGroup;
 
     // The top-level split: which workspace -- Note lanes or CC lanes -- is currently shown.
     // Opens on Notes. Reuses TabStrip/TabPage exactly as the old Pitch/Timing/Routing strip
@@ -167,14 +156,6 @@ private:
 
     std::atomic<float>* polyModeParam = nullptr;
     int lastPolyMode = -1;
-
-    // Watched to dim the whole Notes workspace, and to gate the per-lane layer selector.
-    std::atomic<float>* notesOnParam = nullptr;
-    int lastNotesOn = -1;
-
-    // Watched to dim the whole CC workspace.
-    std::atomic<float>* ccOnParam = nullptr;
-    int lastCcOn = -1;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RavelAudioProcessorEditor)
 };

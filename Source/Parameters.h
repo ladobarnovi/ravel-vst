@@ -294,11 +294,6 @@ juce::String laneCcNumId    (int lane);
 juce::String laneCcChanId   (int lane);
 juce::String laneCcOffsetId (int lane);
 
-// Global / output-section parameter IDs. Notes and CC are independent switches -- both can
-// be on together, so one instance can drive a note track and a CC loopback at once.
-inline constexpr auto notesOnId      = "notes_on";
-inline constexpr auto ccOnId         = "cc_on";
-
 // Which Note lane's advance fires the shared note in mixed (non-poly) mode. CC output has
 // no equivalent: it is never "triggered", it continuously reflects the fold.
 inline constexpr auto noteTriggerSrcId = "trig_src";

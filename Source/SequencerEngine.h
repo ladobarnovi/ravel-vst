@@ -61,11 +61,6 @@ public:
         LaneSnapshot noteLanes[params::numLanes];
         LaneSnapshot ccLanes[params::numLanes];
 
-        // Independent -- both can be on together, and both can be off to mute the instance
-        // entirely.
-        bool  notesOn       = true;
-        bool  ccOn          = false;
-
         // Which Note lane's advance fires the shared note in mixed (non-poly) mode. CC has
         // no equivalent: its output is never "triggered", it continuously reflects the fold.
         int   noteTriggerSource = 0;

@@ -185,8 +185,6 @@ namespace
 
         s.noteLanes[0].depth = 1.0f;
 
-        s.notesOn       = true;
-        s.ccOn          = false;
         s.noteTriggerSource = 0;
         s.root          = 48;
         s.rangeSteps    = 12;
@@ -449,8 +447,6 @@ int main()
         s.ccLanes[0].length = 4;
         s.ccLanes[0].values[1] = 1.0f;
         s.ccLanes[0].depth = 1.0f;   // baseSnapshot only gives noteLanes[0] full depth
-        s.notesOn = false;
-        s.ccOn = true;
         s.ccNumber = 74;
 
         SequencerEngine engine;
@@ -459,8 +455,7 @@ int main()
         const auto events = run (engine, s, 4 * samplesPerStep);
         const auto ccs = only (events, controller);
 
-        check (only (events, noteOn).empty(), "CC-only mode emits no notes");
-        check (! ccs.empty(), "CC-only mode emits controller events");
+        check (! ccs.empty(), "CC output emits controller events");
 
         bool numberOk = true;
         int maxValue = 0;
@@ -1268,8 +1263,6 @@ int main()
         s.ccLanes[0].ccOn = true;
         s.ccLanes[0].ccNumber = 20;
         s.ccLanes[0].ccChannel = 3;
-        s.notesOn = false;
-        s.ccOn = true;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1298,8 +1291,6 @@ int main()
         s.ccLanes[0].values[1] = 1.0f;
         s.ccLanes[0].ccOn = false;
         s.ccLanes[0].ccNumber = 20;
-        s.notesOn = false;
-        s.ccOn = true;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1325,8 +1316,6 @@ int main()
         s.ccLanes[0].ccOn = true;
         s.ccLanes[0].ccNumber = 20;
         s.ccLanes[0].ccOffset = 0.25f;
-        s.notesOn = false;
-        s.ccOn = true;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1352,8 +1341,6 @@ int main()
         s.ccLanes[0].depth = 0.0f;
         s.ccLanes[0].ccOn = true;
         s.ccLanes[0].ccNumber = 20;
-        s.notesOn = false;
-        s.ccOn = true;
         s.ccOffset = 0.25f;      // shifts the Mix CC, not this lane's own CC Offset
 
         SequencerEngine engine;

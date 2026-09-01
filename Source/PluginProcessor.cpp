@@ -52,8 +52,6 @@ RavelAudioProcessor::RavelAudioProcessor()
         cp.ccOffset  = apvts.getRawParameterValue (params::laneCcOffsetId (lane));
     }
 
-    pNotesOn       = apvts.getRawParameterValue (params::notesOnId);
-    pCcOn          = apvts.getRawParameterValue (params::ccOnId);
     pNoteTriggerSrc = apvts.getRawParameterValue (params::noteTriggerSrcId);
     pQuantize      = apvts.getRawParameterValue (params::quantizeId);
     pBendRange     = apvts.getRawParameterValue (params::bendRangeId);
@@ -158,8 +156,6 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
         cs.ccOffset  = cp.ccOffset->load();
     }
 
-    s.notesOn           = pNotesOn->load() > 0.5f;
-    s.ccOn              = pCcOn->load() > 0.5f;
     s.noteTriggerSource = (int) std::lround (pNoteTriggerSrc->load());
     s.quantize          = pQuantize->load() > 0.5f;
     s.bendRange         = (int) std::lround (pBendRange->load());
@@ -261,53 +257,12 @@ void RavelAudioProcessor::setStateInformation (const void* data, int sizeInBytes
         if (xml->hasTagName (apvts.state.getType()) || xml->hasTagName ("TRILANE"))
         {
             auto tree = juce::ValueTree::fromXml (*xml);
-            migrateLegacyState (tree);
             apvts.replaceState (tree);
 
             // Whatever this instance held before the host handed it a session is not a state
             // the user chose, so it is not one Ctrl+Z should be able to walk back into.
             undoHistory.clear();
         }
-    }
-}
-
-//==============================================================================
-void RavelAudioProcessor::migrateLegacyState (juce::ValueTree& tree)
-{
-    // "Output" used to be one exclusive choice (0 Notes, 1 CC). It is now the two independent
-    // switches Notes and CC, so an old session's single value has to be split into both.
-    //
-    // The lane-count-and-trigger migration that used to live here (for sessions saved before
-    // lanes were countable at all) is retired along with lane_count itself: any session that
-    // old predates the Notes/CC lane-pool split too, and that split is not migrated -- it
-    // loads with the default one lane in each pool, same as any other pre-split session.
-    juce::ValueTree outputMode;
-
-    for (int i = 0; i < tree.getNumChildren(); ++i)
-    {
-        const auto child = tree.getChild (i);
-
-        if (child.getProperty ("id").toString() == "out_mode")
-        {
-            outputMode = child;
-            break;
-        }
-    }
-
-    if (outputMode.isValid())
-    {
-        const bool wasCC = (int) std::lround ((float) outputMode.getProperty ("value")) == 1;
-        tree.removeChild (outputMode, nullptr);
-
-        juce::ValueTree notesOn ("PARAM");
-        notesOn.setProperty ("id", params::notesOnId, nullptr);
-        notesOn.setProperty ("value", wasCC ? 0.0f : 1.0f, nullptr);
-        tree.appendChild (notesOn, nullptr);
-
-        juce::ValueTree ccOn ("PARAM");
-        ccOn.setProperty ("id", params::ccOnId, nullptr);
-        ccOn.setProperty ("value", wasCC ? 1.0f : 0.0f, nullptr);
-        tree.appendChild (ccOn, nullptr);
     }
 }
 

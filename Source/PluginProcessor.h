@@ -82,16 +82,9 @@ private:
 
     SequencerEngine::Snapshot buildSnapshot() const;
 
-    /** Patches up state saved by an older version of the plugin -- currently just the single
-        exclusive Output choice from before Notes and CC became independent switches. See the
-        definition for what is inferred and why. */
-    static void migrateLegacyState (juce::ValueTree& tree);
-
     LaneParams noteLaneParams[params::numLanes];
     LaneParams ccLaneParams[params::numLanes];
 
-    std::atomic<float>* pNotesOn      = nullptr;
-    std::atomic<float>* pCcOn         = nullptr;
     std::atomic<float>* pNoteTriggerSrc = nullptr;
     std::atomic<float>* pQuantize     = nullptr;
     std::atomic<float>* pBendRange    = nullptr;

@@ -195,7 +195,7 @@ int main()
         check (counts.noteOns == 8, "eight notes over two beats at the default 1/16 rate");
         check (counts.noteOffs == counts.noteOns, "every note-on is matched by a note-off");
         check (counts.firstNote == 48, "first note is the default root (C3)");
-        check (counts.controllers == 0, "default output mode emits no CC");
+        check (counts.controllers > 0, "CC is emitted alongside notes -- both are always on");
     }
 
     //==========================================================================
@@ -258,26 +258,6 @@ int main()
         }
 
         check (noteOns > 0, "free-run still drives the sequencer with no playhead present");
-    }
-
-    //==========================================================================
-    section ("Output: Notes off, CC on");
-    {
-        RavelAudioProcessor processor;
-        processor.setPlayConfigDetails (0, 2, 48000.0, 512);
-        processor.prepareToPlay (48000.0, 512);
-
-        setChoice (processor, params::notesOnId, 0);
-        setChoice (processor, params::ccOnId, 1);
-
-        MockPlayHead playHead;
-        processor.setPlayHead (&playHead);
-
-        const auto counts = runProcessor (processor, playHead, true, 48000);
-
-        check (counts.noteOns == 0, "Notes off emits NO notes even with CC on");
-        check (counts.controllers > 0, "CC mode emits controller events");
-        check (counts.firstCcNumber == 1, "uses the default CC number");
     }
 
     //==========================================================================
@@ -757,68 +737,6 @@ int main()
 
         check (std::abs (get (params::stepValueId (1, 0)) - 0.5f) < 0.01f,
                "and puts the removed lane's pattern back with it");
-    }
-
-    //==========================================================================
-    section ("State round-trip");
-    {
-        RavelAudioProcessor a;
-        setChoice (a, params::notesOnId, 0);
-        setChoice (a, params::ccOnId, 1);
-
-        juce::MemoryBlock state;
-        a.getStateInformation (state);
-
-        RavelAudioProcessor b;
-        b.setStateInformation (state.getData(), (int) state.getSize());
-
-        const auto* notesOnParam = b.apvts.getRawParameterValue (params::notesOnId);
-        const auto* ccOnParam    = b.apvts.getRawParameterValue (params::ccOnId);
-
-        check (notesOnParam != nullptr && ccOnParam != nullptr
-                && notesOnParam->load() < 0.5f && ccOnParam->load() > 0.5f,
-               "Notes/CC survive save/load independently");
-    }
-
-    //==========================================================================
-    section ("Legacy Output choice migrates to independent Notes/CC");
-    {
-        // Simulates a session saved before Notes and CC were split: a single "out_mode"
-        // parameter (0 Notes, 1 CC) instead of the two switches. Built by taking a real
-        // session and swapping the new params back out for the old one, rather than hand
-        // writing the APVTS XML shape from scratch.
-        RavelAudioProcessor donor;
-        juce::MemoryBlock donorState;
-        donor.getStateInformation (donorState);
-
-        auto xml = juce::AudioProcessor::getXmlFromBinary (donorState.getData(), (int) donorState.getSize());
-        auto tree = juce::ValueTree::fromXml (*xml);
-
-        for (int i = tree.getNumChildren() - 1; i >= 0; --i)
-        {
-            const auto id = tree.getChild (i).getProperty ("id").toString();
-
-            if (id == params::notesOnId || id == params::ccOnId)
-                tree.removeChild (i, nullptr);
-        }
-
-        juce::ValueTree legacyOutputMode ("PARAM");
-        legacyOutputMode.setProperty ("id", "out_mode", nullptr);
-        legacyOutputMode.setProperty ("value", 1.0f, nullptr);   // the old CC value
-        tree.appendChild (legacyOutputMode, nullptr);
-
-        juce::MemoryBlock legacyState;
-        juce::AudioProcessor::copyXmlToBinary (*tree.createXml(), legacyState);
-
-        RavelAudioProcessor loaded;
-        loaded.setStateInformation (legacyState.getData(), (int) legacyState.getSize());
-
-        const auto* notesOnParam = loaded.apvts.getRawParameterValue (params::notesOnId);
-        const auto* ccOnParam    = loaded.apvts.getRawParameterValue (params::ccOnId);
-
-        check (notesOnParam != nullptr && ccOnParam != nullptr
-                && notesOnParam->load() < 0.5f && ccOnParam->load() > 0.5f,
-               "an old CC-mode session loads with Notes off and CC on");
     }
 
     //==========================================================================
