@@ -30,14 +30,18 @@ jobs:
       - name: Build Release
         run: cmake --build build --config Release
 
+      # path points at the bundle's *parent* folder, not the .vst3/.component
+      # bundle itself: upload-artifact treats a given directory as the root and
+      # uploads only what's inside it, so pointing straight at the bundle would
+      # upload its Contents/ folder loose and drop the bundle name entirely.
       - name: Upload VST3
         uses: actions/upload-artifact@v4
         with:
           name: Ravel-VST3-macOS
-          path: build/Ravel_artefacts/Release/VST3/Ravel.vst3
+          path: build/Ravel_artefacts/Release/VST3
 
       - name: Upload AU
         uses: actions/upload-artifact@v4
         with:
           name: Ravel-AU-macOS
-          path: build/Ravel_artefacts/Release/AU/Ravel.component
+          path: build/Ravel_artefacts/Release/AU
