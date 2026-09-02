@@ -276,7 +276,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         juce::ParameterID { midiChannelId, versionHint }, "Note Channel", 1, 16, 1));
 
     // The CC tab's own Mix destination -- fed by the CC-lane fold, the same way pitch is
-    // fed by the Note-lane fold.
+    // fed by the Note-lane fold. On by default: it already behaved as always-on before this
+    // switch existed, and a freshly loaded instance should still speak.
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { ccOnId, versionHint }, "CC Send", true));
+
     layout.add (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { ccNumberId, versionHint }, "CC Number", 0, 127, 1));
 

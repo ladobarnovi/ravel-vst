@@ -56,6 +56,7 @@ RavelAudioProcessor::RavelAudioProcessor()
     pScale         = apvts.getRawParameterValue (params::scaleId);
     pVelocity      = apvts.getRawParameterValue (params::velocityId);
     pMidiChannel   = apvts.getRawParameterValue (params::midiChannelId);
+    pCcOn          = apvts.getRawParameterValue (params::ccOnId);
     pCcNumber      = apvts.getRawParameterValue (params::ccNumberId);
     pCcChannel     = apvts.getRawParameterValue (params::ccChannelId);
     pNoteOffset    = apvts.getRawParameterValue (params::noteOffsetId);
@@ -160,6 +161,7 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
     s.scale             = (int) std::lround (pScale->load());
     s.velocity          = (int) std::lround (pVelocity->load());
     s.midiChannel       = (int) std::lround (pMidiChannel->load());
+    s.ccOn              = pCcOn->load() > 0.5f;
     s.ccNumber          = (int) std::lround (pCcNumber->load());
     s.ccChannel         = (int) std::lround (pCcChannel->load());
     s.noteOffset        = pNoteOffset->load();

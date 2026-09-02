@@ -314,6 +314,7 @@ inline constexpr auto midiChannelId  = "midi_ch";
 
 // The CC tab's own Mix destination -- fed by the CC-lane fold, the same way pitch is fed
 // by the Note-lane fold.
+inline constexpr auto ccOnId         = "cc_on";
 inline constexpr auto ccNumberId     = "cc_num";
 inline constexpr auto ccChannelId    = "cc_ch";
 

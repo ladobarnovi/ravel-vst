@@ -712,14 +712,17 @@ void SequencerEngine::process (const Snapshot& s,
         {
             ccCountdown = ccIntervalSamples;
 
-            const int ccValue = juce::jlimit (0, 127, (int) std::lround (slewedValue * 127.0f));
-
-            if (ccValue != lastCcValue)
+            if (s.ccOn)
             {
-                lastCcValue = ccValue;
-                out.addEvent (juce::MidiMessage::controllerEvent (juce::jlimit (1, 16, s.ccChannel),
-                                                                 juce::jlimit (0, 127, s.ccNumber),
-                                                                 ccValue), n);
+                const int ccValue = juce::jlimit (0, 127, (int) std::lround (slewedValue * 127.0f));
+
+                if (ccValue != lastCcValue)
+                {
+                    lastCcValue = ccValue;
+                    out.addEvent (juce::MidiMessage::controllerEvent (juce::jlimit (1, 16, s.ccChannel),
+                                                                     juce::jlimit (0, 127, s.ccNumber),
+                                                                     ccValue), n);
+                }
             }
 
             // Each CC lane can also drive its own destination, so one instance can modulate

@@ -93,6 +93,7 @@ private:
     std::atomic<float>* pScale        = nullptr;
     std::atomic<float>* pVelocity     = nullptr;
     std::atomic<float>* pMidiChannel  = nullptr;
+    std::atomic<float>* pCcOn         = nullptr;
     std::atomic<float>* pCcNumber     = nullptr;
     std::atomic<float>* pCcChannel    = nullptr;
     std::atomic<float>* pNoteOffset   = nullptr;

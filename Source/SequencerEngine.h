@@ -73,7 +73,9 @@ public:
         int   velocity      = 100;
         int   midiChannel   = 1;
 
-        // The CC tab's own Mix destination, fed by the CC-lane fold.
+        // The CC tab's own Mix destination, fed by the CC-lane fold. Off silences the Mix CC
+        // entirely -- each CC lane's own Send is unaffected.
+        bool  ccOn          = true;
         int   ccNumber      = 1;
         int   ccChannel     = 1;
 

@@ -225,6 +225,8 @@ void RavelAudioProcessorEditor::buildWorkspaces()
     // Note-lane fold's output. Each CC lane's own destination lives on its own strip instead
     // of here -- see LaneComponent.
     auto& ccOutput = ccSettingsPage.addColumn ("Output");
+    ccOutput.add (params::ccOnId,      "Send")
+            ->setTooltip ("Turns the Mix CC on or off. Each CC lane's own Send is unaffected");
     ccOutput.add (params::ccNumberId,  "Number");
     ccOutput.add (params::ccChannelId, "Channel");
     ccOutput.add (params::ccOffsetId,  "Offset");

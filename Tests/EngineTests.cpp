@@ -471,6 +471,24 @@ int main()
     }
 
     //==========================================================================
+    section ("Mix CC Send can be switched off");
+    {
+        auto s = baseSnapshot();
+        s.ccLanes[0].length = 4;
+        s.ccLanes[0].values[1] = 1.0f;
+        s.ccLanes[0].depth = 1.0f;
+        s.ccNumber = 74;
+        s.ccOn = false;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto ccs = only (run (engine, s, 4 * samplesPerStep), controller);
+
+        check (ccs.empty(), "no Mix CC events go out while Send is off");
+    }
+
+    //==========================================================================
     section ("Reverse direction");
     {
         auto s = baseSnapshot();
