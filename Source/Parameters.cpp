@@ -253,12 +253,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         juce::AudioParameterIntAttributes().withStringFromValueFunction (
             [] (int v, int) { return noteNameText (v); })));
 
-    // Semitones in the continuous pitch modes; scale degrees in Semitone mode, where the
-    // octave span then depends on the scale -- 12 degrees is two and a half octaves of a
-    // pentatonic but only a quarter of an octave of 53-EDO chromatic. Notes clamp to the MIDI
-    // range, so how much of a large Range is actually reachable depends on Root.
+    // Octaves, not raw scale steps -- the engine multiplies this by the current scale's degree
+    // count (5 for a pentatonic, 53 for 53-EDO chromatic) in Quantize mode, or by 12 semitones
+    // in continuous mode, so a given Range value spans the same musical distance regardless of
+    // scale. Notes clamp to the MIDI range, so how much of a large Range is actually reachable
+    // depends on Root.
     layout.add (std::make_unique<juce::AudioParameterInt> (
-        juce::ParameterID { rangeStepsId, versionHint }, "Range", 1, 100, 12));
+        juce::ParameterID { rangeOctavesId, versionHint }, "Range", 1, 10, 2,
+        juce::AudioParameterIntAttributes().withStringFromValueFunction (
+            [] (int v, int) { return juce::String (v) + " oct"; })));
 
     // The two lists are indexed by the same parameter value, so they have to stay in step.
     jassert (scaleNames.size() == numScales);

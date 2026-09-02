@@ -68,7 +68,7 @@ public:
         bool  quantize      = true;
         int   bendRange     = 2;
         int   root          = 48;
-        int   rangeSteps    = 12;
+        int   rangeOctaves  = 2;
         int   scale         = 4;
         int   velocity      = 100;
         int   midiChannel   = 1;

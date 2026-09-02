@@ -52,7 +52,7 @@ RavelAudioProcessor::RavelAudioProcessor()
     pQuantize      = apvts.getRawParameterValue (params::quantizeId);
     pBendRange     = apvts.getRawParameterValue (params::bendRangeId);
     pRootNote      = apvts.getRawParameterValue (params::rootNoteId);
-    pRangeSteps    = apvts.getRawParameterValue (params::rangeStepsId);
+    pRangeOctaves  = apvts.getRawParameterValue (params::rangeOctavesId);
     pScale         = apvts.getRawParameterValue (params::scaleId);
     pVelocity      = apvts.getRawParameterValue (params::velocityId);
     pMidiChannel   = apvts.getRawParameterValue (params::midiChannelId);
@@ -156,7 +156,7 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
     s.quantize          = pQuantize->load() > 0.5f;
     s.bendRange         = (int) std::lround (pBendRange->load());
     s.root              = (int) std::lround (pRootNote->load());
-    s.rangeSteps        = (int) std::lround (pRangeSteps->load());
+    s.rangeOctaves      = (int) std::lround (pRangeOctaves->load());
     s.scale             = (int) std::lround (pScale->load());
     s.velocity          = (int) std::lround (pVelocity->load());
     s.midiChannel       = (int) std::lround (pMidiChannel->load());

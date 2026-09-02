@@ -187,7 +187,7 @@ namespace
 
         s.noteTriggerSource = 0;
         s.root          = 48;
-        s.rangeSteps    = 12;
+        s.rangeOctaves  = 1;
         s.scale         = 0;        // Chromatic
         s.velocity      = 100;
         s.midiChannel   = 1;
@@ -550,10 +550,10 @@ int main()
         auto s = baseSnapshot();
         s.noteLanes[0].length = 1;
         s.noteLanes[0].values[0] = 0.25f;   // 0.25 * 12 = exactly 3 semitones
-        s.scale      = 0;
-        s.rangeSteps = 12;
-        s.root       = 48;
-        s.quantize   = false;
+        s.scale        = 0;
+        s.rangeOctaves = 1;
+        s.root         = 48;
+        s.quantize     = false;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -583,11 +583,11 @@ int main()
         {
             auto s = baseSnapshot();
             s.noteLanes[0].length = 4;
-            s.scale      = scaleIndex;
-            s.rangeSteps = 12;
-            s.root       = 48;
-            s.quantize   = false;
-            s.bendRange  = 2;
+            s.scale        = scaleIndex;
+            s.rangeOctaves = 1;
+            s.root         = 48;
+            s.quantize     = false;
+            s.bendRange    = 2;
 
             for (int i = 0; i < 4; ++i)
                 s.noteLanes[0].values[i] = (float) i * 0.1f;
@@ -640,10 +640,10 @@ int main()
         s.noteLanes[0].length = 2;
         s.noteLanes[0].values[0] = 0.17f;
         s.noteLanes[0].values[1] = 0.61f;
-        s.scale      = 0;
-        s.rangeSteps = 12;
-        s.quantize   = false;
-        s.slewMs     = 400.0f;   // heavy slew: must affect CC only, never pitch
+        s.scale        = 0;
+        s.rangeOctaves = 1;
+        s.quantize     = false;
+        s.slewMs       = 400.0f;   // heavy slew: must affect CC only, never pitch
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -670,13 +670,13 @@ int main()
     {
         auto s = baseSnapshot();
         s.noteLanes[0].length = 1;
-        s.noteLanes[0].values[0] = 0.3f;   // -> 51.6 semitones with Chromatic, range 12, root 48
-        s.scale       = 0;
-        s.rangeSteps  = 12;
-        s.root        = 48;
-        s.quantize    = false;
-        s.bendRange   = 2;
-        s.midiChannel = 5;
+        s.noteLanes[0].values[0] = 0.3f;   // -> 51.6 semitones with Chromatic, range 1 oct, root 48
+        s.scale        = 0;
+        s.rangeOctaves = 1;
+        s.root         = 48;
+        s.quantize     = false;
+        s.bendRange    = 2;
+        s.midiChannel  = 5;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -765,11 +765,11 @@ int main()
     {
         auto s = baseSnapshot();
         s.noteLanes[0].length = 4;
-        s.scale      = 0;      // Chromatic
-        s.rangeSteps = 24;
-        s.root       = 36;
-        s.quantize   = false;
-        s.bendRange  = 2;
+        s.scale        = 0;      // Chromatic
+        s.rangeOctaves = 2;
+        s.root         = 36;
+        s.quantize     = false;
+        s.bendRange    = 2;
 
         for (int i = 0; i < 4; ++i)
             s.noteLanes[0].values[i] = (float) i * 0.1f;   // 0.0, 0.1, 0.2, 0.3
@@ -810,7 +810,7 @@ int main()
         s.quantize = false;
         s.noteLanes[0].length = 1;
         s.noteLanes[0].values[0] = 0.3f;    // a value with a fractional semitone, so bend != centre
-        s.rangeSteps = 12;
+        s.rangeOctaves = 1;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -916,8 +916,8 @@ int main()
         s.scale      = params::scaleNames.indexOf ("19 Chromatic");
         s.quantize   = true;
         s.root       = 48;
-        s.rangeSteps = 19;      // one 19-EDO octave over the full mix range
-        s.bendRange  = 2;
+        s.rangeOctaves = 1;      // one 19-EDO octave over the full mix range
+        s.bendRange    = 2;
         s.noteLanes[0].length = 4;
 
         // Degrees 0, 1, 7 and 19: the root, one step up, a scale note that falls between two
@@ -1015,7 +1015,7 @@ int main()
         s.scale = params::scaleNames.indexOf ("19 Chromatic");
         s.noteLanes[0].length = 1;
         s.noteLanes[0].values[0] = 7.0f / 19.0f;    // a degree that sits between two keys
-        s.rangeSteps = 19;
+        s.rangeOctaves = 1;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1548,7 +1548,7 @@ int main()
         auto s = baseSnapshot();
         s.polyMode = true;
         s.scale = 0;               // Chromatic: a degree is a semitone
-        s.rangeSteps = 12;
+        s.rangeOctaves = 1;
         useLanes (s, 3);
 
         for (int lane = 0; lane < params::numLanes; ++lane)

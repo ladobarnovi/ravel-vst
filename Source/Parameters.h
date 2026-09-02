@@ -211,6 +211,12 @@ inline int scaleEdo (int scaleIndex) noexcept
     return scales[(size_t) juce::jlimit (0, numScales - 1, scaleIndex)].edo;
 }
 
+/** Degrees the scale packs into one octave -- 5 for a pentatonic, 53 for 53-EDO chromatic. */
+inline int scaleSize (int scaleIndex) noexcept
+{
+    return scales[(size_t) juce::jlimit (0, numScales - 1, scaleIndex)].size;
+}
+
 /** True when the scale's degrees do not all coincide with 12-EDO semitones, so its notes
     only play in tune if they carry a pitch bend.
 */
@@ -301,7 +307,7 @@ inline constexpr auto noteTriggerSrcId = "trig_src";
 inline constexpr auto quantizeId     = "quantize";
 inline constexpr auto bendRangeId    = "bend_range";
 inline constexpr auto rootNoteId     = "root_note";
-inline constexpr auto rangeStepsId   = "range_steps";
+inline constexpr auto rangeOctavesId = "range_octaves";
 inline constexpr auto scaleId         = "scale";
 inline constexpr auto velocityId     = "velocity";
 inline constexpr auto midiChannelId  = "midi_ch";

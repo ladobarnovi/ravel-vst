@@ -196,7 +196,7 @@ void RavelAudioProcessorEditor::buildWorkspaces()
     scaleRow->setTooltip ("Scales named 19, 23, 31, 41 or 53 divide the octave into that many "
                           "equal steps. Their degrees land between the keys, so they play as a "
                           "note plus pitch bend -- one microtone at a time per channel");
-    pitch.add (params::rangeStepsId, "Range");
+    pitch.add (params::rangeOctavesId, "Range");
     pitch.add (params::quantizeId, "Quantize")
          ->setTooltip ("On: pitch snaps to the selected scale. Off: continuous microtonal "
                        "pitch, sent as a note plus pitch bend");

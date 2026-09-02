@@ -292,8 +292,11 @@ SequencerEngine::PitchResult SequencerEngine::pitchFor (float value, const Snaps
 
     if (s.quantize)
     {
-        const int   degree    = (int) std::lround (value * (float) s.rangeSteps);
-        const float absolute  = (float) s.root + params::scaleStepToSemitone (degree, s.scale);
+        // Range is octaves; the scale converts that to degrees so the same Range value spans
+        // the same musical distance whether the scale packs 5 degrees into an octave or 53.
+        const int   rangeSteps = s.rangeOctaves * params::scaleSize (s.scale);
+        const int   degree     = (int) std::lround (value * (float) rangeSteps);
+        const float absolute   = (float) s.root + params::scaleStepToSemitone (degree, s.scale);
 
         result.note = juce::jlimit (0, 127, (int) std::lround (absolute));
 
@@ -311,15 +314,15 @@ SequencerEngine::PitchResult SequencerEngine::pitchFor (float value, const Snaps
         return result;
     }
 
-    // Raw microtonal pitch: Range is semitones and the scale is bypassed. The nearest
-    // semitone carries the note number; the residual (at most half a semitone) is expressed
-    // as pitch bend.
+    // Raw microtonal pitch: Range is octaves (12 semitones each) and the scale is bypassed.
+    // The nearest semitone carries the note number; the residual (at most half a semitone) is
+    // expressed as pitch bend.
     //
     // The bend goes on the note channel, which is shared by every voice on it -- so
     // overlapping notes, including three poly lanes at once, cannot hold different
     // microtones. That is the cost of staying on one channel, which is what survives hosts
     // that merge MIDI channels when routing between tracks.
-    const float absolute = (float) s.root + params::continuousSemitones (value, s.rangeSteps);
+    const float absolute = (float) s.root + params::continuousSemitones (value, s.rangeOctaves * 12);
 
     result.note = juce::jlimit (0, 127, (int) std::lround (absolute));
     result.bend = params::pitchBendForSemitones (absolute - (float) result.note, bendRange);
