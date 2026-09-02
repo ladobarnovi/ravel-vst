@@ -219,7 +219,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
             layout.add (std::make_unique<juce::AudioParameterFloat> (
                 juce::ParameterID { laneCcOffsetId (lane), versionHint },
                 laneName + "Offset",
-                juce::NormalisableRange<float> (-1.0f, 1.0f, 0.001f), 0.0f,
+                juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f,
                 juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
         }
     }
@@ -290,7 +290,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { ccOffsetId, versionHint }, "CC Offset",
-        juce::NormalisableRange<float> (-1.0f, 1.0f, 0.001f), 0.0f,
+        juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f), 0.0f,
         juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
