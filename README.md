@@ -359,6 +359,36 @@ In Live: **Preferences → Plug-Ins → VST3 Plug-In Custom Folder**, point it a
 > and the next build dies with `LNK1104: cannot open file ... Ravel.vst3`. That is a file
 > lock, not a code error — quit Live and build again.
 
+### Building on macOS via CI
+
+There's no Mac in this project's development loop, so Ravel is cross-built for macOS in CI
+rather than on a local machine. `.github/workflows/build-macos.yml` runs on a `macos-14`
+GitHub Actions runner, clones the same JUCE tag the Windows build uses (JUCE isn't committed
+to this repo — see `.gitignore`), and configures with `-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"`
+so the output runs on both Apple Silicon and Intel Macs.
+
+To run it: push this repo to GitHub, open the **Actions** tab, select **Build macOS Plugin**,
+and click **Run workflow**. When it finishes, the run page has two downloadable artifacts,
+`Ravel-VST3-macOS` and `Ravel-AU-macOS` — each a zip containing the `.vst3`/`.component`
+bundle. Unzip, then move each bundle into the standard per-user plugin folder so Live and
+Logic find it without any custom-folder setup:
+
+```bash
+mv Ravel.vst3 ~/Library/Audio/Plug-Ins/VST3/
+mv Ravel.component ~/Library/Audio/Plug-Ins/Components/
+```
+
+The build is unsigned — there's no Apple Developer certificate in this pipeline, so Gatekeeper
+will refuse to load it on first launch of Live. Clear the quarantine flag once, from Terminal:
+
+```bash
+xattr -cr ~/Library/Audio/Plug-Ins/VST3/Ravel.vst3
+xattr -cr ~/Library/Audio/Plug-Ins/Components/Ravel.component
+```
+
+(Signing and notarizing for distribution to other people needs a paid Apple Developer account —
+out of scope for a plugin only running on your own machine.)
+
 ### Tests
 
 ```powershell

@@ -1,0 +1,43 @@
+# Builds the macOS VST3 + AU (manual trigger only — see README "Building on macOS via CI").
+# JUCE isn't committed to this repo (see .gitignore), so this job clones the same
+# JUCE tag the Windows build is developed against before configuring.
+name: Build macOS Plugin
+
+on:
+  workflow_dispatch:
+
+env:
+  JUCE_TAG: "9.0.1"
+
+jobs:
+  build-macos:
+    runs-on: macos-14
+
+    steps:
+      - name: Check out Ravel
+        uses: actions/checkout@v4
+
+      - name: Clone JUCE ${{ env.JUCE_TAG }}
+        run: git clone --depth 1 --branch ${{ env.JUCE_TAG }} https://github.com/juce-framework/JUCE.git JUCE
+
+      - name: Configure (universal binary)
+        run: >
+          cmake -S . -B build -G Xcode
+          -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+          -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
+          -DRAVEL_BUILD_TESTS=OFF
+
+      - name: Build Release
+        run: cmake --build build --config Release
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ravel-VST3-macOS
+          path: build/Ravel_artefacts/Release/VST3/Ravel.vst3
+
+      - name: Upload AU
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ravel-AU-macOS
+          path: build/Ravel_artefacts/Release/AU/Ravel.component

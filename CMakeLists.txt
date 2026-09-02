@@ -8,7 +8,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Where the built .vst3 gets dropped. JUCE's Windows default is
 # "C:/Program Files/Common Files/VST3", which needs an elevated shell to write to,
 # so we use a user-writable folder and point Live at it as a Custom VST3 Folder.
-set(RAVEL_VST3_DIR "$ENV{USERPROFILE}/Documents/VST3"
+# USERPROFILE is Windows-only; macOS/Linux builds (e.g. the CI job that produces
+# the Mac plugin) fall back to HOME so this cache default never resolves to a
+# path outside the user's home.
+if(WIN32)
+    set(RAVEL_VST3_DIR_DEFAULT "$ENV{USERPROFILE}/Documents/VST3")
+else()
+    set(RAVEL_VST3_DIR_DEFAULT "$ENV{HOME}/Documents/VST3")
+endif()
+
+set(RAVEL_VST3_DIR "${RAVEL_VST3_DIR_DEFAULT}"
     CACHE PATH "Folder the built VST3 is copied into after each build")
 
 add_subdirectory(JUCE)
@@ -33,7 +42,10 @@ juce_add_plugin(Ravel
     # VST3 class ID, and changing it would make existing Live sessions see this as a
     # different plugin instead of relinking to it after a rescan.
     PLUGIN_CODE                 Trln
-    FORMATS                     VST3
+    # AU only ever builds on macOS (JUCE's CMake filters it out of the format
+    # list on every other platform), so this stays one line instead of an
+    # if(APPLE) branch: Windows configure just ignores it.
+    FORMATS                     VST3 AU
     PRODUCT_NAME                "Ravel"
     DESCRIPTION                 "Polyrhythmic step sequencer"
     IS_SYNTH                    TRUE
