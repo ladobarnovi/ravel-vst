@@ -1,50 +1,69 @@
 # Ravel
 
-A polyrhythmic step sequencer, built as a VST3 for Ableton Live 12 on Windows. It opens
-with one lane and goes up to four, added one at a time.
+A polyrhythmic step sequencer, built as a VST3 for Ableton Live 12 on Windows.
 
-Each lane is an independent 16-step sequencer with its own **length**, **clock rate**,
-**direction** and **depth**. The lanes are folded together into one value, and that value
-drives note pitch, a MIDI CC, or both at once -- or, in **Poly** mode, each lane triggers its
-own note off its own clock.
+Ravel holds **two independent stacks of lanes**: a **Notes** stack that drives pitch, and a
+**CC** stack that drives MIDI CC. Each opens with one lane and goes up to four, added one at a
+time, and each keeps its own lane count — growing one costs the other nothing.
+
+Every lane is a 16-step sequencer with its own **length**, **clock rate** and **depth**. Within
+a stack the lanes fold together into one value: the Note fold becomes pitch (or, in **Poly**
+mode, each Note lane triggers its own note off its own clock), and the CC fold becomes the
+**Mix CC**. On top of that, each CC lane also has its own direct tap onto its own CC number, so
+one instance can modulate up to five destinations at once.
 
 ---
 
 ## What it does
 
-**Per lane**
+### Two stacks
+
+The window's top-level tabs are **Notes** and **CC**. They are not two views of the same lanes —
+they are two separate sequencers sharing one clock, one transport and one plugin instance.
+
+|  | Notes stack | CC stack |
+|---|---|---|
+| What the fold drives | Pitch, on the Note channel | The Mix CC |
+| Lanes | 1–4, own count | 1–4, own count |
+| Per-step | Value, Velocity, Chance, Gate | Value, Chance |
+| Per-lane shaping | Direction, Mix mode, Nudge, Humanize | — (always Forward / Add, no jitter) |
+| Per-lane output | — | Its own Send / Number / Channel / Offset |
+| Own Swing | Yes | Yes, independent |
+
+CC lanes deliberately carry less. Velocity and Gate are only ever arguments to *start a note*,
+and a CC lane never starts one, so it has neither — which also keeps the plugin's automatable
+parameter count from doubling for nothing.
+
+### Per lane
 
 | Control | Range | Notes |
 |---|---|---|
 | 16 step bars | 0–100 % | The lane's values |
-| 8 velocity bars | 0–100 % | Per-step accent, as a trim on the global Velocity (100 % is unity) |
-| 8 chance bars | 0–100 % | Per-step probability of firing (thin bar under each value) |
-| 8 gate bars | 5–200 % | How long each step's note is held, as % of the step. Above 100 % overlaps into the next step (see Polyphony) |
 | 16 step toggles | on/off | Hard mute for a step |
 | Lane toggle | on/off | Mutes the whole lane: transparent for the mix, triggers nothing |
 | Length | 1–16 | Shorter lanes phase against longer ones. Steps past the length grey out, and stay editable |
 | Rate | 1/1 … 1/32, incl. triplets | Independent per lane — this is where the polyrhythm comes from |
-| Direction | Forward, Reverse, Ping-Pong, Random | |
-| Depth | −100 % … +100 % | How much this lane affects the mix |
-| Mix Mode | Add, Multiply, Max, S&H | How this lane folds into the running mix |
-| Nudge | −100 % … +100 % | Shifts the whole lane earlier/later, up to half a step |
-| Humanize | 0–100 % | Random timing jitter, repeatable per bar |
-| Lane CC | on/off + number/channel | This lane's own CC destination |
+| Depth | −100 % … +100 % | How much this lane contributes to its stack's fold |
+| 16 velocity bars | 0–100 % | *Note lanes only.* Per-step accent, as a trim on the global Velocity (100 % is unity) |
+| 16 gate bars | 5–200 % | *Note lanes only.* How long each step's note is held, as % of the step. Above 100 % overlaps into the next step (see Polyphony) |
+| 16 chance bars | 0–100 % | Per-step probability of firing |
+| Direction | Forward, Reverse, Ping-Pong, Random | *Note lanes only* |
+| Mix Mode | Add, Multiply, Max, S&H | *Note lanes only.* How this lane folds into the running mix |
+| Nudge | −100 % … +100 % | *Note lanes only.* Shifts the whole lane earlier/later, up to half a step |
+| Humanize | 0–100 % | *Note lanes only.* Random timing jitter, repeatable per bar |
+| Send / Number / Channel / Offset | on/off, 0–127, 1–16, 0–100 % | *CC lanes only.* This lane's own CC destination |
 | RND / CLR / ⋯ | — | Pattern actions |
 | Remove | — | Takes this lane out. The lanes below it move up to close the gap |
 
-The sixteen tall bars edit one of those per-step rows at a time, picked with the
-**Value / Velocity / Prob / Gate** selector down the left of the lane. The three that are not
-selected show as faint ticks across the bars, and only where they are away from their default,
-so an untouched lane stays clean.
+On a **Note lane** the sixteen tall bars edit one of four per-step rows at a time, picked with
+the **Value / Velocity / Prob / Gate** selector down the left of the lane. The three that are
+not selected show as faint ticks across the bars, and only where they are away from their
+default, so an untouched lane stays clean.
 
-**With Notes off the selector disappears and the bars edit Value.** A lane is a plain value
-sequencer there: velocity and gate are only ever read when a note is started, so with Notes
-off neither does anything, and their ticks come off with the selector. Chance is
-different — it decides whether a step reaches the mix at all, and the mix drives the CC output
-too, so it goes on working even though there is no longer a button for it. Its ticks stay
-drawn for exactly that reason: a step whose probability is still making the CC output jump
-should not be doing it invisibly. Switch Notes back on to edit chance again.
+A **CC lane** has no selector — its bars always edit Value, and the column is left blank rather
+than filled with four buttons that would do nothing. Its per-step Chance still exists and still
+works (it decides whether a step reaches the fold, and the fold is what the CC output follows),
+and its tick is still drawn, but it is reachable only through host automation.
 
 ### Probability
 
@@ -58,9 +77,11 @@ rather than drifting. Same design as Random direction, for the same reason.
 
 ### Swing, Nudge and Humanize
 
-**Swing** (Timing tab, global) delays every other step of the absolute grid, so it stays anchored
-to the bar rather than to wherever a short pattern happened to start. **Nudge** shifts one
-lane wholesale. **Humanize** adds per-step jitter, also hash-based, so it's repeatable.
+**Swing** delays every other step of the absolute grid, so it stays anchored to the bar rather
+than to wherever a short pattern happened to start. Each stack has **its own Swing** — Notes and
+CC answer to their own clocks, so they can be shifted differently, or not at all. **Nudge**
+shifts one lane wholesale and **Humanize** adds per-step jitter, also hash-based and so
+repeatable; both are Note-lane controls.
 
 All three move step *boundaries*, which meant reworking how the step index is derived. It's
 still stateless — rather than `floor(ppq / stepPpq)`, it picks the largest candidate index
@@ -69,21 +90,30 @@ That's sufficient because offsets are clamped to ±0.49 of a step, which also gu
 boundaries stay monotonically ordered. With all three at zero it reduces exactly to the old
 `floor()`, and there's a test asserting that.
 
-### Per-lane CC outputs
+### CC outputs
 
-Each lane can send **its own CC** on its own number and channel, alongside the mix CC — so
-one instance can modulate up to four destinations. Lane CC follows the lane's raw step value
-and **ignores Depth**, since Depth governs the lane's share of the mix, not its own output.
-Inactive steps latch the previous level rather than dropping to zero. All CC streams share
-the global **Slew**.
+There are two kinds, and they are independent:
+
+- **The Mix CC** (CC tab → Output) is the CC stack's fold, exactly as pitch is the Note stack's
+  fold. Its **Send** switch, **Number**, **Channel** and **Offset** live on the CC tab.
+- **Each CC lane's own tap** follows that lane's raw step value and **ignores Depth**, since
+  Depth governs the lane's share of the fold, not its own output. Its Send, Number, Channel and
+  Offset live on the lane's own strip. Defaults are CC 20, 21, 22 and 23 for lanes 1–4.
+
+The two Offsets never cross: the CC tab's Offset shifts the Mix CC, and a lane's Offset shifts
+only that lane's tap, so one lane can be recentred without moving the rest. Inactive steps latch
+the previous level rather than dropping to zero. All CC streams share the global **Slew**.
 
 ### Pattern actions
 
 **RND** re-rolls a lane's values, **CLR** zeroes them. Both touch values only — the toggles
 and chances are left alone, so a lane's rhythm survives a re-roll. The **⋯** menu has Rotate
-Left/Right, Invert Values, and Copy/Paste Pattern (the clipboard is shared, so you can paste
-one lane onto another). Rotate and paste move value, on/off, chance, velocity and gate
-together — rotating only the values would slide a pattern out from under its own rhythm.
+Left/Right, Invert Values, and Copy/Paste Pattern. Rotate and paste move value, on/off and
+chance together — and, on a Note lane, velocity and gate as well — because rotating only the
+values would slide a pattern out from under its own rhythm.
+
+The clipboard is per stack: you can paste one Note lane onto another, or one CC lane onto
+another, but not across the two.
 
 All of these go through the host as real parameter changes wrapped in change gestures, so they
 land in automation and undo instead of silently mutating state behind the host's back. The
@@ -104,7 +134,9 @@ a single step, while two clicks on two different steps are two. Host automation 
 gestures and so never fills the history. The history lives on the processor rather than the
 editor, and therefore survives closing the plugin window; loading a session clears it.
 
-**Mix modes.** Lanes are combined in lane order, starting from zero:
+### Mix modes
+
+Lanes are combined in lane order, starting from zero:
 
 - **Add** — `mix += depth × value`. The plain-vanilla mode.
 - **Multiply** — scales the mix by the step value. Depth 0 is a no-op, depth 100 % is a
@@ -115,22 +147,24 @@ editor, and therefore survives closing the plugin window; loading a session clea
   is nothing upstream to sample).
 
 A step that is toggled **off** is transparent for its lane — nothing is added, multiplied
-or held — and it fires no note if that lane is the trigger source.
+or held — and it fires no note if that lane is the trigger source. Mix mode is a Note-lane
+control; CC lanes always fold with Add.
 
-**Lanes.** Every lane starts as sixteen steps of zero — a flat pattern on the root, not a demo
-to clear away — and lanes differ only in their default rate. *+ Add lane* sits under the last
-lane and appends one at the bottom; **each lane carries its own Remove**, at the right of its
-action row, so any lane can go and not just the last one. The window grows and shrinks to fit
-the lane count on its own; **it's also resizable by hand**, from the bottom-right corner or
+### Lanes
+
+Every lane starts as sixteen steps of zero — a flat pattern on the root, not a demo to clear
+away — and lanes differ only in their default rate. *+ Add lane* sits under the last lane of the
+current stack and appends one at the bottom; **each lane carries its own Remove**, at the right
+of its action row, so any lane can go and not just the last one. The window grows and shrinks to
+fit the lane count on its own; **it's also resizable by hand**, from the bottom-right corner or
 the host's own window border. Dragging it doesn't reflow the layout, it zooms the whole thing
-uniformly, between 60% and 150% of native size, so bars and text scale together rather than
-the step area alone stretching. The size is remembered per session, the same way the pattern
-is.
+uniformly, between 60 % and 150 % of native size, so bars and text scale together rather than
+the step area alone stretching. The size is remembered per session, the same way the pattern is.
 
 Removing a lane closes the gap behind it: every lane below the removed one moves up a slot,
-bringing its own controls with it — rate, direction, depth, nudge, its CC destination, not
-only its pattern. So removing lane 2 of 3 leaves you with the old lanes 1 and 3, in that
-order, which is the thing a single *Remove lane N* button at the bottom could not express.
+bringing its own controls with it — rate, depth, direction, nudge, its CC destination, not only
+its pattern. So removing lane 2 of 3 leaves you with the old lanes 1 and 3, in that order, which
+is the thing a single *Remove lane N* button at the bottom could not express.
 
 The lane accent colours stay with the *slot* rather than with the pattern, because they mark
 where the sequencer is in the stack: after a removal the third lane's pattern is drawn in the
@@ -142,44 +176,62 @@ new lane rather than a copy of the one that just moved. **Ctrl+Z** is what bring
 lane back; the shift and the new lane count land as a single undo step.
 
 Muting a lane with its own toggle is the same thing as switching every one of its steps off at
-once, so a muted lane is transparent for the mix in every mix mode and triggers nothing in
-either mode.
+once, so a muted lane is transparent for its fold in every mix mode and triggers nothing. That
+is also how you make an instance CC-only: mute its Note lanes.
 
-All four lanes' parameters exist from the moment the plugin is loaded, because a VST3 cannot
-add parameters later. The lane count only decides which of them are heard and shown, which is
-what makes it automatable and undoable like any other control.
+All four lanes of both stacks exist as parameters from the moment the plugin is loaded, because
+a VST3 cannot add parameters later. The two lane counts only decide which of them are heard and
+shown, which is what makes them automatable and undoable like any other control.
 
-**Header and tabs**
+### The tabs
 
-The header carries **Notes**, **CC** and **Poly** — three independent switches, so one
-instance can drive a note track and a CC loopback at once, or neither. Turning Notes off
-takes the per-step layer selector with it (see above), and turning CC off dims **Slew**,
-since Slew only ever smooths the CC output. Everything else global lives in three tabs:
+The header carries the title and the two undo arrows, nothing else. Everything global sits under
+whichever of the two top-level tabs it belongs to, laid out as a flat row of columns:
 
-- **Pitch** — Root, Scale, Range, Quantize / Bend range, Offset, Slew / Velocity, Voices
-- **Timing** — Swing, Free run, Trigger
-- **Routing** — Note channel, Mix CC, Mix CC channel, and each lane's own CC destination
+**Notes**
 
-Gate and per-step Velocity are per-step now — see the **Per lane** table above.
+| Column | Controls |
+|---|---|
+| Pitch | Root, Scale, Range, Quantize |
+| Output | Bend range, Note channel, Offset |
+| Voice | Velocity, Voices, Poly |
+| Clock | Swing, Free run, Trigger |
 
-**What Range means depends on Quantize:**
+**CC**
 
-| Quantize | Range unit | Scale |
+| Column | Controls |
+|---|---|
+| Output | Send, Number, Channel, Offset, Slew |
+| Clock | Swing |
+
+**Offset** shifts a stack's fold before it becomes pitch or CC: the Notes one is bipolar
+(−100 % … +100 %), the CC one is 0–100 %. **Slew** only ever smooths CC — the Mix CC and every
+lane's own tap — and never touches pitch, so it lives on the CC tab. **Free run** is one shared
+switch for both stacks, because splitting it would mean running two independent timelines
+through the whole engine for a narrow benefit. **Trigger** picks which Note lane's advance fires
+the shared note, and dims in Poly mode, where every lane triggers itself.
+
+### Root and Range
+
+**Range** is counted in **octaves**, 1–10, default 2. What an octave is made of depends on
+Quantize:
+
+| Quantize | Range spans | Scale |
 |---|---|---|
-| On | scale degrees | applied |
-| Off | **semitones** | **bypassed** |
+| On | `Range × the scale's degrees-per-octave` degrees | applied |
+| Off | `Range × 12` semitones | **bypassed** |
 
-A scale degree is not always a whole semitone — see [Scales and tunings](#scales-and-tunings)
-below.
+Either way an octave is an octave, so a given Range value covers the same musical distance
+whether the scale packs 5 degrees into an octave or 53 — which is what counting in octaves buys
+over counting in raw degrees. On a five-note pentatonic, Range 2 is ten steps; on 53-EDO
+chromatic it is 106, spread across the same two octaves.
 
-Maximum is 100. Notes clamp to the MIDI range, so how much of a large Range is actually
-reachable depends on **Root** — from the default Root of 48 (C3) there are only 79 semitones
-of headroom, so a Range above that flattens out at the top. Drop Root to 12 or 24 to use the
-full span.
+Notes clamp to the MIDI range, so how much of a large Range is actually reachable depends on
+**Root** — from the default Root of 48 (C3) there are only 79 semitones of headroom, so a Range
+above about 6 octaves flattens out at the top. Drop Root to 12 or 24 to use the full span.
 
-With Quantize on, mapping onto degrees rather than raw semitones is deliberate: it means
-every step lands on a usable note instead of several steps snapping onto the same pitch. On a
-five-note pentatonic, 12 degrees is nearly two and a half octaves.
+With Quantize on, mapping onto degrees rather than raw semitones is deliberate: it means every
+step lands on a usable note instead of several steps snapping onto the same pitch.
 
 ### Scales and tunings
 
@@ -202,13 +254,10 @@ session. Only the degrees *within* an octave fall between the keys.
 **Those in-between degrees play as a note plus pitch bend**, the same mechanism continuous
 pitch uses — so with Quantize on, a non-12 scale is subject to the same limit: **one microtone
 at a time per channel.** Overlapping notes (a step's Gate over 100 %, Voices above 1, or four
-poly lanes at once) share the channel's wheel, so they can't hold different microtones. Keep to one
-voice for microtonal work, or give the lanes separate instances. `Bend range` becomes live and
-is announced by RPN just as it is in continuous mode; the residual never exceeds half a
+poly lanes at once) share the channel's wheel, so they can't hold different microtones. Keep to
+one voice for microtonal work, or give the lanes separate instances. `Bend range` becomes live
+and is announced by RPN just as it is in continuous mode; the residual never exceeds half a
 semitone, so the ±2 default is plenty.
-
-Remember that **Range is counted in degrees**. 53-EDO chromatic spends them fast — at the
-default Range of 12 it covers a quarter of an octave — so turn Range up for the larger EDOs.
 
 ### Quantize and continuous pitch
 
@@ -216,17 +265,17 @@ default Range of 12 it covers a quarter of an octave — so turn Range up for th
 
 - **On** — the mixed value snaps to the nearest degree of the selected **Scale**.
 - **Off** — continuous, unquantized pitch. The **Scale** setting has no effect at all, and
-  Range is read directly as semitones:
+  Range is read as 12 semitones per octave:
 
   ```
-  pitch = Root + mix × Range      (semitones)
+  pitch = Root + mix × Range × 12      (semitones)
   ```
 
 Either way, pitch goes out as a note plus pitch bend, both on the single **Note channel**
-(Routing tab) — the nearest semitone carries the note number, and the residual — never more
-than half a semitone — goes out as pitch bend, sent just before the note-on so the note starts
-already in tune. With Quantize on and a 12-EDO scale the residual is always exactly zero, so
-no bend is sent at all; a 19-, 23-, 31-, 41- or 53-EDO scale needs one even with Quantize on,
+(Notes tab → Output) — the nearest semitone carries the note number, and the residual — never
+more than half a semitone — goes out as pitch bend, sent just before the note-on so the note
+starts already in tune. With Quantize on and a 12-EDO scale the residual is always exactly zero,
+so no bend is sent at all; a 19-, 23-, 31-, 41- or 53-EDO scale needs one even with Quantize on,
 for the same reason continuous pitch does (see [Scales and tunings](#scales-and-tunings)).
 
 There is no glide or portamento anywhere. Each step is one discrete pitch, held for the step
@@ -253,13 +302,17 @@ transport and a freshly loaded instance stays silent until you press play.
 
 ### Polyphony
 
-**Voices** (Pitch tab, 1–8) is the ceiling on notes sounding at once. At **1** the behaviour is
-the original monophonic one — a retrigger always closes the previous note, so a step's Gate
-over 100 % simply cuts itself off. Above 1, a step with a long Gate **overlaps into the
-following step**.
+**Voices** (Notes tab → Voice, 1–8) is the ceiling on notes sounding at once. At **1** the
+behaviour is the original monophonic one — a retrigger always closes the previous note, so a
+step's Gate over 100 % simply cuts itself off. Above 1, a step with a long Gate **overlaps into
+the following step**.
 
-This is about overlapping gates, not chords: pitch comes from the single mixed value, so
-simultaneous triggers would land on the same note. Set a step's Gate above 100 % to hear it.
+In mixed mode this is about overlapping gates, not chords: pitch comes from the single mixed
+value, so simultaneous triggers would land on the same note. Set a step's Gate above 100 % to
+hear it. **Poly** mode is the other way to get several notes at once — each Note lane triggers
+its own note off its own clock and its own value, so the stack runs as independent voices and
+**Trigger** goes unused. Each lane gets its own block of voice slots, so one lane's notes can
+never steal another's.
 
 Two details the engine has to get right:
 
@@ -267,6 +320,7 @@ Two details the engine has to get right:
   identical note-ons on one channel, so one note-off would silence both and the survivor
   would hang forever. Same pitch + same channel retriggers in place.
 - **Turning Voices down releases anything outside the new limit**, rather than orphaning it.
+  So does flipping the Poly switch, which re-partitions the slots underneath.
 
 Every voice shares the single **Note channel** and its one pitch bend register, mono or poly —
 so overlapping notes that need different microtones (Quantize off, or a non-12-EDO scale)
@@ -313,20 +367,23 @@ In Live: **Preferences → Plug-Ins → VST3 Plug-In Custom Folder**, point it a
 .\build\RavelProcessorTests_artefacts\Release\RavelProcessorTests.exe
 ```
 
-166 checks across two suites, neither needing a plugin host.
+161 checks across two suites, neither needing a plugin host.
 
-`Tests/EngineTests.cpp` (96 checks) drives `SequencerEngine` over a synthetic timeline. The
+`Tests/EngineTests.cpp` (98 checks) drives `SequencerEngine` over a synthetic timeline. The
 engine takes PPQ positions as plain arguments rather than reading a playhead itself, which is
 what makes that possible. Covers step timing, gate length, per-lane length and rate, disabled
-steps, the mix modes, transport jumps, stuck-note release on stop, CC output, directions, and
-the continuous-pitch path — including that note number plus pitch bend reconstructs the
-intended fractional pitch, and that the bend range is actually transmitted.
+steps, the mix modes, transport jumps, stuck-note release on stop, directions, probability,
+swing and nudge, per-step velocity, polyphony and poly mode, the Mix CC and each lane's own CC
+tap (including that the two Offsets stay out of each other's way), and the continuous-pitch
+path — including that note number plus pitch bend reconstructs the intended fractional pitch,
+that non-12 EDO scales land where the tuning says, and that the bend range is actually
+transmitted.
 
-`Tests/ProcessorTests.cpp` (70 checks) drives the real `RavelAudioProcessor::processBlock`
+`Tests/ProcessorTests.cpp` (63 checks) drives the real `RavelAudioProcessor::processBlock`
 through a mock playhead. This covers the layer where the plugin could compile, load and still
 emit nothing: playhead handling, the free-run fallback, the parameter snapshot, state
-round-trip, every pattern action, and the MIDI capability flags a host reads to decide whether
-to offer the plugin as a MIDI source.
+round-trip, every pattern action, lane add/remove and its undo behaviour, and the MIDI
+capability flags a host reads to decide whether to offer the plugin as a MIDI source.
 
 Worth keeping: these tests caught a real bug. Step boundaries were landing one sample late
 at some positions, because `ppqPerSample` is `1/24000` at 120 bpm / 48 kHz — not exactly
@@ -359,12 +416,15 @@ There is no such mechanism in the plugin format. What works is a MIDI CC loopbac
 1. Install [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html) and create a port.
 2. **Preferences → Link/Tempo/MIDI**: enable that port as an **Input**, with both
    **Track** and **Remote** switched on.
-3. Turn on Ravel's **CC** switch and pick a **CC Number** (Routing tab). Leave **Notes** on
-   too if the same instance is also sequencing a track, or turn it off if this instance is
-   CC-only.
+3. On the **CC** tab, build a pattern and pick a **Number** — either the Mix CC in the Output
+   column, or a single lane's own Send and Number on its own strip.
 4. On the track receiving Ravel's MIDI, set **MIDI To → loopMIDI Port**.
 5. Start playback so CC is flowing, press **Ctrl+M**, click the parameter you want to
    modulate, and Live latches onto the incoming CC.
+
+Because each CC lane has its own destination on top of the Mix CC, one instance can drive up to
+five mapped parameters. If this instance is only for CC, mute its Note lanes so it stops
+emitting notes.
 
 Caveats worth knowing before you rely on it: MIDI mapping is 7-bit, so you get 128
 discrete values, and it is control-rate rather than sample-accurate. It is fine for filter
@@ -378,15 +438,20 @@ already includes M4L, and its modulation API can target any parameter directly.
 
 | File | Contents |
 |---|---|
-| `Source/Parameters.*` | Parameter IDs, choice lists, scale tables |
+| `Source/Parameters.*` | Parameter IDs, choice lists, scale tables, pattern actions |
 | `Source/SequencerEngine.*` | The sequencer core and MIDI generation |
 | `Source/PluginProcessor.*` | Plugin plumbing, playhead handling, state save/load |
-| `Source/PluginEditor.*` | Window layout, header, and the Pitch/Timing/Routing tabs |
-| `Source/LaneComponent.*` | One lane: 16 steps plus its controls |
+| `Source/PluginEditor.*` | Window layout, header, and the Notes/CC workspaces |
+| `Source/LaneComponent.*` | One lane: 16 steps plus its controls, in either kind |
 | `Source/Controls.*` | Shared row/column/tab building blocks the editor and lanes are built from |
+| `Source/UndoHistory.*` | The edit history behind the arrows and Ctrl+Z |
 | `Source/Theme.h` | Colours and custom widget drawing |
 | `Tests/EngineTests.cpp` | Engine tests, run as a standalone console app |
 | `Tests/ProcessorTests.cpp` | Processor tests, driven through a mock playhead |
+
+Both lane kinds are the same `LaneComponent`, told at construction which `params::LaneKind` it
+is; the same goes for the pattern actions and the engine's lane fold. That is what keeps the two
+stacks from being two copies of the same code with a Note/CC flag sprinkled through both.
 
 ### How timing works
 
