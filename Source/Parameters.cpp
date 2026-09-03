@@ -38,9 +38,6 @@ juce::String laneLengthId   (int lane, LaneKind kind) { return lanePrefix (lane,
 juce::String laneDivId      (int lane, LaneKind kind) { return lanePrefix (lane, kind) + "_div"; }
 juce::String laneDirId      (int lane, LaneKind kind) { return lanePrefix (lane, kind) + "_dir"; }
 juce::String laneDepthId    (int lane, LaneKind kind) { return lanePrefix (lane, kind) + "_depth"; }
-juce::String laneModeId     (int lane, LaneKind kind) { return lanePrefix (lane, kind) + "_mode"; }
-juce::String laneNudgeId    (int lane, LaneKind kind) { return lanePrefix (lane, kind) + "_nudge"; }
-juce::String laneHumanizeId (int lane, LaneKind kind) { return lanePrefix (lane, kind) + "_humanize"; }
 
 juce::String laneCcOnId     (int lane) { return ccPrefix (lane) + "_on_send"; }
 juce::String laneCcNumId    (int lane) { return ccPrefix (lane) + "_num"; }
@@ -170,31 +167,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
                 defaultDepth[lane],
                 juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
 
-            // Direction, Mix mode, Nudge and Humanize only ever shaped how a lane's own steps
-            // traverse and fold -- a Note lane's nuance. A CC lane still folds into the Mix CC
-            // the same way, just always Forward/Add/no-nudge/no-jitter: see LaneSnapshot's own
-            // defaults, which is what an absent parameter here now leaves it reading.
+            // Direction only ever shaped how a lane's own steps traverse -- a Note lane's
+            // nuance. A CC lane still folds into the Mix CC the same way, just always
+            // Forward: see LaneSnapshot's own defaults, which is what an absent parameter
+            // here leaves it reading.
             if (! isCc)
             {
                 layout.add (std::make_unique<juce::AudioParameterChoice> (
                     juce::ParameterID { laneDirId (lane, kind), versionHint },
                     laneName + "Direction", directionNames, 0));
-
-                layout.add (std::make_unique<juce::AudioParameterChoice> (
-                    juce::ParameterID { laneModeId (lane, kind), versionHint },
-                    laneName + "Mode", modeNames, modeAdd));
-
-                layout.add (std::make_unique<juce::AudioParameterFloat> (
-                    juce::ParameterID { laneNudgeId (lane, kind), versionHint },
-                    laneName + "Nudge",
-                    juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f,
-                    juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
-
-                layout.add (std::make_unique<juce::AudioParameterFloat> (
-                    juce::ParameterID { laneHumanizeId (lane, kind), versionHint },
-                    laneName + "Humanize",
-                    juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f), 0.0f,
-                    juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
             }
 
             if (! isCc)
@@ -444,12 +425,7 @@ namespace
         ids.push_back (laneDepthId    (lane, kind));
 
         if (kind == LaneKind::note)
-        {
-            ids.push_back (laneDirId      (lane, kind));
-            ids.push_back (laneModeId     (lane, kind));
-            ids.push_back (laneNudgeId    (lane, kind));
-            ids.push_back (laneHumanizeId (lane, kind));
-        }
+            ids.push_back (laneDirId (lane, kind));
 
         if (kind == LaneKind::cc)
         {

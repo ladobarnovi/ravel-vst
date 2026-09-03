@@ -6,8 +6,8 @@ namespace
     // plus the lane number above them; the step bars take whatever is left, so a taller
     // lane just makes them taller. Also covers a CC lane's own parameter block: Length/
     // Rate/Depth plus Send/Number/Channel/Offset is 7 rows on ControlGroup's 2-column grid,
-    // the same 4 rows tall as a Note lane's Length/Rate/Direction/Depth/Mix mode/Nudge/
-    // Humanise -- so one constant now fits both.
+    // taller than a Note lane's Length/Rate/Depth/Direction -- but the layer buttons set the
+    // floor for both, so one constant still fits.
     constexpr int laneHeight    = 150;
 
     constexpr int headerHeight  = 26;
@@ -663,8 +663,8 @@ void RavelAudioProcessorEditor::timerCallback()
             lastPolyMode = poly;
 
             // In poly mode every lane triggers itself, so there is nothing for Trigger to
-            // select. Mix mode and Depth are deliberately left alone: both still shape the
-            // mix that drives the CC output, and Depth additionally becomes note velocity.
+            // select. Depth is deliberately left alone: it still shapes the mix that drives
+            // the CC output, and additionally becomes note velocity.
             triggerRow->setDimmed (poly != 0);
         }
     }

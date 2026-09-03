@@ -173,9 +173,6 @@ namespace
             lane.division  = params::divIndex_1_16;
             lane.direction = 0;
             lane.depth     = 0.0f;
-            lane.mode      = params::modeAdd;
-            lane.nudge     = 0.0f;
-            lane.humanize  = 0.0f;
             lane.ccOn      = false;
         }
 
@@ -339,45 +336,21 @@ int main()
     }
 
     //==========================================================================
-    section ("Multiply mode");
+    section ("A second lane adds its own share of the mix");
     {
-        // Lane 2 multiplies the chain by zero, so every note collapses to the root.
         auto s = baseSnapshot();
         s.noteLanes[0].length = 4;
-        s.noteLanes[0].values[1] = 0.5f;
-        s.noteLanes[0].values[2] = 1.0f;
-        s.noteLanes[1].mode  = params::modeMultiply;
-        s.noteLanes[1].depth = 1.0f;   // all lane-2 values are 0.0
+        s.noteLanes[0].values[1] = 0.5f;      // degree 6 -> note 54 on its own
+        s.noteLanes[1].depth = 1.0f;
+        s.noteLanes[1].values[1] = 0.5f;      // + another half-range on step 1
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
 
         const auto ons = only (run (engine, s, 4 * samplesPerStep), noteOn);
 
-        bool allRoot = ! ons.empty();
-
-        for (const auto& e : ons)
-            allRoot = allRoot && (e.number == 48);
-
-        check (allRoot, "multiplying by a zero-valued lane collapses the mix to the root");
-    }
-
-    //==========================================================================
-    section ("Multiply at zero depth is a no-op");
-    {
-        auto s = baseSnapshot();
-        s.noteLanes[0].length = 4;
-        s.noteLanes[0].values[1] = 0.5f;      // degree 6 -> note 54
-        s.noteLanes[1].mode  = params::modeMultiply;
-        s.noteLanes[1].depth = 0.0f;
-
-        SequencerEngine engine;
-        engine.prepare (sampleRate);
-
-        const auto ons = only (run (engine, s, 4 * samplesPerStep), noteOn);
-
-        check (ons.size() == 4 && ons[1].number == 54,
-               "depth 0 leaves the mix untouched");
+        check (ons.size() == 4 && ons[0].number == 48 && ons[1].number == 60,
+               "the lanes' depth-scaled values sum into one mix");
     }
 
     //==========================================================================
@@ -1243,13 +1216,16 @@ int main()
     //==========================================================================
     section ("Probability makes a step transparent, like an off step");
     {
-        // Lane 1 multiplies by zero, but with chance 0 it must not touch the mix at all.
+        // Lane 1 would add a full range to the mix, but with chance 0 it must not touch it.
         auto s = baseSnapshot();
         s.noteLanes[0].length = 4;
         s.noteLanes[0].values[1] = 0.5f;     // -> note 54 with range 12, chromatic
         s.scale = 0;
-        s.noteLanes[1].mode   = params::modeMultiply;
         s.noteLanes[1].depth  = 1.0f;
+
+        for (int i = 0; i < params::numSteps; ++i)
+            s.noteLanes[1].values[i] = 1.0f;   // would push every note to the top of the range
+
         s.noteLanes[1].chance[0] = 0.0f;
         s.noteLanes[1].chance[1] = 0.0f;
         s.noteLanes[1].chance[2] = 0.0f;
@@ -1271,14 +1247,16 @@ int main()
     //==========================================================================
     section ("A muted lane is transparent and fires nothing");
     {
-        // Lane 2 multiplies the chain by zero, which would collapse every note to the root.
-        // Muted, it must leave the mix exactly as an absent lane would.
+        // Lane 2 would add a full range to the mix, pushing every note to the top. Muted, it
+        // must leave the mix exactly as an absent lane would.
         auto s = baseSnapshot();
         s.noteLanes[0].length = 4;
         s.noteLanes[0].values[1] = 0.5f;     // -> note 54 with range 12, chromatic
-        s.noteLanes[1].mode   = params::modeMultiply;
         s.noteLanes[1].depth  = 1.0f;
         s.noteLanes[1].active = false;
+
+        for (int i = 0; i < params::numSteps; ++i)
+            s.noteLanes[1].values[i] = 1.0f;   // would push every note to the top of the range
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1343,12 +1321,11 @@ int main()
     }
 
     //==========================================================================
-    section ("Zero swing and nudge reproduce the plain grid");
+    section ("Zero swing reproduces the plain grid");
     {
         auto s = baseSnapshot();
         s.noteLanes[0].length = 4;
         s.noteSwing = 0.0f;
-        s.noteLanes[0].nudge = 0.0f;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1361,34 +1338,6 @@ int main()
             onGrid = onGrid && ons[i].sample == (int) i * samplesPerStep;
 
         check (onGrid, "with no timing offsets the boundaries are exactly as before");
-    }
-
-    //==========================================================================
-    section ("Per-lane nudge shifts the whole lane");
-    {
-        auto s = baseSnapshot();
-        s.noteLanes[0].length = 4;
-        s.noteLanes[0].nudge = 0.4f;   // 20% of a step late
-
-        SequencerEngine engine;
-        engine.prepare (sampleRate);
-
-        const auto ons = only (run (engine, s, 4 * samplesPerStep), noteOn);
-        const int expectedShift = (int) std::lround (0.2 * samplesPerStep);
-
-        // Nudge moves step 0's boundary past sample 0, so the cold start (index changing
-        // from INT64_MIN) fires once at sample 0 before the shifted grid begins. That
-        // immediate first fire is deliberate -- it is what makes a transport jump
-        // retrigger straight away instead of waiting up to a whole step.
-        bool shiftedGrid = ons.size() >= 4 && ons[0].sample == 0;
-
-        for (size_t i = 1; i < ons.size() && shiftedGrid; ++i)
-        {
-            const int expected = expectedShift + (int) (i - 1) * samplesPerStep;
-            shiftedGrid = std::abs (ons[i].sample - expected) <= 1;
-        }
-
-        check (shiftedGrid, "every step in the lane moves late by the same amount");
     }
 
     //==========================================================================

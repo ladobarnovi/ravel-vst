@@ -41,9 +41,6 @@ public:
         int   division  = params::divIndex_1_16;
         int   direction = 0;
         float depth     = 0.0f;
-        int   mode      = params::modeAdd;
-        float nudge     = 0.0f;
-        float humanize  = 0.0f;
 
         // Only ever meaningful on a CC lane: a Note lane never has these parameters, and
         // this stays at its default for one.
@@ -167,23 +164,21 @@ private:
     //==========================================================================
     static int stepIndexFor (std::int64_t globalIndex, int length, int direction, int laneIndex) noexcept;
 
-    /** How far this step's boundary moves, as a fraction of a step, from swing + nudge +
-        humanize. Clamped to +/-0.49 so boundaries stay monotonically ordered: adjacent
-        offsets can then differ by at most 0.98 of a step, which keeps boundary(g+1)
-        strictly after boundary(g) and lets the stateless index search below work.
+    /** How far this step's boundary moves, as a fraction of a step, from swing. Clamped to
+        +/-0.49 so boundaries stay monotonically ordered: adjacent offsets can then differ by
+        at most 0.98 of a step, which keeps boundary(g+1) strictly after boundary(g) and lets
+        the stateless index search below work. Swing is the only thing that shifts a boundary,
+        so this depends on the grid position and the swing amount, not on the lane.
     */
-    static float timingOffsetFor (std::int64_t globalIndex, const LaneSnapshot& lane,
-                                  float swing, int laneIndex) noexcept;
+    static float timingOffsetFor (std::int64_t globalIndex, float swing) noexcept;
 
     /** Resolves the current step index when boundaries have been shifted in time.
 
-        With no offsets this reduces exactly to floor(ppq / stepPpq). With offsets it picks
-        the largest candidate whose shifted boundary the timeline has passed, checking only
-        the adjacent candidates -- which is sufficient because offsets are bounded to half
-        a step.
+        With no swing this reduces exactly to floor(ppq / stepPpq). With swing it picks the
+        largest candidate whose shifted boundary the timeline has passed, checking only the
+        adjacent candidates -- which is sufficient because offsets are bounded to half a step.
     */
-    static std::int64_t resolveGlobalIndex (double ppq, double stepPpq, const LaneSnapshot& lane,
-                                            float swing, int laneIndex) noexcept;
+    static std::int64_t resolveGlobalIndex (double ppq, double stepPpq, float swing) noexcept;
 
     /** Pitch bend sensitivity (RPN 0) for the note channel. Written out as raw RPN controller
         messages rather than via a JUCE helper, because those return a MidiBuffer by value and
@@ -194,8 +189,7 @@ private:
     struct LaneState
     {
         std::int64_t lastGlobalIndex = std::numeric_limits<std::int64_t>::min();
-        int   step = 0;
-        float held = 0.0f;
+        int step = 0;
     };
 
     LaneState noteLaneStates[params::numLanes];

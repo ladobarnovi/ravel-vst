@@ -76,9 +76,6 @@ private:
         std::atomic<float>* division  = nullptr;
         std::atomic<float>* direction = nullptr;
         std::atomic<float>* depth     = nullptr;
-        std::atomic<float>* mode      = nullptr;
-        std::atomic<float>* nudge     = nullptr;
-        std::atomic<float>* humanize  = nullptr;
 
         // CC lanes only -- a note lane no longer has a CC output of its own.
         std::atomic<float>* ccOn      = nullptr;

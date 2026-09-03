@@ -666,7 +666,7 @@ int main()
         {
             set (params::stepValueId (lane, 0), 0.1f * (float) (lane + 1));
             set (params::laneLengthId (lane), (float) (lane + 4));
-            set (params::laneNudgeId (lane), 0.1f * (float) (lane + 1));
+            set (params::laneDepthId (lane), 0.1f * (float) (lane + 1));
         }
 
         params::removeLane (processor.apvts, 1);
@@ -683,7 +683,7 @@ int main()
         check ((int) std::lround (get (params::laneLengthId (1))) == 6,
                "a lane moving down brings its own controls with it, not just its pattern");
 
-        check (std::abs (get (params::laneNudgeId (1)) - 0.3f) < 0.01f,
+        check (std::abs (get (params::laneDepthId (1)) - 0.3f) < 0.01f,
                "including the ones that are not part of a copyable pattern");
 
         //----------------------------------------------------------------------

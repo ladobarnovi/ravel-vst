@@ -33,7 +33,6 @@ inline constexpr int divIndex_1_8  = 4;
 inline constexpr int divIndex_1_16 = 6;
 
 inline const juce::StringArray directionNames  { "Forward", "Reverse", "Ping-Pong", "Random" };
-inline const juce::StringArray modeNames       { "Add", "Multiply", "Max", "S&H" };
 inline const juce::StringArray triggerNames    { "Lane 1", "Lane 2", "Lane 3", "Lane 4", "Any Lane" };
 
 //==============================================================================
@@ -66,9 +65,6 @@ inline int pitchBendForSemitones (float semitones, int bendRange) noexcept
 
     return juce::jlimit (0, 16383, pitchBendCentre + (int) std::lround (normalised * 8191.0f));
 }
-
-// Combine-mode indices, used by the engine's switch.
-enum CombineMode { modeAdd = 0, modeMultiply = 1, modeMax = 2, modeSampleHold = 3 };
 
 //==============================================================================
 // Scales are stored as steps of an equal division of the octave rather than as semitones,
@@ -294,9 +290,6 @@ juce::String laneLengthId   (int lane, LaneKind kind = LaneKind::note);
 juce::String laneDivId      (int lane, LaneKind kind = LaneKind::note);
 juce::String laneDirId      (int lane, LaneKind kind = LaneKind::note);
 juce::String laneDepthId    (int lane, LaneKind kind = LaneKind::note);
-juce::String laneModeId     (int lane, LaneKind kind = LaneKind::note);
-juce::String laneNudgeId    (int lane, LaneKind kind = LaneKind::note);
-juce::String laneHumanizeId (int lane, LaneKind kind = LaneKind::note);
 
 // A CC lane's own destination -- not an optional tap on any lane any more, but the whole
 // reason a CC lane exists. Note lanes never have these.

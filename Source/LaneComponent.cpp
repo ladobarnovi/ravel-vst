@@ -274,23 +274,15 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
     //--------------------------------------------------------------------------
     // Two columns, filled left to right then wrapping, so each row pairs a structural
     // parameter with one that shapes the lane's feel. A Note lane and a CC lane share Length/
-    // Rate/Depth; Direction, Mix mode, Nudge and Humanize are Note-only -- a CC lane always
-    // folds Forward/Add with no nudge or jitter -- and a CC lane goes on to add its own
-    // destination instead.
+    // Rate/Depth; Direction is Note-only -- a CC lane always folds Forward -- and a CC lane
+    // goes on to add its own destination instead.
     auto* lengthRow = paramGroup.add (params::laneLengthId (laneIndex, kind), "Length");
     lengthRow->setTooltip ("How many of the eight steps the lane cycles through");
     paramGroup.add (params::laneDivId (laneIndex, kind),    "Rate");
     paramGroup.add (params::laneDepthId (laneIndex, kind),  "Depth");
 
     if (kind == params::LaneKind::note)
-    {
-        paramGroup.add (params::laneDirId (laneIndex, kind),  "Direction");
-        paramGroup.add (params::laneModeId (laneIndex, kind), "Mix mode");
-        paramGroup.add (params::laneNudgeId (laneIndex, kind), "Nudge")
-                  ->setTooltip ("Shift this whole lane earlier or later, up to half a step");
-        paramGroup.add (params::laneHumanizeId (laneIndex, kind), "Humanise")
-                  ->setTooltip ("Random timing jitter, repeatable per bar");
-    }
+        paramGroup.add (params::laneDirId (laneIndex, kind), "Direction");
 
     if (kind == params::LaneKind::cc)
     {
