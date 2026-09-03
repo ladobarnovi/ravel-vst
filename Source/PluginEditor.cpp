@@ -498,16 +498,20 @@ void RavelAudioProcessorEditor::resized()
 
 namespace
 {
-    /** The lane-stack-plus-add-button-plus-settings layout, run once for whichever workspace
-        owns the bounds it's given. Both workspaces get this same shape -- only the lane kind,
-        lane height and settings page differ -- so it is written once rather than duplicated
-        for Notes and for CC.
+    /** The lane-stack-plus-add-button-plus-settings layout, run once per workspace against
+        that workspace's own bounds. Both get this same shape -- only the lane kind, lane
+        height and settings page differ -- so it is written once rather than duplicated for
+        Notes and for CC.
+
+        A template only because WorkspaceComponent is private to the editor and this lives
+        outside it; there is one instantiation, and it is the same code either way.
     */
-    void layoutWorkspace (juce::Rectangle<int> area, int activeLaneCount, int laneHeightForKind,
+    template <typename WorkspaceType>
+    void layoutWorkspace (WorkspaceType& workspace, int activeLaneCount, int laneHeightForKind,
                          juce::OwnedArray<LaneComponent>& lanesArray, juce::TextButton& addButton,
                          TabPage& settingsPage)
     {
-        auto r = area.withPosition (0, 0);
+        auto r = workspace.getLocalBounds();
 
         for (int lane = 0; lane < juce::jmin (activeLaneCount, lanesArray.size()); ++lane)
         {
@@ -523,6 +527,10 @@ namespace
 
         r.removeFromTop (gap);
 
+        // Everything left over is the settings block, and all of it -- not just the page's
+        // reduced bounds -- is what the workspace paints its own ground under, so the
+        // section runs edge to edge in the panel instead of floating inside it.
+        workspace.settingsArea = r;
         settingsPage.setBounds (r.reduced (14, 8));
     }
 }
@@ -569,8 +577,8 @@ void RavelAudioProcessorEditor::layoutContent()
     notesWorkspace.setBounds (r);
     ccWorkspace.setBounds (r);
 
-    layoutWorkspace (r, noteLaneCount, laneHeight, noteLanes, addNoteLaneButton, notesSettingsPage);
-    layoutWorkspace (r, ccLaneCount, laneHeight, ccLanes, addCcLaneButton, ccSettingsPage);
+    layoutWorkspace (notesWorkspace, noteLaneCount, laneHeight, noteLanes, addNoteLaneButton, notesSettingsPage);
+    layoutWorkspace (ccWorkspace, ccLaneCount, laneHeight, ccLanes, addCcLaneButton, ccSettingsPage);
 }
 
 //==============================================================================
