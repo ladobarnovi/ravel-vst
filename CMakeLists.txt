@@ -45,7 +45,10 @@ juce_add_plugin(Ravel
     # AU only ever builds on macOS (JUCE's CMake filters it out of the format
     # list on every other platform), so this stays one line instead of an
     # if(APPLE) branch: Windows configure just ignores it.
-    FORMATS                     VST3 AU
+    # Standalone is for developing without a host: it wraps the same processor and
+    # editor in an app with its own audio/MIDI device selection. There is no host
+    # transport there, so the sequencer only advances with the Free Run parameter on.
+    FORMATS                     VST3 AU Standalone
     PRODUCT_NAME                "Ravel"
     DESCRIPTION                 "Polyrhythmic step sequencer"
     IS_SYNTH                    TRUE
