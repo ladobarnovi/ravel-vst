@@ -193,7 +193,7 @@ namespace
         s.midiChannel   = 1;
         s.ccNumber      = 1;
         s.ccChannel     = 1;
-        s.noteOffset    = 0.0f;
+        s.noteOctaves   = 0;
         s.ccOffset      = 0.0f;
         s.slewMs        = 0.0f;
         s.quantize      = true;
@@ -589,6 +589,126 @@ int main()
                 centred = std::abs (bend.value - params::pitchBendCentre) <= 1;
 
         check (centred, "bend is centred when no fractional part is needed");
+    }
+
+    //==========================================================================
+    section ("Offset transposes by whole octaves without reshaping the pattern");
+    {
+        // Two steps a known interval apart. The old percentage Offset shifted the fold
+        // itself, so a large value pushed the mix into its 0..1 clamp and collapsed that
+        // interval; transposing the resolved pitch has to leave it untouched at every
+        // setting, which is the property this pins.
+        const auto notesAtOffset = [] (int octaves, bool quantize)
+        {
+            auto s = baseSnapshot();
+            s.noteLanes[0].length    = 2;
+            s.noteLanes[0].values[0] = 0.25f;
+            s.noteLanes[0].values[1] = 0.75f;
+            s.scale        = 0;          // Chromatic
+            s.rangeOctaves = 1;
+            s.root         = 48;
+            s.quantize     = quantize;
+            s.noteOctaves  = octaves;
+
+            SequencerEngine engine;
+            engine.prepare (sampleRate);
+
+            std::vector<int> notes;
+
+            for (const auto& e : only (run (engine, s, 3 * samplesPerStep), noteOn))
+                notes.push_back (e.number);
+
+            return notes;
+        };
+
+        for (const bool quantize : { true, false })
+        {
+            const auto centre = notesAtOffset (0, quantize);
+
+            check (centre.size() >= 2, "the two steps fire at Offset 0");
+
+            bool shifts = centre.size() >= 2;
+            bool keeps  = centre.size() >= 2;
+
+            for (int octaves = -3; octaves <= 3 && shifts; ++octaves)
+            {
+                const auto shifted = notesAtOffset (octaves, quantize);
+
+                if (shifted.size() != centre.size())
+                {
+                    shifts = false;
+                    break;
+                }
+
+                for (size_t i = 0; i < centre.size(); ++i)
+                    shifts = shifts && shifted[i] == centre[i] + 12 * octaves;
+
+                if (shifted.size() >= 2)
+                    keeps = keeps && shifted[1] - shifted[0] == centre[1] - centre[0];
+            }
+
+            check (shifts, quantize ? "every offset from -3 to +3 moves each note by exactly "
+                                      "12 semitones per octave, quantized"
+                                    : "the same holds in continuous mode");
+
+            check (keeps, quantize ? "and the interval between the two steps survives, "
+                                     "quantized"
+                                   : "and it survives in continuous mode too");
+        }
+    }
+
+    //==========================================================================
+    section ("Offset keeps a non-12 EDO scale in tune");
+    {
+        // An octave is 12 semitones in every tuning here, so transposing must not disturb
+        // the microtonal residual that rides on the bend -- degree 4 of 19-EDO is the same
+        // distance off the keyboard an octave up as it is at the root.
+        const auto pitchAtOffset = [] (int octaves)
+        {
+            auto s = baseSnapshot();
+            s.noteLanes[0].length    = 1;
+            s.noteLanes[0].values[0] = 0.25f;
+            s.scale        = params::scaleNames.indexOf ("19 Chromatic");
+            s.rangeOctaves = 1;
+            s.root         = 48;
+            s.quantize     = true;
+            s.bendRange    = 2;
+            s.noteOctaves  = octaves;
+
+            SequencerEngine engine;
+            engine.prepare (sampleRate);
+
+            const auto events = run (engine, s, 2 * samplesPerStep);
+            const auto ons    = only (events, noteOn);
+            const auto bends  = only (events, pitchBend);
+
+            double pitch = -1.0;
+
+            if (! ons.empty())
+            {
+                pitch = (double) ons[0].number;
+
+                for (const auto& bend : bends)
+                    if (bend.sample <= ons[0].sample && bend.channel == ons[0].channel)
+                        pitch = (double) ons[0].number
+                                  + ((double) bend.value - params::pitchBendCentre)
+                                      / (double) params::pitchBendCentre * 2.0;
+            }
+
+            return pitch;
+        };
+
+        const double centre = pitchAtOffset (0);
+
+        check (centre > 0.0, "the 19-EDO degree sounds at Offset 0");
+
+        bool exact = centre > 0.0;
+
+        for (int octaves = -2; octaves <= 2; ++octaves)
+            exact = exact && std::abs (pitchAtOffset (octaves) - (centre + 12.0 * octaves)) < 0.01;
+
+        check (exact, "note plus bend stays exactly 12 semitones per octave away -- the "
+                      "microtonal residual is untouched");
     }
 
     //==========================================================================

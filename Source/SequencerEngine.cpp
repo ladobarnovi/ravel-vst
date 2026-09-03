@@ -333,7 +333,12 @@ SequencerEngine::PitchResult SequencerEngine::pitchFor (float value, const Snaps
         // the same musical distance whether the scale packs 5 degrees into an octave or 53.
         const int   rangeSteps = s.rangeOctaves * params::scaleSize (s.scale);
         const int   degree     = (int) std::lround (value * (float) rangeSteps);
-        const float absolute   = (float) s.root + params::scaleStepToSemitone (degree, s.scale);
+
+        // Offset transposes here, in semitones, rather than adding scale degrees: an octave
+        // is 12 semitones in every scale the tuning table describes, whereas a scale's degree
+        // count varies, so semitones are what keep +1 oct meaning an octave in all of them.
+        const float absolute   = (float) s.root + params::scaleStepToSemitone (degree, s.scale)
+                                   + 12.0f * (float) s.noteOctaves;
 
         result.note = juce::jlimit (0, 127, (int) std::lround (absolute));
 
@@ -360,7 +365,8 @@ SequencerEngine::PitchResult SequencerEngine::pitchFor (float value, const Snaps
     // microtones. That is the cost of staying on one channel, which is what survives hosts
     // that merge MIDI channels when routing between tracks. MPE on lifts this: startNote()
     // resolves a separate channel per note instead of reusing the one passed in here.
-    const float absolute = (float) s.root + params::continuousSemitones (value, s.rangeOctaves * 12);
+    const float absolute = (float) s.root + params::continuousSemitones (value, s.rangeOctaves * 12)
+                             + 12.0f * (float) s.noteOctaves;
 
     result.note = juce::jlimit (0, 127, (int) std::lround (absolute));
     result.bend = params::pitchBendForSemitones (absolute - (float) result.note, bendRange);
@@ -692,7 +698,7 @@ void SequencerEngine::process (const Snapshot& s,
             }
         }
 
-        const float noteMix = juce::jlimit (0.0f, 1.0f, noteAccumulator + s.noteOffset);
+        const float noteMix = juce::jlimit (0.0f, 1.0f, noteAccumulator);
 
         //----------------------------------------------------------------------
         // CC-lane fold. Same shape as the note-lane fold above -- Add/Multiply/Max/S&H over
@@ -807,10 +813,10 @@ void SequencerEngine::process (const Snapshot& s,
 
                     const int step = laneTriggerStep[laneIndex];
 
-                    // The lane's own value drives its pitch, and Offset applies to it the
-                    // same way it applies to the mix in the other mode.
-                    const float value = juce::jlimit (0.0f, 1.0f,
-                                                      laneTriggerValue[laneIndex] + s.noteOffset);
+                    // The lane's own value drives its pitch. Offset is not applied here --
+                    // pitchFor() transposes whatever pitch this resolves to, the same way it
+                    // does for the mix in the other mode.
+                    const float value = juce::jlimit (0.0f, 1.0f, laneTriggerValue[laneIndex]);
 
                     const int begin = laneIndex * voicesPerLane;
 

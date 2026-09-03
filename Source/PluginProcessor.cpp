@@ -54,7 +54,6 @@ RavelAudioProcessor::RavelAudioProcessor()
     pRootNote      = apvts.getRawParameterValue (params::rootNoteId);
     pRangeOctaves  = apvts.getRawParameterValue (params::rangeOctavesId);
     pScale         = apvts.getRawParameterValue (params::scaleId);
-    pVelocity      = apvts.getRawParameterValue (params::velocityId);
     pMidiChannel   = apvts.getRawParameterValue (params::midiChannelId);
     pCcOn          = apvts.getRawParameterValue (params::ccOnId);
     pCcNumber      = apvts.getRawParameterValue (params::ccNumberId);
@@ -67,7 +66,6 @@ RavelAudioProcessor::RavelAudioProcessor()
     pCcSwing       = apvts.getRawParameterValue (params::ccSwingId);
     pVoiceCount    = apvts.getRawParameterValue (params::voiceCountId);
     pPolyMode      = apvts.getRawParameterValue (params::polyModeId);
-    pMpeEnabled    = apvts.getRawParameterValue (params::mpeEnabledId);
     pNoteLaneCount = apvts.getRawParameterValue (params::noteLaneCountId);
     pCcLaneCount   = apvts.getRawParameterValue (params::ccLaneCountId);
 }
@@ -160,19 +158,24 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
     s.root              = (int) std::lround (pRootNote->load());
     s.rangeOctaves      = (int) std::lround (pRangeOctaves->load());
     s.scale             = (int) std::lround (pScale->load());
-    s.velocity          = (int) std::lround (pVelocity->load());
+    // Not a parameter: the master velocity is pinned at 100, and each step's own accent is
+    // what shapes velocity from there. The engine keeps the field -- see the note on it.
+    s.velocity          = params::fixedVelocity;
     s.midiChannel       = (int) std::lround (pMidiChannel->load());
     s.ccOn              = pCcOn->load() > 0.5f;
     s.ccNumber          = (int) std::lround (pCcNumber->load());
     s.ccChannel         = (int) std::lround (pCcChannel->load());
-    s.noteOffset        = pNoteOffset->load();
+    s.noteOctaves       = (int) std::lround (pNoteOffset->load());
     s.ccOffset          = pCcOffset->load();
     s.slewMs            = pSlew->load();
     s.noteSwing         = pNoteSwing->load();
     s.ccSwing           = pCcSwing->load();
     s.voiceCount        = (int) std::lround (pVoiceCount->load());
     s.polyMode          = pPolyMode->load() > 0.5f;
-    s.mpeEnabled        = pMpeEnabled->load() > 0.5f;
+    // Not a parameter: the plugin always speaks MPE. The engine keeps the flag because it
+    // is what its own tests toggle to cover both channel-allocation paths, but nothing the
+    // user can reach turns it off, and s.midiChannel is inert as a result.
+    s.mpeEnabled        = true;
 
     return s;
 }

@@ -238,18 +238,21 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         juce::ParameterID { noteTriggerSrcId, versionHint }, "Trigger", triggerNames, 0));
 
     // On: pitch snaps to degrees of the selected scale. Off: continuous microtonal pitch,
-    // carried as the nearest note plus a pitch bend. Defaults to on, which is the behaviour
-    // the old three-way Pitch choice defaulted to.
+    // carried as the nearest note plus a pitch bend. Defaults to off -- continuous pitch is
+    // what the MPE output and the microtonal scale table exist for, so a stock instance
+    // should be in that mode rather than in the one that hides it behind a switch.
     layout.add (std::make_unique<juce::AudioParameterBool> (
-        juce::ParameterID { quantizeId, versionHint }, "Quantize", true));
+        juce::ParameterID { quantizeId, versionHint }, "Quantize", false));
 
     layout.add (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { bendRangeId, versionHint }, "Bend Range", 1, 48, 2,
         juce::AudioParameterIntAttributes().withStringFromValueFunction (
             [] (int v, int) { return juce::String (v) + " st"; })));
 
+    // 24 is C0. Low, deliberately: Range climbs from Root, so a low root leaves the whole
+    // MIDI span above it reachable instead of clipping at the top of a large Range.
     layout.add (std::make_unique<juce::AudioParameterInt> (
-        juce::ParameterID { rootNoteId, versionHint }, "Root", 0, 127, 48,
+        juce::ParameterID { rootNoteId, versionHint }, "Root", 0, 127, 24,
         juce::AudioParameterIntAttributes().withStringFromValueFunction (
             [] (int v, int) { return noteNameText (v); })));
 
@@ -266,11 +269,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     // The two lists are indexed by the same parameter value, so they have to stay in step.
     jassert (scaleNames.size() == numScales);
 
+    // Index 0, Chromatic: the scale that colours the output least, so what a stock instance
+    // plays is the pattern itself rather than a mode imposed on it.
     layout.add (std::make_unique<juce::AudioParameterChoice> (
-        juce::ParameterID { scaleId, versionHint }, "Scale", scaleNames, 4));
-
-    layout.add (std::make_unique<juce::AudioParameterInt> (
-        juce::ParameterID { velocityId, versionHint }, "Velocity", 1, 127, 100));
+        juce::ParameterID { scaleId, versionHint }, "Scale", scaleNames, 0));
 
     layout.add (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { midiChannelId, versionHint }, "Note Channel", 1, 16, 1));
@@ -287,10 +289,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     layout.add (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { ccChannelId, versionHint }, "CC Channel", 1, 16, 1));
 
-    layout.add (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { noteOffsetId, versionHint }, "Offset",
-        juce::NormalisableRange<float> (-1.0f, 1.0f, 0.001f), 0.0f,
-        juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
+    // Whole octaves, applied to the resolved pitch rather than to the fold that produced it.
+    // Shifting the fold instead would push the mix against its 0..1 clamp and flatten the top
+    // or bottom of the pattern; transposing afterwards moves every note by the same interval
+    // and leaves the pattern's shape -- and, in Quantize mode, its scale degrees -- intact.
+    // Notes still clamp to the MIDI range, so how much of a +/-3 octave shift is reachable
+    // depends on Root and Range.
+    layout.add (std::make_unique<juce::AudioParameterInt> (
+        juce::ParameterID { noteOffsetId, versionHint }, "Offset", -3, 3, 0,
+        juce::AudioParameterIntAttributes().withStringFromValueFunction (
+            [] (int v, int) { return (v > 0 ? "+" + juce::String (v) : juce::String (v)) + " oct"; })));
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { ccOffsetId, versionHint }, "CC Offset",
@@ -329,15 +337,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     // with the mixed-lane behaviour it was written with.
     layout.add (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { polyModeId, versionHint }, "Poly", false));
-
-    // Appended last, and defaulting to off, so a session saved before it existed loads with
-    // today's single-channel behaviour bit-for-bit. On: every simultaneously-sounding note
-    // gets its own MIDI channel -- a standard MPE Lower Zone, master channel 1 plus member
-    // channels 2-16 -- so overlapping notes each carry their own independent pitch bend
-    // instead of sharing the Note Channel's one wheel. Not user-configurable beyond on/off
-    // in v1: no separate zone-size parameter.
-    layout.add (std::make_unique<juce::AudioParameterBool> (
-        juce::ParameterID { mpeEnabledId, versionHint }, "MPE", false));
 
     return layout;
 }

@@ -314,8 +314,13 @@ inline constexpr auto bendRangeId    = "bend_range";
 inline constexpr auto rootNoteId     = "root_note";
 inline constexpr auto rangeOctavesId = "range_octaves";
 inline constexpr auto scaleId         = "scale";
-inline constexpr auto velocityId     = "velocity";
 inline constexpr auto midiChannelId  = "midi_ch";
+
+// The master velocity every note starts from, in place of the parameter that used to set it.
+// Each step's own accent trims down from here, so this is the ceiling and 127 is deliberately
+// not it: leaving headroom is what lets an accent read as an accent rather than as everything
+// else being quieter.
+inline constexpr int fixedVelocity = 100;
 
 // The CC tab's own Mix destination -- fed by the CC-lane fold, the same way pitch is fed
 // by the Note-lane fold.
@@ -323,7 +328,8 @@ inline constexpr auto ccOnId         = "cc_on";
 inline constexpr auto ccNumberId     = "cc_num";
 inline constexpr auto ccChannelId    = "cc_ch";
 
-// Shifts the Note-lane mix before it becomes pitch.
+// Transposes the pitch the Note-lane fold resolves to, in whole octaves (-3..+3). Unlike
+// ccOffsetId it does not shift the fold itself -- see the note by its parameter definition.
 inline constexpr auto noteOffsetId   = "offset";
 
 // Shifts the CC-lane mix before it becomes the Mix CC. Independent of any CC lane's own
@@ -344,11 +350,6 @@ inline constexpr auto ccSwingId      = "cc_swing";
 
 inline constexpr auto voiceCountId   = "voices";
 inline constexpr auto polyModeId     = "poly_mode";
-
-// Gives every simultaneously-sounding note its own MIDI channel instead of sharing the Note
-// Channel's one pitch wheel. Orthogonal to Poly -- it applies in mixed mode too, wherever
-// Gate > 100% lets one step's note overlap the next.
-inline constexpr auto mpeEnabledId   = "mpe_on";
 
 /** How many lanes this instance currently has in each pool, 1 to numLanes. Independent --
     growing one stack does not cost the other any room. */

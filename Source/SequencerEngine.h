@@ -70,6 +70,9 @@ public:
         int   root          = 48;
         int   rangeOctaves  = 2;
         int   scale         = 4;
+        // The master velocity each step's accent scales down from. The plugin always passes
+        // params::fixedVelocity -- there is no parameter behind this any more. It stays a
+        // field so the engine's own tests can still prove the accent scales against it.
         int   velocity      = 100;
         int   midiChannel   = 1;
 
@@ -79,8 +82,9 @@ public:
         int   ccNumber      = 1;
         int   ccChannel     = 1;
 
-        // Shifts the Note-lane mix before it becomes pitch.
-        float noteOffset    = 0.0f;
+        // Transposes the resolved pitch by whole octaves. Applied in pitchFor(), after the
+        // fold and after the scale, so it never squashes the pattern against the mix clamp.
+        int   noteOctaves   = 0;
 
         // Shifts the CC-lane mix before it becomes the Mix CC. Independent of any CC
         // lane's own ccOffset, which shifts that lane's own tap instead.
@@ -105,9 +109,12 @@ public:
 
         /** True: every simultaneously-sounding note gets its own MIDI channel (a standard
             MPE Lower Zone) instead of sharing the Note Channel's one pitch wheel. Off
-            reproduces today's single-channel behaviour exactly. Orthogonal to polyMode --
-            applies in mixed mode too, wherever Gate > 100% lets one step's note overlap
-            the next.
+            reproduces the single-channel behaviour that predated it, where overlapping notes
+            share one wheel and so cannot hold different microtones.
+
+            The plugin always passes true -- there is no parameter behind this any more. It
+            stays a field so the engine's own tests can still drive both allocation paths,
+            and so midiChannel, which only the false path reads, keeps a defined meaning.
         */
         bool  mpeEnabled    = false;
     };

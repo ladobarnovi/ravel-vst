@@ -23,7 +23,7 @@ they are two separate sequencers sharing one clock, one transport and one plugin
 
 |  | Notes stack | CC stack |
 |---|---|---|
-| What the fold drives | Pitch, on the Note channel | The Mix CC |
+| What the fold drives | Pitch, over an MPE zone | The Mix CC |
 | Lanes | 1–4, own count | 1–4, own count |
 | Per-step | Value, Velocity, Chance, Gate | Value, Chance |
 | Per-lane shaping | Direction, Mix mode, Nudge, Humanize | — (always Forward / Add, no jitter) |
@@ -44,7 +44,7 @@ parameter count from doubling for nothing.
 | Length | 1–16 | Shorter lanes phase against longer ones. Steps past the length grey out, and stay editable |
 | Rate | 1/1 … 1/32, incl. triplets | Independent per lane — this is where the polyrhythm comes from |
 | Depth | −100 % … +100 % | How much this lane contributes to its stack's fold |
-| 16 velocity bars | 0–100 % | *Note lanes only.* Per-step accent, as a trim on the global Velocity (100 % is unity) |
+| 16 velocity bars | 0–100 % | *Note lanes only.* Per-step accent, as a trim on the fixed master velocity of 100 (100 % is unity, so a bar only ever pulls a step below it) |
 | 16 gate bars | 5–200 % | *Note lanes only.* How long each step's note is held, as % of the step. Above 100 % overlaps into the next step (see Polyphony) |
 | 16 chance bars | 0–100 % | Per-step probability of firing |
 | Direction | Forward, Reverse, Ping-Pong, Random | *Note lanes only* |
@@ -193,8 +193,8 @@ whichever of the two top-level tabs it belongs to, laid out as a flat row of col
 | Column | Controls |
 |---|---|
 | Pitch | Root, Scale, Range, Quantize |
-| Output | Bend range, Note channel, Offset |
-| Voice | Velocity, Voices, Poly |
+| Output | Bend range, Offset |
+| Voice | Voices, Poly |
 | Clock | Swing, Free run, Trigger |
 
 **CC**
@@ -204,8 +204,12 @@ whichever of the two top-level tabs it belongs to, laid out as a flat row of col
 | Output | Send, Number, Channel, Offset, Slew |
 | Clock | Swing |
 
-**Offset** shifts a stack's fold before it becomes pitch or CC: the Notes one is bipolar
-(−100 % … +100 %), the CC one is 0–100 %. **Slew** only ever smooths CC — the Mix CC and every
+The two Offsets are not the same control. The **CC** one shifts that stack's fold before it
+becomes the Mix CC, 0–100 %. The **Notes** one transposes in whole octaves, −3 … +3, and applies
+*after* Root, Range and the scale have resolved a pitch — so a pattern keeps its shape and its
+scale degrees and simply moves, instead of being squashed against the fold's 0–100 % clamp.
+Notes still clamp to the MIDI range, so how much of a ±3 octave shift is reachable depends on
+Root and Range. **Slew** only ever smooths CC — the Mix CC and every
 lane's own tap — and never touches pitch, so it lives on the CC tab. **Free run** is one shared
 switch for both stacks, because splitting it would mean running two independent timelines
 through the whole engine for a narrow benefit. **Trigger** picks which Note lane's advance fires
@@ -227,8 +231,9 @@ over counting in raw degrees. On a five-note pentatonic, Range 2 is ten steps; o
 chromatic it is 106, spread across the same two octaves.
 
 Notes clamp to the MIDI range, so how much of a large Range is actually reachable depends on
-**Root** — from the default Root of 48 (C3) there are only 79 semitones of headroom, so a Range
-above about 6 octaves flattens out at the top. Drop Root to 12 or 24 to use the full span.
+**Root**. The default Root of 24 (C0) leaves 103 semitones of headroom above it, enough for a
+Range of 8 octaves before the top flattens out; raising Root buys that headroom back at the
+bottom. Note **Offset** transposes on top of this and is clamped by the same ceiling.
 
 With Quantize on, mapping onto degrees rather than raw semitones is deliberate: it means every
 step lands on a usable note instead of several steps snapping onto the same pitch.
@@ -261,7 +266,7 @@ semitone, so the ±2 default is plenty.
 
 ### Quantize and continuous pitch
 
-**Quantize** (on by default) is the pitch mode switch:
+**Quantize** (off by default) is the pitch mode switch:
 
 - **On** — the mixed value snaps to the nearest degree of the selected **Scale**.
 - **Off** — continuous, unquantized pitch. The **Scale** setting has no effect at all, and
@@ -271,10 +276,10 @@ semitone, so the ±2 default is plenty.
   pitch = Root + mix × Range × 12      (semitones)
   ```
 
-Either way, pitch goes out as a note plus pitch bend, both on the single **Note channel**
-(Notes tab → Output) — the nearest semitone carries the note number, and the residual — never
-more than half a semitone — goes out as pitch bend, sent just before the note-on so the note
-starts already in tune. With Quantize on and a 12-EDO scale the residual is always exactly zero,
+Either way, pitch goes out as a note plus pitch bend — the nearest semitone carries the note
+number, and the residual — never more than half a semitone — goes out as pitch bend, sent just
+before the note-on so the note starts already in tune. Each note gets its own MPE member
+channel, so the bend is the note's alone (see [MPE](#mpe)). With Quantize on and a 12-EDO scale the residual is always exactly zero,
 so no bend is sent at all; a 19-, 23-, 31-, 41- or 53-EDO scale needs one even with Quantize on,
 for the same reason continuous pitch does (see [Scales and tunings](#scales-and-tunings)).
 
@@ -285,7 +290,10 @@ plays the identical pitch no matter how high Slew is set.
 
 **Bend Range** is transmitted, not assumed: whenever the range, the target channel, or
 *whether pitch bends at all* changes — Quantize, or switching to or from a non-12 scale —
-Ravel sends pitch bend sensitivity (RPN 0) on the Note channel. Smaller Bend Range means
+Ravel sends pitch bend sensitivity (RPN 0) on a member channel just before that channel's
+first note. Changing the range — or changing *whether pitch bends at all*, via Quantize or a
+switch to or from a non-12 scale — marks every channel unprimed, so each one is re-sent the
+range the next time it is used. Smaller Bend Range means
 finer resolution; ±2 is the default and is plenty, since the residual never exceeds half a
 semitone.
 
@@ -322,11 +330,29 @@ Two details the engine has to get right:
 - **Turning Voices down releases anything outside the new limit**, rather than orphaning it.
   So does flipping the Poly switch, which re-partitions the slots underneath.
 
-Every voice shares the single **Note channel** and its one pitch bend register, mono or poly —
-so overlapping notes that need different microtones (Quantize off, or a non-12-EDO scale)
-can't have them; the most recent bend applies to all of them. That's a MIDI limitation of a
-single channel, not a bug — keep Voices at 1 for clean microtonal work, or spread lanes
-across separate instances on separate channels if you need both poly and microtonality.
+Overlapping notes each hold their own microtone, because each one is on its own channel —
+see below.
+
+### MPE
+
+Ravel always speaks MPE, and there is no switch for it. Output is a standard **MPE Lower
+Zone**: channel 1 is the zone master, channels 2–16 are the 15 member channels, and every
+simultaneously-sounding note is allocated its own member channel with its own pitch bend.
+The zone is announced with RPN 6 on the master channel before any note goes out, and again
+after a transport reset, since a receiver's state cannot be assumed across one.
+
+That is what makes poly microtonality work at all. One channel has one pitch bend register,
+so on a single channel the most recent bend applies to every note sounding on it — two
+overlapping notes could not hold different microtones. A channel each removes the conflict,
+so Quantize-off and non-12-EDO scales stay in tune under polyphony.
+
+Fifteen member channels is the ceiling. A sixteenth simultaneous note steals the channel
+whose note is closest to finishing rather than exceeding the pool.
+
+The receiving instrument has to be in MPE mode for this to sound right; a non-MPE instrument
+listening on one channel will hear only the notes that land there. There is no single-channel
+fallback — **Note channel** used to select one and has been removed along with the switch,
+since the zone master is fixed at channel 1.
 
 ---
 
@@ -397,9 +423,9 @@ out of scope for a plugin only running on your own machine.)
 .\build\RavelProcessorTests_artefacts\Release\RavelProcessorTests.exe
 ```
 
-161 checks across two suites, neither needing a plugin host.
+184 checks across two suites, neither needing a plugin host.
 
-`Tests/EngineTests.cpp` (98 checks) drives `SequencerEngine` over a synthetic timeline. The
+`Tests/EngineTests.cpp` (117 checks) drives `SequencerEngine` over a synthetic timeline. The
 engine takes PPQ positions as plain arguments rather than reading a playhead itself, which is
 what makes that possible. Covers step timing, gate length, per-lane length and rate, disabled
 steps, the mix modes, transport jumps, stuck-note release on stop, directions, probability,
@@ -409,7 +435,7 @@ path — including that note number plus pitch bend reconstructs the intended fr
 that non-12 EDO scales land where the tuning says, and that the bend range is actually
 transmitted.
 
-`Tests/ProcessorTests.cpp` (63 checks) drives the real `RavelAudioProcessor::processBlock`
+`Tests/ProcessorTests.cpp` (67 checks) drives the real `RavelAudioProcessor::processBlock`
 through a mock playhead. This covers the layer where the plugin could compile, load and still
 emit nothing: playhead handling, the free-run fallback, the parameter snapshot, state
 round-trip, every pattern action, lane add/remove and its undo behaviour, and the MIDI
