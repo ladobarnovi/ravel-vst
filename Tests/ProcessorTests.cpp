@@ -791,7 +791,8 @@ int main()
         check (onChannels.size() >= 2 && onChannels[0] != onChannels[1],
                "and land on different channels -- the parameter reached the allocator");
 
-        RavelAudioProcessor mpeOff;   // mpe_on left at its default (off)
+        RavelAudioProcessor mpeOff;   // explicit: mpe_on now defaults to on
+        setChoice (mpeOff, params::mpeEnabledId, 0);
         const auto offChannels = twoOverlappingNoteOnChannels (mpeOff);
 
         bool allChannel1 = ! offChannels.empty();
@@ -799,7 +800,7 @@ int main()
         for (int channel : offChannels)
             allChannel1 = allChannel1 && channel == 1;
 
-        check (allChannel1, "with MPE off every note-on still stays on channel 1, today's default");
+        check (allChannel1, "with MPE off every note-on still stays on channel 1");
     }
 
     //==========================================================================
