@@ -6,8 +6,8 @@ namespace
     // plus the lane number above them; the step bars take whatever is left, so a taller
     // lane just makes them taller. Also covers a CC lane's own parameter block: Length/
     // Rate/Depth plus Send/Number/Channel/Offset is 7 rows on ControlGroup's 2-column grid,
-    // the same 4 rows tall as a Note lane's Length/Rate/Direction/Depth/Mix mode/Nudge/
-    // Humanise -- so one constant now fits both.
+    // taller than a Note lane's Length/Rate/Depth/Direction -- but the layer buttons set the
+    // floor for both, so one constant still fits.
     constexpr int laneHeight    = 150;
 
     constexpr int headerHeight  = 26;
@@ -283,8 +283,10 @@ void RavelAudioProcessorEditor::buildWorkspaces()
                        "stack mixing into one");
 
     auto& clock = notesSettingsPage.addColumn ("Clock");
-    clock.add (params::noteSwingId,  "Swing");
-    clock.add (params::freeRunId,    "Free run");
+    clock.add (params::swingId,   "Swing")
+         ->setTooltip ("Delays every other step of the grid. Shared with the CC stack -- "
+                       "both fold off the same host clock");
+    clock.add (params::freeRunId, "Free run");
     triggerRow = clock.add (params::noteTriggerSrcId, "Trigger");
 
     notesWorkspace.addAndMakeVisible (notesSettingsPage);
@@ -303,9 +305,8 @@ void RavelAudioProcessorEditor::buildWorkspaces()
             ->setTooltip ("Smooths the Mix CC and every CC lane's own tap. Never touches "
                          "pitch");
 
-    auto& ccClock = ccSettingsPage.addColumn ("Clock");
-    ccClock.add (params::ccSwingId, "Swing");
-
+    // No Clock column here: Swing is shared with the Notes page, which is where it lives,
+    // and Free run and Trigger were never CC concepts.
     ccWorkspace.addAndMakeVisible (ccSettingsPage);
 }
 
@@ -498,16 +499,20 @@ void RavelAudioProcessorEditor::resized()
 
 namespace
 {
-    /** The lane-stack-plus-add-button-plus-settings layout, run once for whichever workspace
-        owns the bounds it's given. Both workspaces get this same shape -- only the lane kind,
-        lane height and settings page differ -- so it is written once rather than duplicated
-        for Notes and for CC.
+    /** The lane-stack-plus-add-button-plus-settings layout, run once per workspace against
+        that workspace's own bounds. Both get this same shape -- only the lane kind, lane
+        height and settings page differ -- so it is written once rather than duplicated for
+        Notes and for CC.
+
+        A template only because WorkspaceComponent is private to the editor and this lives
+        outside it; there is one instantiation, and it is the same code either way.
     */
-    void layoutWorkspace (juce::Rectangle<int> area, int activeLaneCount, int laneHeightForKind,
+    template <typename WorkspaceType>
+    void layoutWorkspace (WorkspaceType& workspace, int activeLaneCount, int laneHeightForKind,
                          juce::OwnedArray<LaneComponent>& lanesArray, juce::TextButton& addButton,
                          TabPage& settingsPage)
     {
-        auto r = area.withPosition (0, 0);
+        auto r = workspace.getLocalBounds();
 
         for (int lane = 0; lane < juce::jmin (activeLaneCount, lanesArray.size()); ++lane)
         {
@@ -523,6 +528,10 @@ namespace
 
         r.removeFromTop (gap);
 
+        // Everything left over is the settings block, and all of it -- not just the page's
+        // reduced bounds -- is what the workspace paints its own ground under, so the
+        // section runs edge to edge in the panel instead of floating inside it.
+        workspace.settingsArea = r;
         settingsPage.setBounds (r.reduced (14, 8));
     }
 }
@@ -569,8 +578,8 @@ void RavelAudioProcessorEditor::layoutContent()
     notesWorkspace.setBounds (r);
     ccWorkspace.setBounds (r);
 
-    layoutWorkspace (r, noteLaneCount, laneHeight, noteLanes, addNoteLaneButton, notesSettingsPage);
-    layoutWorkspace (r, ccLaneCount, laneHeight, ccLanes, addCcLaneButton, ccSettingsPage);
+    layoutWorkspace (notesWorkspace, noteLaneCount, laneHeight, noteLanes, addNoteLaneButton, notesSettingsPage);
+    layoutWorkspace (ccWorkspace, ccLaneCount, laneHeight, ccLanes, addCcLaneButton, ccSettingsPage);
 }
 
 //==============================================================================
@@ -655,8 +664,8 @@ void RavelAudioProcessorEditor::timerCallback()
             lastPolyMode = poly;
 
             // In poly mode every lane triggers itself, so there is nothing for Trigger to
-            // select. Mix mode and Depth are deliberately left alone: both still shape the
-            // mix that drives the CC output, and Depth additionally becomes note velocity.
+            // select. Depth is deliberately left alone: it still shapes the mix that drives
+            // the CC output, and additionally becomes note velocity.
             triggerRow->setDimmed (poly != 0);
         }
     }

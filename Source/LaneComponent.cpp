@@ -274,23 +274,15 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
     //--------------------------------------------------------------------------
     // Two columns, filled left to right then wrapping, so each row pairs a structural
     // parameter with one that shapes the lane's feel. A Note lane and a CC lane share Length/
-    // Rate/Depth; Direction, Mix mode, Nudge and Humanize are Note-only -- a CC lane always
-    // folds Forward/Add with no nudge or jitter -- and a CC lane goes on to add its own
-    // destination instead.
+    // Rate/Depth; Direction is Note-only -- a CC lane always folds Forward -- and a CC lane
+    // goes on to add its own destination instead.
     auto* lengthRow = paramGroup.add (params::laneLengthId (laneIndex, kind), "Length");
     lengthRow->setTooltip ("How many of the eight steps the lane cycles through");
     paramGroup.add (params::laneDivId (laneIndex, kind),    "Rate");
     paramGroup.add (params::laneDepthId (laneIndex, kind),  "Depth");
 
     if (kind == params::LaneKind::note)
-    {
-        paramGroup.add (params::laneDirId (laneIndex, kind),  "Direction");
-        paramGroup.add (params::laneModeId (laneIndex, kind), "Mix mode");
-        paramGroup.add (params::laneNudgeId (laneIndex, kind), "Nudge")
-                  ->setTooltip ("Shift this whole lane earlier or later, up to half a step");
-        paramGroup.add (params::laneHumanizeId (laneIndex, kind), "Humanise")
-                  ->setTooltip ("Random timing jitter, repeatable per bar");
-    }
+        paramGroup.add (params::laneDirId (laneIndex, kind), "Direction");
 
     if (kind == params::LaneKind::cc)
     {
@@ -523,17 +515,17 @@ void LaneComponent::resized()
         slot->setBounds (r.removeFromLeft (slotWidth).withTrimmedRight (slotGap));
 
     //--------------------------------------------------------------------------
-    // Parameter rows plus the pattern buttons, as one block centred against the steps.
+    // Pushed to the two ends of the lane rather than centred as one block: the parameter
+    // rows sit level with the top of the step bars and the pattern buttons with the bottom,
+    // so the whitespace collects between them. That separates the two by what they are --
+    // settings that stay put, and actions that rewrite the pattern under them -- instead of
+    // leaving the actions looking like one more row of the block above.
     const int groupHeight  = paramGroup.getPreferredHeight();
     const int buttonHeight = theme::rowHeight;
-    const int blockHeight  = groupHeight + theme::rowGap * 2 + buttonHeight;
-
-    paramBlock = paramBlock.withSizeKeepingCentre (paramBlock.getWidth(), blockHeight);
 
     paramGroup.setBounds (paramBlock.removeFromTop (groupHeight));
-    paramBlock.removeFromTop (theme::rowGap * 2);
 
-    auto actionRow = paramBlock.removeFromTop (buttonHeight);
+    auto actionRow = paramBlock.removeFromBottom (buttonHeight);
 
     // Hard right, a wide gap clear of the pattern buttons. It is the only action in the lane
     // that a second click does not undo, so it should not sit where the hand passes on the

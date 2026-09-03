@@ -136,7 +136,38 @@ private:
     // Opens on Notes. Reuses TabStrip/TabPage exactly as the old Pitch/Timing/Routing strip
     // did; the difference is that a "page" here is a whole workspace (lane stack, add
     // button and settings) rather than only a settings column.
-    juce::Component notesWorkspace, ccWorkspace;
+    /** A workspace's background. The lane stack sits straight on the panel, but the settings
+        block underneath it is a different kind of thing -- settings that apply to the whole
+        workspace, rather than one lane's pattern -- so it is cut back to the window ground to
+        say so. Drawn here rather than by content because the block's top edge moves with this
+        workspace's own lane count, and content holds both workspaces at once.
+    */
+    struct WorkspaceComponent final : public juce::Component
+    {
+        void paint (juce::Graphics& g) override
+        {
+            if (settingsArea.isEmpty())
+                return;
+
+            auto area = settingsArea.toFloat();
+
+            // Square where it meets the lane stack, rounded where it meets the panel's own
+            // bottom edge -- same radius, so the panel's silhouette is unchanged.
+            juce::Path shape;
+            shape.addRoundedRectangle (area.getX(), area.getY(), area.getWidth(), area.getHeight(),
+                                       6.0f, 6.0f, false, false, true, true);
+
+            g.setColour (theme::background);
+            g.fillPath (shape);
+
+            g.setColour (theme::outline);
+            g.fillRect (area.removeFromTop (1.0f));
+        }
+
+        juce::Rectangle<int> settingsArea;
+    };
+
+    WorkspaceComponent notesWorkspace, ccWorkspace;
     TabStrip outputTabs;
 
     // Watched on the timer, the same way lane count and the output switches already are, so

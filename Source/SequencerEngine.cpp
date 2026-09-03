@@ -38,7 +38,6 @@ namespace
     }
 
     constexpr std::uint64_t probabilitySalt = 31;
-    constexpr std::uint64_t humanizeSalt    = 97;
 
     /** One RPN as three controller messages, matching the byte order JUCE's
         MidiRPNGenerator produces: parameter LSB, parameter MSB, then data entry MSB.
@@ -78,7 +77,6 @@ void SequencerEngine::reset()
         {
             states[lane].lastGlobalIndex = std::numeric_limits<std::int64_t>::min();
             states[lane].step = 0;
-            states[lane].held = 0.0f;
         }
 
     for (auto& voice : voices)
@@ -149,28 +147,18 @@ int SequencerEngine::stepIndexFor (std::int64_t globalIndex, int length, int dir
 }
 
 //==============================================================================
-float SequencerEngine::timingOffsetFor (std::int64_t globalIndex, const LaneSnapshot& lane,
-                                        float swing, int laneIndex) noexcept
+float SequencerEngine::timingOffsetFor (std::int64_t globalIndex, float swing) noexcept
 {
-    float offset = lane.nudge * 0.5f;
-
     // Swing delays every other step of the absolute grid, so it stays anchored to the
     // bar rather than to where a short pattern happens to have started.
-    if (positiveMod (globalIndex, 2) != 0)
-        offset += swing * 0.5f;
+    if (positiveMod (globalIndex, 2) == 0)
+        return 0.0f;
 
-    if (lane.humanize > 0.0f)
-    {
-        const auto draw = hashToUnitFloat (globalIndex, laneIndex, humanizeSalt);
-        offset += (draw * 2.0f - 1.0f) * lane.humanize * 0.5f;
-    }
-
-    return juce::jlimit (-0.49f, 0.49f, offset);
+    return juce::jlimit (-0.49f, 0.49f, swing * 0.5f);
 }
 
 std::int64_t SequencerEngine::resolveGlobalIndex (double ppq, double stepPpq,
-                                                 const LaneSnapshot& lane,
-                                                 float swing, int laneIndex) noexcept
+                                                 float swing) noexcept
 {
     // See the note on boundaryEpsilon below: ppq / stepPpq lands a hair under an integer
     // when the numbers aren't exactly representable in binary.
@@ -178,9 +166,7 @@ std::int64_t SequencerEngine::resolveGlobalIndex (double ppq, double stepPpq,
 
     const auto rawIndex = (std::int64_t) std::floor (ppq / stepPpq + boundaryEpsilon);
 
-    const bool shifted = lane.nudge != 0.0f || lane.humanize > 0.0f || swing != 0.0f;
-
-    if (! shifted)
+    if (swing == 0.0f)
         return rawIndex;
 
     const double tolerance = stepPpq * boundaryEpsilon;
@@ -190,8 +176,7 @@ std::int64_t SequencerEngine::resolveGlobalIndex (double ppq, double stepPpq,
     for (auto candidate = rawIndex + 1; candidate >= rawIndex - 1; --candidate)
     {
         const double boundary = ((double) candidate
-                                 + (double) timingOffsetFor (candidate, lane, swing, laneIndex))
-                              * stepPpq;
+                                 + (double) timingOffsetFor (candidate, swing)) * stepPpq;
 
         if (ppq + tolerance >= boundary)
             return candidate;
@@ -610,7 +595,7 @@ void SequencerEngine::process (const Snapshot& s,
             // under an integer whenever the numbers aren't exactly representable in binary
             // -- ppqPerSample is 1/24000 at 120bpm/48kHz -- which pushed boundaries a
             // sample late and made step lengths alternate between 5999 and 6001 samples.
-            const auto globalIndex = resolveGlobalIndex (ppq, stepPpq, ln, s.noteSwing, laneIndex);
+            const auto globalIndex = resolveGlobalIndex (ppq, stepPpq, s.swing);
             const bool advanced    = (globalIndex != state.lastGlobalIndex);
 
             const int step = stepIndexFor (globalIndex, length, ln.direction, laneIndex);
@@ -623,7 +608,7 @@ void SequencerEngine::process (const Snapshot& s,
             // pure function of the timeline position, so it holds steady for the whole
             // step and repeats identically next time round the loop.
             // A muted lane is exactly a lane whose steps are all off, which is what makes it
-            // transparent for every mix mode and silent for every trigger path at once.
+            // transparent for the mix and silent for every trigger path at once.
             bool stepOn = ln.active && ln.enabled[(size_t) step];
 
             if (stepOn && chance < 0.999f)
@@ -633,41 +618,10 @@ void SequencerEngine::process (const Snapshot& s,
             {
                 state.lastGlobalIndex = globalIndex;
                 state.step = step;
-
-                // Sample & Hold captures the chain as it stands *at this lane's*
-                // clock, which is what lets a slow lane re-time faster ones.
-                if (ln.mode == params::modeSampleHold && stepOn)
-                    state.held = noteAccumulator;
             }
 
             if (stepOn)
-            {
-                switch (ln.mode)
-                {
-                    case params::modeAdd:
-                        noteAccumulator += ln.depth * value;
-                        break;
-
-                    case params::modeMultiply:
-                    {
-                        // depth 0 is a no-op, depth 1 is a full multiply.
-                        const float d = std::abs (ln.depth);
-                        noteAccumulator *= (1.0f - d + d * value);
-                        break;
-                    }
-
-                    case params::modeMax:
-                        noteAccumulator = juce::jmax (noteAccumulator, ln.depth * value);
-                        break;
-
-                    case params::modeSampleHold:
-                        noteAccumulator = state.held;
-                        break;
-
-                    default:
-                        break;
-                }
-            }
+                noteAccumulator += ln.depth * value;
 
             if (s.polyMode)
             {
@@ -701,9 +655,9 @@ void SequencerEngine::process (const Snapshot& s,
         const float noteMix = juce::jlimit (0.0f, 1.0f, noteAccumulator);
 
         //----------------------------------------------------------------------
-        // CC-lane fold. Same shape as the note-lane fold above -- Add/Multiply/Max/S&H over
-        // Depth -- but over the CC pool's own lanes and its own Swing, with no Trigger
-        // concept: CC output is never "triggered", it continuously reflects the fold.
+        // CC-lane fold. Same shape as the note-lane fold above -- each active step adds its
+        // share of Depth -- but over the CC pool's own lanes, with no Trigger concept: CC
+        // output is never "triggered", it continuously reflects the fold.
         float ccAccumulator = 0.0f;
 
         for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
@@ -715,7 +669,7 @@ void SequencerEngine::process (const Snapshot& s,
                 0, (int) params::divisionNames.size() - 1, ln.division)];
             const int length = juce::jlimit (1, params::numSteps, ln.length);
 
-            const auto globalIndex = resolveGlobalIndex (ppq, stepPpq, ln, s.ccSwing, laneIndex);
+            const auto globalIndex = resolveGlobalIndex (ppq, stepPpq, s.swing);
             const bool advanced    = (globalIndex != state.lastGlobalIndex);
 
             const int step = stepIndexFor (globalIndex, length, ln.direction, laneIndex);
@@ -733,9 +687,6 @@ void SequencerEngine::process (const Snapshot& s,
                 state.lastGlobalIndex = globalIndex;
                 state.step = step;
 
-                if (ln.mode == params::modeSampleHold && stepOn)
-                    state.held = ccAccumulator;
-
                 // The lane's own tap follows its own step value, independent of Depth --
                 // Depth governs the lane's share of the Mix CC, not its own tap. Inactive
                 // steps latch the previous level instead of dropping to zero.
@@ -744,32 +695,7 @@ void SequencerEngine::process (const Snapshot& s,
             }
 
             if (stepOn)
-            {
-                switch (ln.mode)
-                {
-                    case params::modeAdd:
-                        ccAccumulator += ln.depth * value;
-                        break;
-
-                    case params::modeMultiply:
-                    {
-                        const float d = std::abs (ln.depth);
-                        ccAccumulator *= (1.0f - d + d * value);
-                        break;
-                    }
-
-                    case params::modeMax:
-                        ccAccumulator = juce::jmax (ccAccumulator, ln.depth * value);
-                        break;
-
-                    case params::modeSampleHold:
-                        ccAccumulator = state.held;
-                        break;
-
-                    default:
-                        break;
-                }
-            }
+                ccAccumulator += ln.depth * value;
         }
 
         const float ccMix = juce::jlimit (0.0f, 1.0f, ccAccumulator + s.ccOffset);

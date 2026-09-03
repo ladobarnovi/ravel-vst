@@ -25,9 +25,6 @@ RavelAudioProcessor::RavelAudioProcessor()
         np.division  = apvts.getRawParameterValue (params::laneDivId (lane));
         np.direction = apvts.getRawParameterValue (params::laneDirId (lane));
         np.depth     = apvts.getRawParameterValue (params::laneDepthId (lane));
-        np.mode      = apvts.getRawParameterValue (params::laneModeId (lane));
-        np.nudge     = apvts.getRawParameterValue (params::laneNudgeId (lane));
-        np.humanize  = apvts.getRawParameterValue (params::laneHumanizeId (lane));
 
         auto& cp = ccLaneParams[lane];
 
@@ -62,8 +59,7 @@ RavelAudioProcessor::RavelAudioProcessor()
     pCcOffset      = apvts.getRawParameterValue (params::ccOffsetId);
     pSlew          = apvts.getRawParameterValue (params::slewId);
     pFreeRun       = apvts.getRawParameterValue (params::freeRunId);
-    pNoteSwing     = apvts.getRawParameterValue (params::noteSwingId);
-    pCcSwing       = apvts.getRawParameterValue (params::ccSwingId);
+    pSwing         = apvts.getRawParameterValue (params::swingId);
     pVoiceCount    = apvts.getRawParameterValue (params::voiceCountId);
     pPolyMode      = apvts.getRawParameterValue (params::polyModeId);
     pNoteLaneCount = apvts.getRawParameterValue (params::noteLaneCountId);
@@ -124,9 +120,6 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
         ns.division  = (int) std::lround (np.division->load());
         ns.direction = (int) std::lround (np.direction->load());
         ns.depth     = np.depth->load();
-        ns.mode      = (int) std::lround (np.mode->load());
-        ns.nudge     = np.nudge->load();
-        ns.humanize  = np.humanize->load();
 
         const auto& cp = ccLaneParams[lane];
         auto& cs = s.ccLanes[lane];
@@ -143,9 +136,8 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
         cs.division  = (int) std::lround (cp.division->load());
         cs.depth     = cp.depth->load();
 
-        // No Direction/Mode/Nudge/Humanize parameter for a CC lane -- it folds Forward/Add
-        // with no nudge or jitter, which is exactly what LaneSnapshot's own defaults already
-        // give cs here.
+        // No Direction parameter for a CC lane -- it always folds Forward, which is exactly
+        // what LaneSnapshot's own default already gives cs here.
         cs.ccOn      = cp.ccOn->load() > 0.5f;
         cs.ccNumber  = (int) std::lround (cp.ccNumber->load());
         cs.ccChannel = (int) std::lround (cp.ccChannel->load());
@@ -168,8 +160,7 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
     s.noteOctaves       = (int) std::lround (pNoteOffset->load());
     s.ccOffset          = pCcOffset->load();
     s.slewMs            = pSlew->load();
-    s.noteSwing         = pNoteSwing->load();
-    s.ccSwing           = pCcSwing->load();
+    s.swing             = pSwing->load();
     s.voiceCount        = (int) std::lround (pVoiceCount->load());
     s.polyMode          = pPolyMode->load() > 0.5f;
     // Not a parameter: the plugin always speaks MPE. The engine keeps the flag because it
