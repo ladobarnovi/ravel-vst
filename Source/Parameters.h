@@ -47,6 +47,11 @@ inline const juce::StringArray triggerNames    { "Lane 1", "Lane 2", "Lane 3", "
 // interval.
 inline constexpr int pitchBendRangeRpn = 0;
 
+// RPN 6, the MPE Configuration Message: sent on a zone's master channel, its value is how
+// many member channels follow it. Ravel only ever offers one Lower Zone, so the value sent
+// is always SequencerEngine::mpeMemberChannels.
+inline constexpr int mpeConfigurationRpn = 6;
+
 /** Centre position of the 14-bit pitch wheel: no bend. */
 inline constexpr int pitchBendCentre = 8192;
 
@@ -339,6 +344,11 @@ inline constexpr auto ccSwingId      = "cc_swing";
 
 inline constexpr auto voiceCountId   = "voices";
 inline constexpr auto polyModeId     = "poly_mode";
+
+// Gives every simultaneously-sounding note its own MIDI channel instead of sharing the Note
+// Channel's one pitch wheel. Orthogonal to Poly -- it applies in mixed mode too, wherever
+// Gate > 100% lets one step's note overlap the next.
+inline constexpr auto mpeEnabledId   = "mpe_on";
 
 /** How many lanes this instance currently has in each pool, 1 to numLanes. Independent --
     growing one stack does not cost the other any room. */
