@@ -238,18 +238,21 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         juce::ParameterID { noteTriggerSrcId, versionHint }, "Trigger", triggerNames, 0));
 
     // On: pitch snaps to degrees of the selected scale. Off: continuous microtonal pitch,
-    // carried as the nearest note plus a pitch bend. Defaults to on, which is the behaviour
-    // the old three-way Pitch choice defaulted to.
+    // carried as the nearest note plus a pitch bend. Defaults to off -- continuous pitch is
+    // what the MPE output and the microtonal scale table exist for, so a stock instance
+    // should be in that mode rather than in the one that hides it behind a switch.
     layout.add (std::make_unique<juce::AudioParameterBool> (
-        juce::ParameterID { quantizeId, versionHint }, "Quantize", true));
+        juce::ParameterID { quantizeId, versionHint }, "Quantize", false));
 
     layout.add (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { bendRangeId, versionHint }, "Bend Range", 1, 48, 2,
         juce::AudioParameterIntAttributes().withStringFromValueFunction (
             [] (int v, int) { return juce::String (v) + " st"; })));
 
+    // 24 is C0. Low, deliberately: Range climbs from Root, so a low root leaves the whole
+    // MIDI span above it reachable instead of clipping at the top of a large Range.
     layout.add (std::make_unique<juce::AudioParameterInt> (
-        juce::ParameterID { rootNoteId, versionHint }, "Root", 0, 127, 48,
+        juce::ParameterID { rootNoteId, versionHint }, "Root", 0, 127, 24,
         juce::AudioParameterIntAttributes().withStringFromValueFunction (
             [] (int v, int) { return noteNameText (v); })));
 
@@ -266,8 +269,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     // The two lists are indexed by the same parameter value, so they have to stay in step.
     jassert (scaleNames.size() == numScales);
 
+    // Index 0, Chromatic: the scale that colours the output least, so what a stock instance
+    // plays is the pattern itself rather than a mode imposed on it.
     layout.add (std::make_unique<juce::AudioParameterChoice> (
-        juce::ParameterID { scaleId, versionHint }, "Scale", scaleNames, 4));
+        juce::ParameterID { scaleId, versionHint }, "Scale", scaleNames, 0));
 
     layout.add (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { velocityId, versionHint }, "Velocity", 1, 127, 100));

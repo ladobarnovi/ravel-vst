@@ -194,7 +194,7 @@ int main()
 
         check (counts.noteOns == 8, "eight notes over two beats at the default 1/16 rate");
         check (counts.noteOffs == counts.noteOns, "every note-on is matched by a note-off");
-        check (counts.firstNote == 48, "first note is the default root (C3)");
+        check (counts.firstNote == 24, "first note is the default root (C0)");
         check (counts.controllers > 0, "CC is emitted alongside notes -- both are always on");
     }
 

@@ -231,8 +231,9 @@ over counting in raw degrees. On a five-note pentatonic, Range 2 is ten steps; o
 chromatic it is 106, spread across the same two octaves.
 
 Notes clamp to the MIDI range, so how much of a large Range is actually reachable depends on
-**Root** — from the default Root of 48 (C3) there are only 79 semitones of headroom, so a Range
-above about 6 octaves flattens out at the top. Drop Root to 12 or 24 to use the full span.
+**Root**. The default Root of 24 (C0) leaves 103 semitones of headroom above it, enough for a
+Range of 8 octaves before the top flattens out; raising Root buys that headroom back at the
+bottom. Note **Offset** transposes on top of this and is clamped by the same ceiling.
 
 With Quantize on, mapping onto degrees rather than raw semitones is deliberate: it means every
 step lands on a usable note instead of several steps snapping onto the same pitch.
@@ -265,7 +266,7 @@ semitone, so the ±2 default is plenty.
 
 ### Quantize and continuous pitch
 
-**Quantize** (on by default) is the pitch mode switch:
+**Quantize** (off by default) is the pitch mode switch:
 
 - **On** — the mixed value snaps to the nearest degree of the selected **Scale**.
 - **Off** — continuous, unquantized pitch. The **Scale** setting has no effect at all, and
