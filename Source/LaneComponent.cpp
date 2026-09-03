@@ -515,17 +515,17 @@ void LaneComponent::resized()
         slot->setBounds (r.removeFromLeft (slotWidth).withTrimmedRight (slotGap));
 
     //--------------------------------------------------------------------------
-    // Parameter rows plus the pattern buttons, as one block centred against the steps.
+    // Pushed to the two ends of the lane rather than centred as one block: the parameter
+    // rows sit level with the top of the step bars and the pattern buttons with the bottom,
+    // so the whitespace collects between them. That separates the two by what they are --
+    // settings that stay put, and actions that rewrite the pattern under them -- instead of
+    // leaving the actions looking like one more row of the block above.
     const int groupHeight  = paramGroup.getPreferredHeight();
     const int buttonHeight = theme::rowHeight;
-    const int blockHeight  = groupHeight + theme::rowGap * 2 + buttonHeight;
-
-    paramBlock = paramBlock.withSizeKeepingCentre (paramBlock.getWidth(), blockHeight);
 
     paramGroup.setBounds (paramBlock.removeFromTop (groupHeight));
-    paramBlock.removeFromTop (theme::rowGap * 2);
 
-    auto actionRow = paramBlock.removeFromTop (buttonHeight);
+    auto actionRow = paramBlock.removeFromBottom (buttonHeight);
 
     // Hard right, a wide gap clear of the pattern buttons. It is the only action in the lane
     // that a second click does not undo, so it should not sit where the hand passes on the
