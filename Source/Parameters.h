@@ -314,8 +314,13 @@ inline constexpr auto bendRangeId    = "bend_range";
 inline constexpr auto rootNoteId     = "root_note";
 inline constexpr auto rangeOctavesId = "range_octaves";
 inline constexpr auto scaleId         = "scale";
-inline constexpr auto velocityId     = "velocity";
 inline constexpr auto midiChannelId  = "midi_ch";
+
+// The master velocity every note starts from, in place of the parameter that used to set it.
+// Each step's own accent trims down from here, so this is the ceiling and 127 is deliberately
+// not it: leaving headroom is what lets an accent read as an accent rather than as everything
+// else being quieter.
+inline constexpr int fixedVelocity = 100;
 
 // The CC tab's own Mix destination -- fed by the CC-lane fold, the same way pitch is fed
 // by the Note-lane fold.

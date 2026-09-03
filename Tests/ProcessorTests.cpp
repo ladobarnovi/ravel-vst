@@ -48,6 +48,7 @@ namespace
         int noteOffs = 0;
         int controllers = 0;
         int firstNote = -1;
+        int firstVelocity = -1;
         int firstCcNumber = -1;
     };
 
@@ -95,7 +96,10 @@ namespace
                     ++counts.noteOns;
 
                     if (counts.firstNote < 0)
-                        counts.firstNote = message.getNoteNumber();
+                    {
+                        counts.firstNote     = message.getNoteNumber();
+                        counts.firstVelocity = message.getVelocity();
+                    }
                 }
                 else if (message.isNoteOff())
                 {
@@ -195,6 +199,8 @@ int main()
         check (counts.noteOns == 8, "eight notes over two beats at the default 1/16 rate");
         check (counts.noteOffs == counts.noteOns, "every note-on is matched by a note-off");
         check (counts.firstNote == 24, "first note is the default root (C0)");
+        check (counts.firstVelocity == params::fixedVelocity,
+               "and plays at the pinned master velocity, 100");
         check (counts.controllers > 0, "CC is emitted alongside notes -- both are always on");
     }
 
@@ -737,6 +743,56 @@ int main()
 
         check (std::abs (get (params::stepValueId (1, 0)) - 0.5f) < 0.01f,
                "and puts the removed lane's pattern back with it");
+    }
+
+    //==========================================================================
+    // Pins what a *fresh* instance comes up at, as the user actually sees it -- the
+    // displayed text, not just the raw number. Nothing in the plugin stamps a preset over
+    // the layout, so these are the layout defaults; a host or the standalone wrapper
+    // restoring a saved state is a separate path and will show whatever it saved.
+    section ("A fresh instance comes up at the documented defaults");
+    {
+        RavelAudioProcessor processor;
+
+        const auto textOf = [&processor] (const juce::String& paramID)
+        {
+            auto* param = processor.apvts.getParameter (paramID);
+            return param != nullptr ? param->getCurrentValueAsText() : juce::String ("<missing>");
+        };
+
+        const auto valueOf = [&processor] (const juce::String& paramID)
+        {
+            auto* raw = processor.apvts.getRawParameterValue (paramID);
+            return raw != nullptr ? raw->load() : -1.0f;
+        };
+
+        // Printed unconditionally: if one of these ever drifts, the value that replaced it is
+        // more useful than the bare failure.
+        std::printf ("          Root %s, Scale %s, Quantize %s\n",
+                     textOf (params::rootNoteId).toRawUTF8(),
+                     textOf (params::scaleId).toRawUTF8(),
+                     textOf (params::quantizeId).toRawUTF8());
+
+        check (std::abs (valueOf (params::rootNoteId) - 24.0f) < 0.5f,
+               "Root is MIDI 24");
+        check (textOf (params::rootNoteId) == "C0",
+               "and reads as C0 -- not C0#, and not the old C2");
+
+        check (textOf (params::scaleId) == "Chromatic",
+               "Scale is Chromatic");
+
+        check (valueOf (params::quantizeId) < 0.5f,
+               "Quantize is off");
+
+        check (std::abs (valueOf (params::noteOffsetId)) < 0.5f,
+               "Offset is 0 octaves");
+
+        // Removed outright, not merely defaulted -- a host or an old session cannot bring
+        // either back by writing it into the state.
+        check (processor.apvts.getParameter ("velocity") == nullptr,
+               "the master velocity parameter no longer exists");
+        check (processor.apvts.getParameter ("mpe_on") == nullptr,
+               "and neither does mpe_on");
     }
 
     //==========================================================================

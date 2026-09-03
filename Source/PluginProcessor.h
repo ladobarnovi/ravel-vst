@@ -98,7 +98,6 @@ private:
     std::atomic<float>* pRootNote     = nullptr;
     std::atomic<float>* pRangeOctaves = nullptr;
     std::atomic<float>* pScale        = nullptr;
-    std::atomic<float>* pVelocity     = nullptr;
     std::atomic<float>* pMidiChannel  = nullptr;
     std::atomic<float>* pCcOn         = nullptr;
     std::atomic<float>* pCcNumber     = nullptr;

@@ -275,9 +275,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         juce::ParameterID { scaleId, versionHint }, "Scale", scaleNames, 0));
 
     layout.add (std::make_unique<juce::AudioParameterInt> (
-        juce::ParameterID { velocityId, versionHint }, "Velocity", 1, 127, 100));
-
-    layout.add (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { midiChannelId, versionHint }, "Note Channel", 1, 16, 1));
 
     // The CC tab's own Mix destination -- fed by the CC-lane fold, the same way pitch is

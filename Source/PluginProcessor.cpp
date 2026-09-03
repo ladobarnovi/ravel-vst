@@ -54,7 +54,6 @@ RavelAudioProcessor::RavelAudioProcessor()
     pRootNote      = apvts.getRawParameterValue (params::rootNoteId);
     pRangeOctaves  = apvts.getRawParameterValue (params::rangeOctavesId);
     pScale         = apvts.getRawParameterValue (params::scaleId);
-    pVelocity      = apvts.getRawParameterValue (params::velocityId);
     pMidiChannel   = apvts.getRawParameterValue (params::midiChannelId);
     pCcOn          = apvts.getRawParameterValue (params::ccOnId);
     pCcNumber      = apvts.getRawParameterValue (params::ccNumberId);
@@ -159,7 +158,9 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
     s.root              = (int) std::lround (pRootNote->load());
     s.rangeOctaves      = (int) std::lround (pRangeOctaves->load());
     s.scale             = (int) std::lround (pScale->load());
-    s.velocity          = (int) std::lround (pVelocity->load());
+    // Not a parameter: the master velocity is pinned at 100, and each step's own accent is
+    // what shapes velocity from there. The engine keeps the field -- see the note on it.
+    s.velocity          = params::fixedVelocity;
     s.midiChannel       = (int) std::lround (pMidiChannel->load());
     s.ccOn              = pCcOn->load() > 0.5f;
     s.ccNumber          = (int) std::lround (pCcNumber->load());

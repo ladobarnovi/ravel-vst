@@ -70,6 +70,9 @@ public:
         int   root          = 48;
         int   rangeOctaves  = 2;
         int   scale         = 4;
+        // The master velocity each step's accent scales down from. The plugin always passes
+        // params::fixedVelocity -- there is no parameter behind this any more. It stays a
+        // field so the engine's own tests can still prove the accent scales against it.
         int   velocity      = 100;
         int   midiChannel   = 1;
 

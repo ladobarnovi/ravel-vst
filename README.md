@@ -44,7 +44,7 @@ parameter count from doubling for nothing.
 | Length | 1–16 | Shorter lanes phase against longer ones. Steps past the length grey out, and stay editable |
 | Rate | 1/1 … 1/32, incl. triplets | Independent per lane — this is where the polyrhythm comes from |
 | Depth | −100 % … +100 % | How much this lane contributes to its stack's fold |
-| 16 velocity bars | 0–100 % | *Note lanes only.* Per-step accent, as a trim on the global Velocity (100 % is unity) |
+| 16 velocity bars | 0–100 % | *Note lanes only.* Per-step accent, as a trim on the fixed master velocity of 100 (100 % is unity, so a bar only ever pulls a step below it) |
 | 16 gate bars | 5–200 % | *Note lanes only.* How long each step's note is held, as % of the step. Above 100 % overlaps into the next step (see Polyphony) |
 | 16 chance bars | 0–100 % | Per-step probability of firing |
 | Direction | Forward, Reverse, Ping-Pong, Random | *Note lanes only* |
@@ -194,7 +194,7 @@ whichever of the two top-level tabs it belongs to, laid out as a flat row of col
 |---|---|
 | Pitch | Root, Scale, Range, Quantize |
 | Output | Bend range, Offset |
-| Voice | Velocity, Voices, Poly |
+| Voice | Voices, Poly |
 | Clock | Swing, Free run, Trigger |
 
 **CC**

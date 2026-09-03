@@ -277,7 +277,6 @@ void RavelAudioProcessorEditor::buildWorkspaces()
                         "its scale degrees, it just moves. Notes clamp to the MIDI range");
 
     auto& voice = notesSettingsPage.addColumn ("Voice");
-    voice.add (params::velocityId,   "Velocity");
     voice.add (params::voiceCountId, "Voices");
     voice.add (params::polyModeId, "Poly")
          ->setTooltip ("Each lane triggers its own note off its own clock, instead of the "
