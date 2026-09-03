@@ -422,6 +422,40 @@ public:
     }
 
     //==========================================================================
+    // LookAndFeel_V4's stock tooltip is a bold 13pt font on a colour lifted from the
+    // colour scheme -- close enough to theme::panel to read as "no background at all"
+    // against the plugin's own panel, and the font dwarfs every row caption around it.
+    // Both overrides below share tooltipFont/tooltipPadding so the box drawn here always
+    // matches the text laid out for it.
+    juce::Rectangle<int> getTooltipBounds (const juce::String& tipText, juce::Point<int> screenPos,
+                                           juce::Rectangle<int> parentArea) override
+    {
+        const auto layout = layoutTooltipText (tipText);
+
+        const auto w = (int) std::ceil (layout.getWidth())  + tooltipPadding * 2;
+        const auto h = (int) std::ceil (layout.getHeight()) + tooltipPadding * 2;
+
+        return juce::Rectangle<int> (screenPos.x > parentArea.getCentreX() ? screenPos.x - (w + 12) : screenPos.x + 18,
+                                     screenPos.y > parentArea.getCentreY() ? screenPos.y - (h + 6)  : screenPos.y + 6,
+                                     w, h)
+                 .constrainedWithin (parentArea);
+    }
+
+    void drawTooltip (juce::Graphics& g, const juce::String& text, int width, int height) override
+    {
+        const auto bounds = juce::Rectangle<float> ((float) width, (float) height);
+        constexpr float corner = 4.0f;
+
+        g.setColour (theme::panelLight);
+        g.fillRoundedRectangle (bounds, corner);
+
+        g.setColour (theme::outline);
+        g.drawRoundedRectangle (bounds.reduced (0.5f), corner, 1.0f);
+
+        layoutTooltipText (text).draw (g, bounds.reduced ((float) tooltipPadding));
+    }
+
+    //==========================================================================
     void drawToggleButton (juce::Graphics& g, juce::ToggleButton& button,
                            bool shouldDrawButtonAsHighlighted, bool) override
     {
@@ -461,6 +495,24 @@ public:
 
 private:
     //==========================================================================
+    static constexpr int tooltipPadding  = 7;
+    static constexpr float tooltipWidth  = 260.0f;
+
+    /** Left-justified in the app's own row font rather than LookAndFeel_V4's centred bold
+        13pt -- getTooltipBounds and drawTooltip both call this so the box is always sized
+        for exactly the text drawn inside it. */
+    static juce::TextLayout layoutTooltipText (const juce::String& text)
+    {
+        juce::AttributedString s;
+        s.setWordWrap (juce::AttributedString::WordWrap::byWord);
+        s.setJustification (juce::Justification::topLeft);
+        s.append (text, theme::rowFont(), theme::text);
+
+        juce::TextLayout layout;
+        layout.createLayoutWithBalancedLineLengths (s, tooltipWidth);
+        return layout;
+    }
+
     void drawSliderAsValueRow (juce::Graphics& g, juce::Rectangle<int> bounds, juce::Slider& slider)
     {
         const auto range = slider.getRange();

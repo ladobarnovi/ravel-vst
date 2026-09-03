@@ -740,6 +740,69 @@ int main()
     }
 
     //==========================================================================
+    // Confirms the mpe_on parameter actually reaches the engine's channel allocation, not
+    // just the Snapshot field -- EngineTests exercises the allocator directly, this exercises
+    // the wiring APVTS -> buildSnapshot() -> SequencerEngine that carries the flag to it.
+    section ("MPE parameter reaches the engine");
+    {
+        const auto twoOverlappingNoteOnChannels = [] (RavelAudioProcessor& processor)
+        {
+            processor.setPlayConfigDetails (0, 2, 48000.0, 512);
+            processor.prepareToPlay (48000.0, 512);
+
+            setChoice (processor, params::voiceCountId, 2);
+            setChoice (processor, params::stepGateId (0, 0), 200);   // overlaps into step 2
+
+            MockPlayHead playHead;
+            processor.setPlayHead (&playHead);
+            playHead.info.setBpm (120.0);
+            playHead.info.setIsPlaying (true);
+
+            juce::AudioBuffer<float> audio (2, 512);
+            juce::MidiBuffer midi;
+            std::vector<int> onChannels;
+
+            for (int pos = 0; pos < 2 * 6000; pos += 512)
+            {
+                const int numSamples = juce::jmin (512, 2 * 6000 - pos);
+
+                playHead.info.setPpqPosition ((double) pos / 24000.0);
+                playHead.info.setTimeInSamples ((juce::int64) pos);
+
+                audio.clear();
+                midi.clear();
+
+                juce::AudioBuffer<float> block (audio.getArrayOfWritePointers(), 2, numSamples);
+                processor.processBlock (block, midi);
+
+                for (const auto metadata : midi)
+                    if (metadata.getMessage().isNoteOn())
+                        onChannels.push_back (metadata.getMessage().getChannel());
+            }
+
+            return onChannels;
+        };
+
+        RavelAudioProcessor mpeOn;
+        setChoice (mpeOn, params::mpeEnabledId, 1);
+        const auto onChannels = twoOverlappingNoteOnChannels (mpeOn);
+
+        check (onChannels.size() >= 2, "two overlapping notes fire with MPE on");
+        check (onChannels.size() >= 2 && onChannels[0] != onChannels[1],
+               "and land on different channels -- the parameter reached the allocator");
+
+        RavelAudioProcessor mpeOff;   // mpe_on left at its default (off)
+        const auto offChannels = twoOverlappingNoteOnChannels (mpeOff);
+
+        bool allChannel1 = ! offChannels.empty();
+
+        for (int channel : offChannels)
+            allChannel1 = allChannel1 && channel == 1;
+
+        check (allChannel1, "with MPE off every note-on still stays on channel 1, today's default");
+    }
+
+    //==========================================================================
     std::printf ("\n%d checks, %d failed\n", checksRun, checksFailed);
 
     return checksFailed == 0 ? 0 : 1;

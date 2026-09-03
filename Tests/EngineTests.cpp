@@ -695,6 +695,7 @@ int main()
         s.quantize     = false;
         s.bendRange    = 2;
         s.midiChannel  = 5;
+        s.mpeEnabled   = false;   // locks in today's behaviour as the MPE-off regression case
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1855,6 +1856,266 @@ int main()
                 ++released;
 
         check (released >= 1, "flipping the switch releases it instead of leaving it stuck");
+    }
+
+    //==========================================================================
+    section ("MPE gives overlapping notes independent channels and bends");
+    {
+        // Two steps, different pitches, gate long enough that the second note starts before
+        // the first ends -- exactly the case a single shared channel cannot express, since
+        // one pitch bend cannot hold two different microtones at once.
+        auto s = baseSnapshot();
+        s.noteLanes[0].length    = 2;
+        s.noteLanes[0].values[0] = 0.3f;
+        s.noteLanes[0].values[1] = 0.6f;
+        s.scale        = 0;
+        s.rangeOctaves = 1;
+        s.root         = 48;
+        s.quantize     = false;
+        s.bendRange    = 2;
+        s.mpeEnabled   = true;
+        s.voiceCount   = 2;
+        setLaneGate (s, 0, 250.0f);   // 2.5 steps -- outlives the second step's own onset
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto events = run (engine, s, 2 * samplesPerStep);
+        const auto ons    = only (events, noteOn);
+        const auto bends  = only (events, pitchBend);
+
+        const bool distinctChannels = ons.size() == 2
+                                     && ons[0].channel != ons[1].channel
+                                     && ons[0].channel >= 2 && ons[0].channel <= 16
+                                     && ons[1].channel >= 2 && ons[1].channel <= 16;
+
+        check (distinctChannels, "overlapping notes land on two distinct member channels");
+
+        auto reconstructs = [&] (const Event& on, double expectedSemitones)
+        {
+            for (const auto& bend : bends)
+                if (bend.sample == on.sample && bend.channel == on.channel)
+                    return std::abs (((double) on.number
+                                      + ((double) bend.value - 8192.0) / 8191.0 * (double) s.bendRange)
+                                     - expectedSemitones) < 0.01;
+
+            return false;
+        };
+
+        const bool bothReconstruct = ons.size() == 2
+                                    && reconstructs (ons[0], 48.0 + 0.3 * 12.0)
+                                    && reconstructs (ons[1], 48.0 + 0.6 * 12.0);
+
+        check (bothReconstruct,
+               "each overlapping note reconstructs its own pitch -- neither bend overwrote the other");
+    }
+
+    //==========================================================================
+    section ("MPE gives each poly lane its own channel");
+    {
+        // Same three-lane, simultaneous-onset setup as "Poly mode gives each lane its own
+        // voice" above, with MPE on: the three notes starting together at sample 0 must not
+        // share a channel, or they would fight over one bend the way a single shared channel
+        // already does today.
+        auto s = baseSnapshot();
+        s.polyMode     = true;
+        s.mpeEnabled   = true;
+        s.scale        = 0;
+        s.rangeOctaves = 1;
+        useLanes (s, 3);
+
+        for (int lane = 0; lane < 3; ++lane)
+        {
+            s.noteLanes[lane].length = 1;
+            s.noteLanes[lane].depth  = 1.0f;
+            setLaneGate (s, lane, 50.0f);
+        }
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto events = run (engine, s, samplesPerStep);
+        const auto ons    = only (events, noteOn);
+
+        std::vector<int> channelsAtZero;
+
+        for (const auto& e : ons)
+            if (e.sample == 0)
+                channelsAtZero.push_back (e.channel);
+
+        bool allDistinctAndInZone = channelsAtZero.size() == 3;
+
+        for (size_t i = 0; i < channelsAtZero.size() && allDistinctAndInZone; ++i)
+        {
+            if (channelsAtZero[i] < 2 || channelsAtZero[i] > 16)
+                allDistinctAndInZone = false;
+
+            for (size_t j = i + 1; j < channelsAtZero.size(); ++j)
+                if (channelsAtZero[i] == channelsAtZero[j])
+                    allDistinctAndInZone = false;
+        }
+
+        check (allDistinctAndInZone, "three lanes starting together take three distinct member channels");
+    }
+
+    //==========================================================================
+    section ("MPE announces its zone before any per-channel bend range");
+    {
+        auto s = baseSnapshot();
+        s.quantize   = false;
+        s.bendRange  = 7;
+        s.mpeEnabled = true;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        juce::MidiBuffer buffer;
+        engine.process (s, buffer, 512, 0.0, ppqPerSample, true);
+
+        int  currentRpn  = -1;
+        int  rpn6Index    = -1;
+        int  rpn0Index    = -1;
+        bool rpn6Correct  = false;
+        bool rpn0Correct  = false;
+        int  index        = 0;
+
+        for (const auto metadata : buffer)
+        {
+            const auto message = metadata.getMessage();
+
+            if (message.isController())
+            {
+                if (message.getControllerNumber() == 0x64)
+                    currentRpn = message.getControllerValue();
+
+                if (message.getControllerNumber() == 0x06)
+                {
+                    if (currentRpn == params::mpeConfigurationRpn && rpn6Index < 0
+                        && message.getChannel() == SequencerEngine::mpeMasterChannel
+                        && message.getControllerValue() == SequencerEngine::mpeMemberChannels)
+                    {
+                        rpn6Index   = index;
+                        rpn6Correct = true;
+                    }
+
+                    if (currentRpn == params::pitchBendRangeRpn && rpn0Index < 0
+                        && message.getChannel() >= 2 && message.getChannel() <= 16
+                        && message.getControllerValue() == 7)
+                    {
+                        rpn0Index   = index;
+                        rpn0Correct = true;
+                    }
+                }
+            }
+
+            ++index;
+        }
+
+        check (rpn6Correct, "RPN 6 announces a 15-channel zone on the master channel");
+        check (rpn0Correct, "RPN 0 reaches the member channel the note actually used");
+        check (rpn6Index >= 0 && rpn0Index >= 0 && rpn6Index < rpn0Index,
+               "the zone is announced before any per-channel bend range");
+    }
+
+    //==========================================================================
+    section ("MPE channel pool caps at 15 and steals when exhausted");
+    {
+        // Two poly lanes, both retriggering every 1/16 step with a gate that far outlives
+        // this test's window, so nothing would naturally release -- 8 firings each is 16
+        // notes wanting to hold a channel at once, one more than the 15 available.
+        auto s = baseSnapshot();
+        s.polyMode   = true;
+        s.mpeEnabled = true;
+        s.voiceCount = 8;
+        useLanes (s, 2);
+
+        for (int lane = 0; lane < 2; ++lane)
+        {
+            s.noteLanes[lane].length = 1;
+            s.noteLanes[lane].depth  = 1.0f;
+            setLaneGate (s, lane, 1600.0f);
+        }
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto events = run (engine, s, 8 * samplesPerStep);
+        const auto ons    = only (events, noteOn);
+        const auto offs   = only (events, noteOff);
+
+        check (ons.size() == 16, "both lanes fire eight times each over the window");
+
+        bool channelLive[17] {};   // indices 2..16 used; 0 and 1 unused
+        int  peakLive = 0;
+
+        for (const auto& e : events)
+        {
+            if (e.type == noteOn)
+                channelLive[e.channel] = true;
+            else if (e.type == noteOff)
+                channelLive[e.channel] = false;
+
+            int live = 0;
+
+            for (int ch = 2; ch <= 16; ++ch)
+                if (channelLive[ch])
+                    ++live;
+
+            peakLive = juce::jmax (peakLive, live);
+        }
+
+        check (peakLive <= 15, "never more than 15 member channels held at once");
+
+        // Every note's own gate is 16 steps long -- far past this 8-step window -- so any
+        // note-off at all can only mean a channel was stolen out from under a still-held note.
+        check (! offs.empty(), "the 16th note forces a steal instead of exceeding the pool");
+    }
+
+    //==========================================================================
+    section ("Turning MPE on mid-performance releases what was sounding");
+    {
+        auto s = baseSnapshot();
+        s.scale      = 0;
+        s.voiceCount = 4;
+        s.mpeEnabled = false;
+        s.noteLanes[0].length = 1;
+        s.noteLanes[0].values[0] = 0.0f;
+        setLaneGate (s, 0, 400.0f);
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        juce::MidiBuffer buffer;
+        int sounding = 0;
+
+        for (int pos = 0; pos < 2 * blockSize; pos += blockSize)
+        {
+            buffer.clear();
+            engine.process (s, buffer, blockSize, ppqPerSample * pos, ppqPerSample, true);
+
+            for (const auto metadata : buffer)
+            {
+                if (metadata.getMessage().isNoteOn())  ++sounding;
+                if (metadata.getMessage().isNoteOff()) --sounding;
+            }
+        }
+
+        check (sounding == 1, "a note is held with MPE off");
+
+        // Flipping MPE moves channel ownership to a completely different scheme, so the held
+        // note has to be released rather than left addressed on a channel the new scheme
+        // never touches again.
+        s.mpeEnabled = true;
+        buffer.clear();
+        engine.process (s, buffer, blockSize, ppqPerSample * 2 * blockSize, ppqPerSample, true);
+
+        int released = 0;
+
+        for (const auto metadata : buffer)
+            if (metadata.getMessage().isNoteOff())
+                ++released;
+
+        check (released >= 1, "turning MPE on releases it instead of leaving it stuck");
     }
 
     //==========================================================================

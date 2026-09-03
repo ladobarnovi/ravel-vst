@@ -87,6 +87,12 @@ void SequencerEngine::reset()
         voice.samplesRemaining = 0;
     }
 
+    for (auto& mc : mpeChannels)
+    {
+        mc.voiceSlot = -1;
+        mc.rangeSent = false;
+    }
+
     slewedValue      = 0.0f;
     lastCcValue      = -1;
     ccCountdown      = 0;
@@ -95,6 +101,11 @@ void SequencerEngine::reset()
     configuredBendRange = -1;
     configuredChannel   = -1;
     configuredPolyMode  = -1;
+
+    configuredMpeOn         = false;
+    configuredMpeWantedMode = -1;
+    configuredMpeBendRange  = -1;
+    configuredMpeFlag       = -1;
 
     for (int lane = 0; lane < params::numLanes; ++lane)
     {
@@ -199,31 +210,40 @@ bool SequencerEngine::anyVoiceActive() const noexcept
     return false;
 }
 
+void SequencerEngine::releaseVoice (juce::MidiBuffer& out, int sampleOffset, int slot)
+{
+    if (voices[slot].note < 0)
+        return;
+
+    out.addEvent (juce::MidiMessage::noteOff (voices[slot].channel, voices[slot].note), sampleOffset);
+
+    // If this slot was sounding on a pooled MPE member channel, free that channel back to the
+    // pool too -- otherwise a retired voice would leave its channel permanently marked busy.
+    const int memberIndex = voices[slot].channel - mpeMemberChannelBase;
+
+    if (memberIndex >= 0 && memberIndex < mpeMemberChannels
+        && mpeChannels[memberIndex].voiceSlot == slot)
+        mpeChannels[memberIndex].voiceSlot = -1;
+
+    voices[slot].note             = -1;
+    voices[slot].samplesRemaining = 0;
+}
+
 void SequencerEngine::releaseAllVoices (juce::MidiBuffer& out, int sampleOffset)
 {
-    for (auto& voice : voices)
-    {
-        if (voice.note >= 0)
-            out.addEvent (juce::MidiMessage::noteOff (voice.channel, voice.note), sampleOffset);
-
-        voice.note = -1;
-        voice.samplesRemaining = 0;
-    }
+    for (int i = 0; i < maxVoices; ++i)
+        releaseVoice (out, sampleOffset, i);
 }
 
 void SequencerEngine::advanceVoices (juce::MidiBuffer& out, int sampleOffset)
 {
-    for (auto& voice : voices)
+    for (int i = 0; i < maxVoices; ++i)
     {
-        if (voice.note < 0)
+        if (voices[i].note < 0)
             continue;
 
-        if (--voice.samplesRemaining <= 0)
-        {
-            out.addEvent (juce::MidiMessage::noteOff (voice.channel, voice.note), sampleOffset);
-            voice.note = -1;
-            voice.samplesRemaining = 0;
-        }
+        if (--voices[i].samplesRemaining <= 0)
+            releaseVoice (out, sampleOffset, i);
     }
 }
 
@@ -245,9 +265,7 @@ void SequencerEngine::retireUnownedVoices (juce::MidiBuffer& out, int sampleOffs
         if (voices[i].note < 0 || slotIsOwned (i, voiceLimit, polyMode))
             continue;
 
-        out.addEvent (juce::MidiMessage::noteOff (voices[i].channel, voices[i].note), sampleOffset);
-        voices[i].note = -1;
-        voices[i].samplesRemaining = 0;
+        releaseVoice (out, sampleOffset, i);
     }
 }
 
@@ -263,7 +281,7 @@ int SequencerEngine::allocateVoice (juce::MidiBuffer& out, int sampleOffset,
     {
         if (voices[i].note == note && voices[i].channel == channel)
         {
-            out.addEvent (juce::MidiMessage::noteOff (channel, note), sampleOffset);
+            releaseVoice (out, sampleOffset, i);
             return i;
         }
     }
@@ -279,16 +297,35 @@ int SequencerEngine::allocateVoice (juce::MidiBuffer& out, int sampleOffset,
         if (voices[i].samplesRemaining < voices[stolen].samplesRemaining)
             stolen = i;
 
-    out.addEvent (juce::MidiMessage::noteOff (voices[stolen].channel, voices[stolen].note), sampleOffset);
+    releaseVoice (out, sampleOffset, stolen);
+    return stolen;
+}
+
+int SequencerEngine::allocateMpeChannel (juce::MidiBuffer& out, int sampleOffset)
+{
+    for (int i = 0; i < mpeMemberChannels; ++i)
+        if (mpeChannels[i].voiceSlot < 0)
+            return i;
+
+    // Every member channel is already sounding a note. Steal whichever backing voice is
+    // closest to finishing anyway -- the same "least audible loss" rule allocateVoice() uses
+    // when it runs out of slots.
+    int stolen = 0;
+
+    for (int i = 1; i < mpeMemberChannels; ++i)
+        if (voices[mpeChannels[i].voiceSlot].samplesRemaining
+              < voices[mpeChannels[stolen].voiceSlot].samplesRemaining)
+            stolen = i;
+
+    releaseVoice (out, sampleOffset, mpeChannels[stolen].voiceSlot);   // also frees the channel
     return stolen;
 }
 
 //==============================================================================
 SequencerEngine::PitchResult SequencerEngine::pitchFor (float value, const Snapshot& s,
-                                                       int noteChannel, int bendRange) noexcept
+                                                       int bendRange) noexcept
 {
     PitchResult result;
-    result.channel = noteChannel;
 
     if (s.quantize)
     {
@@ -302,9 +339,9 @@ SequencerEngine::PitchResult SequencerEngine::pitchFor (float value, const Snaps
 
         // A 12-EDO scale lands exactly on note numbers and the wheel is left alone, as it
         // always was. Any other EDO puts most of its degrees between the keys, so the
-        // residual rides on pitch bend -- the same trick continuous mode uses below, and it
-        // inherits the same limit: one bend per channel, so overlapping notes cannot hold
-        // different microtones.
+        // residual rides on pitch bend -- the same trick continuous mode uses below. With
+        // MPE off that is one bend per channel, so overlapping notes cannot hold different
+        // microtones; with MPE on, startNote() gives each note its own channel instead.
         //
         // Written even when the residual is zero. Degree 0 of a 19-EDO scale is in tune only
         // if the bend the *previous* degree left on the channel is cleared.
@@ -318,10 +355,11 @@ SequencerEngine::PitchResult SequencerEngine::pitchFor (float value, const Snaps
     // The nearest semitone carries the note number; the residual (at most half a semitone) is
     // expressed as pitch bend.
     //
-    // The bend goes on the note channel, which is shared by every voice on it -- so
-    // overlapping notes, including three poly lanes at once, cannot hold different
+    // With MPE off, the bend goes on the note channel, which is shared by every voice on it
+    // -- so overlapping notes, including several poly lanes at once, cannot hold different
     // microtones. That is the cost of staying on one channel, which is what survives hosts
-    // that merge MIDI channels when routing between tracks.
+    // that merge MIDI channels when routing between tracks. MPE on lifts this: startNote()
+    // resolves a separate channel per note instead of reusing the one passed in here.
     const float absolute = (float) s.root + params::continuousSemitones (value, s.rangeOctaves * 12);
 
     result.note = juce::jlimit (0, 127, (int) std::lround (absolute));
@@ -352,21 +390,47 @@ float SequencerEngine::gateFor (const Snapshot& s, int laneIndex, int stepIndex)
 }
 
 void SequencerEngine::startNote (juce::MidiBuffer& out, int sampleOffset, const PitchResult& pitch,
-                                 int velocity, int gateSamples, int begin, int end)
+                                 int velocity, int gateSamples, int begin, int end,
+                                 bool mpeOn, int fixedChannel, int bendRange)
 {
-    // Allocate first: if this steals or reuses a voice, its note-off has to be ordered
-    // ahead of the bend and note-on that follow at this same sample.
-    const int slot = allocateVoice (out, sampleOffset, pitch.note, pitch.channel, begin, end);
+    // Channel first: MPE picks a member channel from its own pool, independent of which
+    // voice slot the note ends up in below.
+    int channel     = fixedChannel;
+    int memberIndex = -1;
+
+    if (mpeOn)
+    {
+        memberIndex = allocateMpeChannel (out, sampleOffset);
+        channel     = mpeMemberChannelBase + memberIndex;
+    }
+
+    // Allocate the slot second: if this steals or reuses a voice, its note-off has to be
+    // ordered ahead of the bend and note-on that follow at this same sample.
+    const int slot = allocateVoice (out, sampleOffset, pitch.note, channel, begin, end);
+
+    if (mpeOn)
+    {
+        mpeChannels[memberIndex].voiceSlot = slot;
+
+        // RPN 0 has to reach this member channel before any note relying on it -- lazily,
+        // the first time it's used (or after a range change clears every sent flag), rather
+        // than blasting all 15 up front: most patterns never touch more than a few.
+        if (! mpeChannels[memberIndex].rangeSent)
+        {
+            sendPitchBendRange (out, sampleOffset, channel, bendRange);
+            mpeChannels[memberIndex].rangeSent = true;
+        }
+    }
 
     if (pitch.bend >= 0)
-        out.addEvent (juce::MidiMessage::pitchWheel (pitch.channel, pitch.bend), sampleOffset);
+        out.addEvent (juce::MidiMessage::pitchWheel (channel, pitch.bend), sampleOffset);
 
-    out.addEvent (juce::MidiMessage::noteOn (pitch.channel, pitch.note,
+    out.addEvent (juce::MidiMessage::noteOn (channel, pitch.note,
                                             (juce::uint8) juce::jlimit (1, 127, velocity)),
                   sampleOffset);
 
     voices[slot].note             = pitch.note;
-    voices[slot].channel          = pitch.channel;
+    voices[slot].channel          = channel;
     voices[slot].samplesRemaining = juce::jmax (1, gateSamples);
 }
 
@@ -396,6 +460,23 @@ void SequencerEngine::process (const Snapshot& s,
         configuredPolyMode = polyFlag;
     }
 
+    // MPE routes every simultaneous note to its own channel -- a completely different
+    // channel scheme from the single fixed one -- so a flip mid-performance has to let go of
+    // everything rather than leave it addressed under the scheme that just left.
+    if (const int mpeFlag = s.mpeEnabled ? 1 : 0; configuredMpeFlag != mpeFlag)
+    {
+        releaseAllVoices (out, 0);
+        configuredMpeFlag = mpeFlag;
+
+        // Forces a fresh RPN 0 / RPN 6 (or, off, a fresh single-channel RPN 0) on whichever
+        // path runs next -- the receiver's per-channel state after a stretch in the other
+        // scheme can't be assumed.
+        configuredMpeOn      = false;
+        configuredMode       = -1;
+        configuredBendRange  = -1;
+        configuredChannel    = -1;
+    }
+
     // If the voice count was turned down, anything sounding outside the new limit has to
     // be let go or it would hang forever.
     retireUnownedVoices (out, 0, voiceLimit, s.polyMode);
@@ -410,6 +491,7 @@ void SequencerEngine::process (const Snapshot& s,
 
     // The receiving instrument has to be told the bend range: an instrument left at its own
     // default while we scale for +/-2 semitones plays the wrong interval.
+    if (! s.mpeEnabled)
     {
         const int wantedMode = wantsBend ? 0 : 1;
 
@@ -438,6 +520,48 @@ void SequencerEngine::process (const Snapshot& s,
             configuredMode      = wantedMode;
             configuredBendRange = bendRange;
             configuredChannel   = noteChannel;
+        }
+    }
+    else
+    {
+        const int wantedMode = wantsBend ? 0 : 1;
+
+        if (! configuredMpeOn)
+        {
+            addRpn (out, 0, mpeMasterChannel, params::mpeConfigurationRpn, mpeMemberChannels);
+            configuredMpeOn = true;
+
+            // A fresh zone announcement means the receiver's per-channel state is unknown,
+            // so force everything below to re-prime instead of trusting whatever these held
+            // from the last time MPE was on.
+            configuredMpeWantedMode = -1;
+            configuredMpeBendRange  = -1;
+        }
+
+        const bool changed = configuredMpeWantedMode != wantedMode
+                          || configuredMpeBendRange   != bendRange;
+
+        if (changed)
+        {
+            if (wantedMode == 1 && configuredMpeWantedMode == 0)
+            {
+                // Leaving a mode that bends -- recentre the whole zone. Cheap (16 messages,
+                // no allocation) and simpler than tracking exactly which member channels a
+                // bend was ever written to.
+                out.addEvent (juce::MidiMessage::pitchWheel (mpeMasterChannel, params::pitchBendCentre), 0);
+
+                for (int i = 0; i < mpeMemberChannels; ++i)
+                    out.addEvent (juce::MidiMessage::pitchWheel (mpeMemberChannelBase + i,
+                                                                  params::pitchBendCentre), 0);
+            }
+
+            configuredMpeWantedMode = wantedMode;
+            configuredMpeBendRange  = bendRange;
+
+            // Bend range itself goes out lazily, per member channel, the first time each is
+            // actually used -- see startNote().
+            for (auto& mc : mpeChannels)
+                mc.rangeSent = false;
         }
     }
 
@@ -669,8 +793,9 @@ void SequencerEngine::process (const Snapshot& s,
             // there is nothing left to do here but hand its result to the voice allocator.
             const auto fireNote = [&] (float value, int velocity, int gateSamples, int begin, int end)
             {
-                const auto pitch = pitchFor (value, s, noteChannel, bendRange);
-                startNote (out, n, pitch, velocity, gateSamples, begin, end);
+                const auto pitch = pitchFor (value, s, bendRange);
+                startNote (out, n, pitch, velocity, gateSamples, begin, end,
+                          s.mpeEnabled, noteChannel, bendRange);
             };
 
             if (s.polyMode)

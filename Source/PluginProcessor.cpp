@@ -67,6 +67,7 @@ RavelAudioProcessor::RavelAudioProcessor()
     pCcSwing       = apvts.getRawParameterValue (params::ccSwingId);
     pVoiceCount    = apvts.getRawParameterValue (params::voiceCountId);
     pPolyMode      = apvts.getRawParameterValue (params::polyModeId);
+    pMpeEnabled    = apvts.getRawParameterValue (params::mpeEnabledId);
     pNoteLaneCount = apvts.getRawParameterValue (params::noteLaneCountId);
     pCcLaneCount   = apvts.getRawParameterValue (params::ccLaneCountId);
 }
@@ -171,6 +172,7 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
     s.ccSwing           = pCcSwing->load();
     s.voiceCount        = (int) std::lround (pVoiceCount->load());
     s.polyMode          = pPolyMode->load() > 0.5f;
+    s.mpeEnabled        = pMpeEnabled->load() > 0.5f;
 
     return s;
 }
@@ -231,6 +233,13 @@ void RavelAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     }
 
     engine.process (buildSnapshot(), midiMessages, numSamples, ppqAtStart, ppqPerSample, running);
+
+    // Mirrored out to the external port (if one is selected) in addition to, not instead of,
+    // the buffer above -- the host still gets every event exactly as before, so leaving the
+    // track's own "MIDI To" disconnected in Ableton is what actually makes this the only path
+    // an event takes, not anything this plugin decides on its own.
+    for (const auto metadata : midiMessages)
+        externalMidiOutput.pushMessage (metadata.getMessage());
 }
 
 //==============================================================================
@@ -260,6 +269,12 @@ void RavelAudioProcessor::setStateInformation (const void* data, int sizeInBytes
             // Whatever this instance held before the host handed it a session is not a state
             // the user chose, so it is not one Ctrl+Z should be able to walk back into.
             undoHistory.clear();
+
+            // Reconnects to whatever external MIDI port this instance was pointed at when the
+            // session was saved. A missing or now-absent identifier (a fresh instance, or a
+            // loopMIDI port that doesn't exist on this machine) just leaves it closed --
+            // openDevice() already handles that by returning nullptr.
+            externalMidiOutput.setDevice (apvts.state.getProperty ("externalMidiDevice", "").toString());
         }
     }
 }
