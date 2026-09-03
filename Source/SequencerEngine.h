@@ -102,6 +102,14 @@ public:
                    unused because every lane triggers itself.
         */
         bool  polyMode      = false;
+
+        /** True: every simultaneously-sounding note gets its own MIDI channel (a standard
+            MPE Lower Zone) instead of sharing the Note Channel's one pitch wheel. Off
+            reproduces today's single-channel behaviour exactly. Orthogonal to polyMode --
+            applies in mixed mode too, wherever Gate > 100% lets one step's note overlap
+            the next.
+        */
+        bool  mpeEnabled    = false;
     };
 
     //==========================================================================
@@ -130,6 +138,14 @@ public:
     */
     static constexpr int voicesPerLane = 8;
     static constexpr int maxVoices     = params::numLanes * voicesPerLane;
+
+    // Standard MPE Lower Zone: channel 1 is the master, channels 2-16 are the 15 member
+    // channels each simultaneous note gets its own pitch bend on. Fixed, not user-configurable
+    // in v1 -- keeping the zone shape constant is what keeps the channel pool a plain
+    // fixed-size array instead of something that has to be resized on a parameter change.
+    static constexpr int mpeMasterChannel     = 1;
+    static constexpr int mpeMemberChannelBase = 2;
+    static constexpr int mpeMemberChannels    = 15;
 
     //==========================================================================
     // Read by the editor's timer. Plain relaxed atomics: a torn read just means
@@ -192,16 +208,44 @@ private:
 
     Voice voices[maxVoices];
 
+    /** One MPE member channel's own bookkeeping. Decoupled from the voice-slot pool above on
+        purpose: up to maxVoices (32) slots can be logically active in poly mode, but only
+        mpeMemberChannels (15) physical channels exist, so which slot currently owns a
+        channel, and whether that channel's bend range has been announced, are tracked and
+        stolen independently of slot stealing.
+    */
+    struct MpeChannelSlot
+    {
+        int  voiceSlot = -1;      // index into voices[], or -1 when this channel is free
+        bool rangeSent = false;   // has RPN 0 gone out on this channel since it was last primed
+    };
+
+    MpeChannelSlot mpeChannels[mpeMemberChannels];
+
     bool anyVoiceActive() const noexcept;
 
     /** Counts down each sounding voice and emits note-off as they expire. */
     void advanceVoices (juce::MidiBuffer& out, int sampleOffset);
+
+    /** The single place a voice actually goes off: note-off, freeing the slot, and -- if the
+        slot was sounding on an MPE member channel -- freeing that channel back to the pool
+        too. Every voice-retiring path funnels through here so the pool can never go stale
+        relative to voices[].
+    */
+    void releaseVoice (juce::MidiBuffer& out, int sampleOffset, int slot);
 
     /** Picks a slot in [begin, end) for a new note, emitting a note-off first if it has to
         reuse or steal one. Returns the index to fill in.
     */
     int allocateVoice (juce::MidiBuffer& out, int sampleOffset, int note, int channel,
                        int begin, int end);
+
+    /** Picks a free member channel for a new note-on, stealing the one closest to finishing
+        (same "least audible loss" rule allocateVoice() uses for slots) if all 15 are already
+        sounding. Returns an index 0..mpeMemberChannels-1; the caller still has to record
+        which voice slot ends up owning it.
+    */
+    int allocateMpeChannel (juce::MidiBuffer& out, int sampleOffset);
 
     /** Whether the current mode and voice count still own a slot. In poly mode a lane's
         block always starts at the same index, so only the offset within it is checked --
@@ -211,15 +255,17 @@ private:
     /** Releases voices in slots the current mode and voice count no longer own. */
     void retireUnownedVoices (juce::MidiBuffer& out, int sampleOffset, int voiceLimit, bool polyMode);
 
-    /** The note, channel and pitch bend a 0..1 value maps to under the current pitch setting. */
+    /** The note and pitch bend a 0..1 value maps to under the current pitch setting. Channel
+        is resolved separately, by startNote() -- it is no longer a function of pitch mapping,
+        since MPE picks it from the member-channel pool rather than the fixed note channel.
+    */
     struct PitchResult
     {
         int   note     = 0;
-        int   channel  = 1;
         int   bend     = -1;    // -1 means no bend is needed
     };
 
-    static PitchResult pitchFor (float value, const Snapshot& s, int noteChannel, int bendRange) noexcept;
+    static PitchResult pitchFor (float value, const Snapshot& s, int bendRange) noexcept;
 
     /** The MIDI velocity for a note fired by a given step: the global Velocity scaled by
         that step's own accent. */
@@ -228,9 +274,12 @@ private:
     /** That step's own gate length, as a percentage of the step's length. */
     static float gateFor (const Snapshot& s, int laneIndex, int stepIndex) noexcept;
 
-    /** Allocates a slot in [begin, end), emits the bend and note-on, and arms the gate. */
+    /** Resolves the channel (fixed, or a freshly pooled MPE member channel), allocates a slot
+        in [begin, end), emits the bend and note-on, and arms the gate.
+    */
     void startNote (juce::MidiBuffer& out, int sampleOffset, const PitchResult& pitch,
-                    int velocity, int gateSamples, int begin, int end);
+                    int velocity, int gateSamples, int begin, int end,
+                    bool mpeOn, int fixedChannel, int bendRange);
 
     float slewedValue = 0.0f;
     int   lastCcValue = -1;
@@ -254,6 +303,20 @@ private:
     // Slot ownership differs between the two modes, so anything still sounding when the
     // switch is flipped is released rather than left for the other mode to inherit.
     int   configuredPolyMode  = -1;
+
+    // Mirrors configuredMode/configuredBendRange/configuredChannel above, but for the MPE
+    // path: RPN 6 addresses the whole zone from the master channel, and RPN 0 has to reach
+    // each member channel individually rather than one shared note channel. Kept fully
+    // separate from the trio above so the non-MPE path's behaviour is untouched, byte for
+    // byte, whenever MPE is off.
+    bool  configuredMpeOn         = false;   // has RPN 6 gone out for the current "on" stretch
+    int   configuredMpeWantedMode = -1;      // 0 while pitch rides the wheel, 1 while it does not
+    int   configuredMpeBendRange  = -1;
+
+    // Channel scheme differs between MPE on/off, same reasoning as configuredPolyMode above:
+    // a flip mid-performance releases everything rather than leave it addressed under the
+    // scheme that just left.
+    int   configuredMpeFlag       = -1;
 
     std::atomic<int>   noteUiStep[params::numLanes] {};
     std::atomic<int>   ccUiStep[params::numLanes] {};
