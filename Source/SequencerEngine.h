@@ -106,9 +106,12 @@ public:
 
         /** True: every simultaneously-sounding note gets its own MIDI channel (a standard
             MPE Lower Zone) instead of sharing the Note Channel's one pitch wheel. Off
-            reproduces today's single-channel behaviour exactly. Orthogonal to polyMode --
-            applies in mixed mode too, wherever Gate > 100% lets one step's note overlap
-            the next.
+            reproduces the single-channel behaviour that predated it, where overlapping notes
+            share one wheel and so cannot hold different microtones.
+
+            The plugin always passes true -- there is no parameter behind this any more. It
+            stays a field so the engine's own tests can still drive both allocation paths,
+            and so midiChannel, which only the false path reads, keeps a defined meaning.
         */
         bool  mpeEnabled    = false;
     };

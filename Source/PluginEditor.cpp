@@ -189,7 +189,6 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
     quantizeParam    = state.getRawParameterValue (params::quantizeId);
     scaleParam       = state.getRawParameterValue (params::scaleId);
     polyModeParam    = state.getRawParameterValue (params::polyModeId);
-    mpeEnabledParam  = state.getRawParameterValue (params::mpeEnabledId);
     noteLaneCountParam = state.getRawParameterValue (params::noteLaneCountId);
     ccLaneCountParam   = state.getRawParameterValue (params::ccLaneCountId);
 
@@ -272,16 +271,10 @@ void RavelAudioProcessorEditor::buildWorkspaces()
     auto& output = notesSettingsPage.addColumn ("Output");
     bendRangeRow = output.add (params::bendRangeId, "Bend range");
     bendRangeRow->setTooltip ("This property has to match your instrument's pitch bend range value");
-    noteChannelRow = output.add (params::midiChannelId, "Note channel");
     output.add (params::noteOffsetId, "Offset")
           ->setTooltip ("Transposes every note by whole octaves, after Root, Range and the "
                         "scale have resolved the pitch -- the pattern keeps its shape and "
                         "its scale degrees, it just moves. Notes clamp to the MIDI range");
-    output.add (params::mpeEnabledId, "MPE")
-          ->setTooltip ("Gives every simultaneously-sounding note its own MIDI channel -- a "
-                        "standard MPE zone, master channel 1 plus member channels 2-16 -- so "
-                        "overlapping notes bend independently instead of sharing Note "
-                        "Channel's one wheel. Note Channel is unused while this is on");
 
     auto& voice = notesSettingsPage.addColumn ("Voice");
     voice.add (params::velocityId,   "Velocity");
@@ -666,20 +659,6 @@ void RavelAudioProcessorEditor::timerCallback()
             // select. Mix mode and Depth are deliberately left alone: both still shape the
             // mix that drives the CC output, and Depth additionally becomes note velocity.
             triggerRow->setDimmed (poly != 0);
-        }
-    }
-
-    if (mpeEnabledParam != nullptr)
-    {
-        const int mpe = mpeEnabledParam->load() > 0.5f ? 1 : 0;
-
-        if (mpe != lastMpeEnabled)
-        {
-            lastMpeEnabled = mpe;
-
-            // The zone's master channel is fixed at 1 while MPE is on, so Note Channel has
-            // nothing left to do.
-            noteChannelRow->setDimmed (mpe != 0);
         }
     }
 }

@@ -336,17 +336,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     layout.add (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { polyModeId, versionHint }, "Poly", false));
 
-    // On by default: every simultaneously-sounding note gets its own MIDI channel -- a
-    // standard MPE Lower Zone, master channel 1 plus member channels 2-16 -- so overlapping
-    // notes each carry their own independent pitch bend instead of sharing the Note
-    // Channel's one wheel. That is the behaviour microtonal offsets and per-lane bends were
-    // designed around, so it is what a fresh instance should do; a session saved before this
-    // parameter existed carries no value for it and therefore also loads MPE-on, which is a
-    // deliberate change from the single-channel output those sessions were written with.
-    // Not user-configurable beyond on/off in v1: no separate zone-size parameter.
-    layout.add (std::make_unique<juce::AudioParameterBool> (
-        juce::ParameterID { mpeEnabledId, versionHint }, "MPE", true));
-
     return layout;
 }
 

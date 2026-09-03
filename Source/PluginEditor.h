@@ -152,10 +152,6 @@ private:
     ControlRow* bendRangeRow = nullptr;
     ControlRow* triggerRow = nullptr;
 
-    // Dimmed while MPE is on -- the zone's master channel is fixed at 1 then, not driven by
-    // this parameter.
-    ControlRow* noteChannelRow = nullptr;
-
     std::atomic<float>* quantizeParam = nullptr;
     int lastQuantize = -1;
 
@@ -166,9 +162,6 @@ private:
 
     std::atomic<float>* polyModeParam = nullptr;
     int lastPolyMode = -1;
-
-    std::atomic<float>* mpeEnabledParam = nullptr;
-    int lastMpeEnabled = -1;
 
     // Global, not per-workspace -- routes both Note and CC output alike, so it sits in its own
     // row under the header rather than in either tab's settings page. Styled as a valueRow

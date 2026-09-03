@@ -346,11 +346,6 @@ inline constexpr auto ccSwingId      = "cc_swing";
 inline constexpr auto voiceCountId   = "voices";
 inline constexpr auto polyModeId     = "poly_mode";
 
-// Gives every simultaneously-sounding note its own MIDI channel instead of sharing the Note
-// Channel's one pitch wheel. Orthogonal to Poly -- it applies in mixed mode too, wherever
-// Gate > 100% lets one step's note overlap the next.
-inline constexpr auto mpeEnabledId   = "mpe_on";
-
 /** How many lanes this instance currently has in each pool, 1 to numLanes. Independent --
     growing one stack does not cost the other any room. */
 inline constexpr auto noteLaneCountId = "note_lane_count";

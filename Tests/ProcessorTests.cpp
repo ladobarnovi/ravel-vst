@@ -740,10 +740,10 @@ int main()
     }
 
     //==========================================================================
-    // Confirms the mpe_on parameter actually reaches the engine's channel allocation, not
-    // just the Snapshot field -- EngineTests exercises the allocator directly, this exercises
-    // the wiring APVTS -> buildSnapshot() -> SequencerEngine that carries the flag to it.
-    section ("MPE parameter reaches the engine");
+    // MPE is not a parameter any more -- buildSnapshot() hardwires it on. EngineTests
+    // exercises the allocator directly; this checks the plugin really is speaking MPE out of
+    // the box, with nothing set, which is the whole point of having removed the switch.
+    section ("A stock instance speaks MPE");
     {
         const auto twoOverlappingNoteOnChannels = [] (RavelAudioProcessor& processor)
         {
@@ -783,24 +783,28 @@ int main()
             return onChannels;
         };
 
-        RavelAudioProcessor mpeOn;
-        setChoice (mpeOn, params::mpeEnabledId, 1);
-        const auto onChannels = twoOverlappingNoteOnChannels (mpeOn);
+        RavelAudioProcessor processor;   // untouched: no MPE parameter left to set
+        const auto onChannels = twoOverlappingNoteOnChannels (processor);
 
-        check (onChannels.size() >= 2, "two overlapping notes fire with MPE on");
+        check (onChannels.size() >= 2, "two overlapping notes fire");
         check (onChannels.size() >= 2 && onChannels[0] != onChannels[1],
-               "and land on different channels -- the parameter reached the allocator");
+               "and land on different channels with nothing configured -- MPE is on");
 
-        RavelAudioProcessor mpeOff;   // explicit: mpe_on now defaults to on
-        setChoice (mpeOff, params::mpeEnabledId, 0);
-        const auto offChannels = twoOverlappingNoteOnChannels (mpeOff);
+        // A member channel, never the zone master. Getting this wrong would look like MPE
+        // in a channel count while actually stacking notes on the master.
+        bool allMembers = ! onChannels.empty();
 
-        bool allChannel1 = ! offChannels.empty();
+        for (int channel : onChannels)
+            allMembers = allMembers && channel >= SequencerEngine::mpeMemberChannelBase
+                                    && channel < SequencerEngine::mpeMemberChannelBase
+                                                   + SequencerEngine::mpeMemberChannels;
 
-        for (int channel : offChannels)
-            allChannel1 = allChannel1 && channel == 1;
+        check (allMembers, "every note-on sits on a member channel, not the master");
 
-        check (allChannel1, "with MPE off every note-on still stays on channel 1");
+        // The switch is gone, not merely defaulted: a host or an old session cannot bring it
+        // back by writing mpe_on into the state.
+        check (processor.apvts.getParameter ("mpe_on") == nullptr,
+               "the mpe_on parameter no longer exists");
     }
 
     //==========================================================================

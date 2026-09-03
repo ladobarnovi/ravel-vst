@@ -67,7 +67,6 @@ RavelAudioProcessor::RavelAudioProcessor()
     pCcSwing       = apvts.getRawParameterValue (params::ccSwingId);
     pVoiceCount    = apvts.getRawParameterValue (params::voiceCountId);
     pPolyMode      = apvts.getRawParameterValue (params::polyModeId);
-    pMpeEnabled    = apvts.getRawParameterValue (params::mpeEnabledId);
     pNoteLaneCount = apvts.getRawParameterValue (params::noteLaneCountId);
     pCcLaneCount   = apvts.getRawParameterValue (params::ccLaneCountId);
 }
@@ -172,7 +171,10 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
     s.ccSwing           = pCcSwing->load();
     s.voiceCount        = (int) std::lround (pVoiceCount->load());
     s.polyMode          = pPolyMode->load() > 0.5f;
-    s.mpeEnabled        = pMpeEnabled->load() > 0.5f;
+    // Not a parameter: the plugin always speaks MPE. The engine keeps the flag because it
+    // is what its own tests toggle to cover both channel-allocation paths, but nothing the
+    // user can reach turns it off, and s.midiChannel is inert as a result.
+    s.mpeEnabled        = true;
 
     return s;
 }
