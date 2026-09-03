@@ -47,6 +47,12 @@ private:
 
     RavelAudioProcessor& processorRef;
 
+    // Every setTooltip() call across this editor is inert without this -- SettableTooltipClient
+    // only stores the string, this is what watches the mouse and actually pops the popup.
+    // Scoped to `this` rather than the desktop-wide default so it dies with the editor instead
+    // of a global mouse listener outliving a closed plugin window.
+    juce::TooltipWindow tooltipWindow { this };
+
     /** Everything else is a child of this rather than of the editor itself, laid out at a
         fixed native pixel size. The editor scales it with an AffineTransform to fill
         whatever size the user has dragged the window to -- one transform on one component,
