@@ -595,7 +595,7 @@ void SequencerEngine::process (const Snapshot& s,
             // under an integer whenever the numbers aren't exactly representable in binary
             // -- ppqPerSample is 1/24000 at 120bpm/48kHz -- which pushed boundaries a
             // sample late and made step lengths alternate between 5999 and 6001 samples.
-            const auto globalIndex = resolveGlobalIndex (ppq, stepPpq, s.noteSwing);
+            const auto globalIndex = resolveGlobalIndex (ppq, stepPpq, s.swing);
             const bool advanced    = (globalIndex != state.lastGlobalIndex);
 
             const int step = stepIndexFor (globalIndex, length, ln.direction, laneIndex);
@@ -656,8 +656,8 @@ void SequencerEngine::process (const Snapshot& s,
 
         //----------------------------------------------------------------------
         // CC-lane fold. Same shape as the note-lane fold above -- each active step adds its
-        // share of Depth -- but over the CC pool's own lanes and its own Swing, with no
-        // Trigger concept: CC output is never "triggered", it continuously reflects the fold.
+        // share of Depth -- but over the CC pool's own lanes, with no Trigger concept: CC
+        // output is never "triggered", it continuously reflects the fold.
         float ccAccumulator = 0.0f;
 
         for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
@@ -669,7 +669,7 @@ void SequencerEngine::process (const Snapshot& s,
                 0, (int) params::divisionNames.size() - 1, ln.division)];
             const int length = juce::jlimit (1, params::numSteps, ln.length);
 
-            const auto globalIndex = resolveGlobalIndex (ppq, stepPpq, s.ccSwing);
+            const auto globalIndex = resolveGlobalIndex (ppq, stepPpq, s.swing);
             const bool advanced    = (globalIndex != state.lastGlobalIndex);
 
             const int step = stepIndexFor (globalIndex, length, ln.direction, laneIndex);

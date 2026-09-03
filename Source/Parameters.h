@@ -338,8 +338,11 @@ inline constexpr auto slewId         = "slew";
 // all key off a single ppq today) for a narrow benefit.
 inline constexpr auto freeRunId      = "free_run";
 
-inline constexpr auto noteSwingId    = "swing";
-inline constexpr auto ccSwingId      = "cc_swing";
+// One Swing across both stacks. They answer to the same host clock, and a Note lane and a
+// CC lane swung against each other read as drift rather than as groove -- so this is the
+// same shared-switch reasoning as Free Run above. Keeps the "swing" id the Note-only
+// version already used, so a saved session's value carries straight over.
+inline constexpr auto swingId        = "swing";
 
 inline constexpr auto voiceCountId   = "voices";
 inline constexpr auto polyModeId     = "poly_mode";

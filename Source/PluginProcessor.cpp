@@ -59,8 +59,7 @@ RavelAudioProcessor::RavelAudioProcessor()
     pCcOffset      = apvts.getRawParameterValue (params::ccOffsetId);
     pSlew          = apvts.getRawParameterValue (params::slewId);
     pFreeRun       = apvts.getRawParameterValue (params::freeRunId);
-    pNoteSwing     = apvts.getRawParameterValue (params::noteSwingId);
-    pCcSwing       = apvts.getRawParameterValue (params::ccSwingId);
+    pSwing         = apvts.getRawParameterValue (params::swingId);
     pVoiceCount    = apvts.getRawParameterValue (params::voiceCountId);
     pPolyMode      = apvts.getRawParameterValue (params::polyModeId);
     pNoteLaneCount = apvts.getRawParameterValue (params::noteLaneCountId);
@@ -161,8 +160,7 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
     s.noteOctaves       = (int) std::lround (pNoteOffset->load());
     s.ccOffset          = pCcOffset->load();
     s.slewMs            = pSlew->load();
-    s.noteSwing         = pNoteSwing->load();
-    s.ccSwing           = pCcSwing->load();
+    s.swing             = pSwing->load();
     s.voiceCount        = (int) std::lround (pVoiceCount->load());
     s.polyMode          = pPolyMode->load() > 0.5f;
     // Not a parameter: the plugin always speaks MPE. The engine keeps the flag because it

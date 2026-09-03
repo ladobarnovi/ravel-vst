@@ -305,12 +305,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         juce::ParameterID { voiceCountId, versionHint }, "Voices", 1, 8, 1));
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { noteSwingId, versionHint }, "Swing",
-        juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f,
-        juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
-
-    layout.add (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { ccSwingId, versionHint }, "CC Swing",
+        juce::ParameterID { swingId, versionHint }, "Swing",
         juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f,
         juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
 

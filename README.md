@@ -28,7 +28,7 @@ they are two separate sequencers sharing one clock, one transport and one plugin
 | Per-step | Value, Velocity, Chance, Gate | Value, Chance |
 | Per-lane shaping | Direction | — (always Forward) |
 | Per-lane output | — | Its own Send / Number / Channel / Offset |
-| Own Swing | Yes | Yes, independent |
+| Swing | Shared — one control, on the Notes page | Shared — driven by the Notes page |
 
 CC lanes deliberately carry less. Velocity and Gate are only ever arguments to *start a note*,
 and a CC lane never starts one, so it has neither — which also keeps the plugin's automatable
@@ -75,8 +75,9 @@ rather than drifting. Same design as Random direction, for the same reason.
 ### Swing
 
 **Swing** delays every other step of the absolute grid, so it stays anchored to the bar rather
-than to wherever a short pattern happened to start. Each stack has **its own Swing** — Notes and
-CC answer to their own clocks, so they can be shifted differently, or not at all.
+than to wherever a short pattern happened to start. It is **one control across both stacks**,
+living on the Notes page: they fold off the same host clock, and a Note lane swung against a CC
+lane reads as drift rather than as groove. Same shared-switch reasoning as Free Run.
 
 It moves step *boundaries*, which meant reworking how the step index is derived. It's still
 stateless — rather than `floor(ppq / stepPpq)`, it picks the largest candidate index whose
@@ -189,7 +190,8 @@ whichever of the two top-level tabs it belongs to, laid out as a flat row of col
 | Column | Controls |
 |---|---|
 | Output | Send, Number, Channel, Offset, Slew |
-| Clock | Swing |
+
+Swing is not repeated here — it is shared, and lives on the Notes page.
 
 The two Offsets are not the same control. The **CC** one shifts that stack's fold before it
 becomes the Mix CC, 0–100 %. The **Notes** one transposes in whole octaves, −3 … +3, and applies
@@ -410,9 +412,9 @@ out of scope for a plugin only running on your own machine.)
 .\build\RavelProcessorTests_artefacts\Release\RavelProcessorTests.exe
 ```
 
-190 checks across two suites, neither needing a plugin host.
+192 checks across two suites, neither needing a plugin host.
 
-`Tests/EngineTests.cpp` (115 checks) drives `SequencerEngine` over a synthetic timeline. The
+`Tests/EngineTests.cpp` (117 checks) drives `SequencerEngine` over a synthetic timeline. The
 engine takes PPQ positions as plain arguments rather than reading a playhead itself, which is
 what makes that possible. Covers step timing, gate length, per-lane length and rate, disabled
 steps, the fold, transport jumps, stuck-note release on stop, directions, probability,

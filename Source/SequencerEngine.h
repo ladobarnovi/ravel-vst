@@ -90,10 +90,9 @@ public:
         // Smooths the Mix CC and every CC lane's own tap. Never touches pitch.
         float slewMs        = 0.0f;
 
-        // Each pool answers to its own clock, so Swing is independent per pool -- a Note
-        // lane and a CC lane can be shifted differently, or not at all.
-        float noteSwing     = 0.0f;
-        float ccSwing       = 0.0f;
+        // One Swing for both pools: they run off the same host clock, and swinging a Note
+        // lane against a CC lane reads as drift rather than as groove.
+        float swing         = 0.0f;
 
         int   voiceCount    = 1;
 

@@ -103,8 +103,7 @@ private:
     std::atomic<float>* pCcOffset     = nullptr;
     std::atomic<float>* pSlew         = nullptr;
     std::atomic<float>* pFreeRun      = nullptr;
-    std::atomic<float>* pNoteSwing    = nullptr;
-    std::atomic<float>* pCcSwing      = nullptr;
+    std::atomic<float>* pSwing        = nullptr;
     std::atomic<float>* pVoiceCount   = nullptr;
     std::atomic<float>* pPolyMode     = nullptr;
     std::atomic<float>* pNoteLaneCount = nullptr;

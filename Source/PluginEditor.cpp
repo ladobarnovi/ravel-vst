@@ -283,8 +283,10 @@ void RavelAudioProcessorEditor::buildWorkspaces()
                        "stack mixing into one");
 
     auto& clock = notesSettingsPage.addColumn ("Clock");
-    clock.add (params::noteSwingId,  "Swing");
-    clock.add (params::freeRunId,    "Free run");
+    clock.add (params::swingId,   "Swing")
+         ->setTooltip ("Delays every other step of the grid. Shared with the CC stack -- "
+                       "both fold off the same host clock");
+    clock.add (params::freeRunId, "Free run");
     triggerRow = clock.add (params::noteTriggerSrcId, "Trigger");
 
     notesWorkspace.addAndMakeVisible (notesSettingsPage);
@@ -303,9 +305,8 @@ void RavelAudioProcessorEditor::buildWorkspaces()
             ->setTooltip ("Smooths the Mix CC and every CC lane's own tap. Never touches "
                          "pitch");
 
-    auto& ccClock = ccSettingsPage.addColumn ("Clock");
-    ccClock.add (params::ccSwingId, "Swing");
-
+    // No Clock column here: Swing is shared with the Notes page, which is where it lives,
+    // and Free run and Trigger were never CC concepts.
     ccWorkspace.addAndMakeVisible (ccSettingsPage);
 }
 

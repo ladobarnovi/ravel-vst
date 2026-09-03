@@ -176,8 +176,7 @@ namespace
             lane.ccOn      = false;
         }
 
-        s.noteSwing  = 0.0f;
-        s.ccSwing    = 0.0f;
+        s.swing      = 0.0f;
         s.voiceCount = 1;
 
         s.noteLanes[0].depth = 1.0f;
@@ -1295,7 +1294,7 @@ int main()
     {
         auto s = baseSnapshot();
         s.noteLanes[0].length = 4;
-        s.noteSwing = 0.5f;      // delay every other step by 25% of a step
+        s.swing = 0.5f;      // delay every other step by 25% of a step
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1321,11 +1320,49 @@ int main()
     }
 
     //==========================================================================
+    section ("One Swing shifts the CC stack too");
+    {
+        // Swing is a single control across both stacks, so a CC lane's boundaries have to
+        // move with it -- the same field, not a Note-only one the CC fold happens to ignore.
+        const auto firstFullCc = [] (float swing)
+        {
+            auto s = baseSnapshot();
+            s.swing = swing;
+            s.ccLanes[0].length = 2;
+            s.ccLanes[0].values[0] = 0.0f;
+            s.ccLanes[0].values[1] = 1.0f;
+            s.ccLanes[0].ccOn = true;
+            s.ccLanes[0].ccNumber = 20;
+
+            SequencerEngine engine;
+            engine.prepare (sampleRate);
+
+            for (const auto& e : only (run (engine, s, 4 * samplesPerStep), controller))
+                if (e.number == 20 && e.value == 127)
+                    return e.sample;
+
+            return -1;
+        };
+
+        const int plain  = firstFullCc (0.0f);
+        const int swung  = firstFullCc (0.5f);
+
+        // The tap is emitted on a 1ms grid, so allow one interval either side of the shift.
+        const int expectedShift = (int) std::lround (0.25 * samplesPerStep);
+        const int ccInterval    = (int) std::lround (sampleRate * 0.001);
+
+        check (plain >= 0 && swung >= 0, "the CC lane reaches full scale in both runs");
+        check (plain >= 0 && swung >= 0
+                 && std::abs ((swung - plain) - expectedShift) <= ccInterval,
+               "the shared Swing delays the CC lane's step by the same half-swing");
+    }
+
+    //==========================================================================
     section ("Zero swing reproduces the plain grid");
     {
         auto s = baseSnapshot();
         s.noteLanes[0].length = 4;
-        s.noteSwing = 0.0f;
+        s.swing = 0.0f;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
