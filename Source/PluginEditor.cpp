@@ -271,6 +271,7 @@ void RavelAudioProcessorEditor::buildWorkspaces()
 
     auto& output = notesSettingsPage.addColumn ("Output");
     bendRangeRow = output.add (params::bendRangeId, "Bend range");
+    bendRangeRow->setTooltip ("This property has to match your instrument's pitch bend range value");
     noteChannelRow = output.add (params::midiChannelId, "Note channel");
     output.add (params::noteOffsetId, "Offset");
     output.add (params::mpeEnabledId, "MPE")
