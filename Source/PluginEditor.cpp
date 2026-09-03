@@ -15,6 +15,11 @@ namespace
     constexpr int gap           = 8;
     constexpr int margin        = 12;
 
+    // The External MIDI row's own height. Same as laneBarHeight -- it carries a button
+    // (Rescan) the same way that bar's Add lane does -- rather than theme::rowHeight, which is
+    // sized for a bare caption-plus-value row with nothing beside it.
+    constexpr int externalMidiRowHeight = laneBarHeight;
+
     // The window's native (100%-zoom) width: whatever a lane needs to draw 16 steps at
     // lane::stepSlotWidth, plus the margin either side. Derived rather than typed in, so
     // changing the step width moves the window with it instead of leaving a gap between
@@ -43,6 +48,7 @@ namespace
     int windowHeightForWorkspace (int numActiveLanes, int laneHeightForKind, int settingsPanelHeight)
     {
         return margin * 2 + headerHeight + gap
+                 + externalMidiRowHeight + gap
                  + TabStrip::height + gap
                  + numActiveLanes * (laneHeightForKind + gap)
                  + laneBarHeight + gap
@@ -99,6 +105,40 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
     content.addAndMakeVisible (redoButton);
 
     updateHistoryButtons();
+
+    // Styled exactly like an APVTS-bound value row (see Controls.cpp) even though it isn't
+    // one -- theme::Role::valueRow is what the LookAndFeel keys off, not the presence of an
+    // attachment, so a plain ComboBox picks up the same "caption ....... value" rendering for
+    // free.
+    theme::setRole (externalMidiBox, theme::Role::valueRow);
+    theme::setCaption (externalMidiBox, "External MIDI");
+    externalMidiBox.setTooltip ("Mirrors every note and CC this instance generates straight out "
+                                "a system MIDI port -- a loopMIDI port, most likely -- bypassing "
+                                "Ableton's own MIDI routing entirely. The host still receives "
+                                "the same events as always; this only adds a second destination");
+    externalMidiBox.onChange = [this]
+    {
+        const int id = externalMidiBox.getSelectedId();
+        const juce::String identifier = id >= 2 && id - 2 < externalMidiDeviceIds.size()
+                                            ? externalMidiDeviceIds[id - 2]
+                                            : juce::String();
+
+        processorRef.externalMidiOutput.setDevice (identifier);
+
+        // Plain state-tree property rather than an APVTS parameter -- see the field's own
+        // comment in PluginEditor.h for why -- restored in PluginProcessor::setStateInformation.
+        processorRef.apvts.state.setProperty ("externalMidiDevice", identifier, nullptr);
+    };
+    content.addAndMakeVisible (externalMidiBox);
+
+    theme::styleActionButton (externalMidiRescanButton);
+    externalMidiRescanButton.setTooltip ("Re-scan for MIDI ports -- a loopMIDI port created "
+                                         "after this window opened won't appear until this is "
+                                         "clicked");
+    externalMidiRescanButton.onClick = [this] { populateExternalMidiDevices(); };
+    content.addAndMakeVisible (externalMidiRescanButton);
+
+    populateExternalMidiDevices();
 
     auto& state = processorRef.apvts;
 
@@ -183,6 +223,33 @@ RavelAudioProcessorEditor::~RavelAudioProcessorEditor()
 {
     stopTimer();
     setLookAndFeel (nullptr);
+}
+
+//==============================================================================
+void RavelAudioProcessorEditor::populateExternalMidiDevices()
+{
+    const auto currentIdentifier = processorRef.externalMidiOutput.getCurrentDeviceIdentifier();
+
+    externalMidiBox.clear (juce::dontSendNotification);
+    externalMidiDeviceIds.clear();
+
+    externalMidiBox.addItem ("Host MIDI only", 1);
+    int selectedId = 1;
+
+    for (const auto& info : juce::MidiOutput::getAvailableDevices())
+    {
+        externalMidiDeviceIds.add (info.identifier);
+        const int itemId = externalMidiDeviceIds.size() + 1; // ids start at 2, list is 0-based
+
+        externalMidiBox.addItem (info.name, itemId);
+
+        if (info.identifier == currentIdentifier)
+            selectedId = itemId;
+    }
+
+    // dontSendNotification: this reflects state the processor already has, so it must not
+    // loop back through onChange and call setDevice() again.
+    externalMidiBox.setSelectedId (selectedId, juce::dontSendNotification);
 }
 
 //==============================================================================
@@ -482,6 +549,16 @@ void RavelAudioProcessorEditor::layoutContent()
     undoButton.setBounds (history.removeFromLeft (historyButton));
     history.removeFromLeft (4);
     redoButton.setBounds (history.removeFromLeft (historyButton));
+
+    r.removeFromTop (gap);
+
+    //--------------------------------------------------------------------------
+    auto externalMidiRow = r.removeFromTop (externalMidiRowHeight);
+
+    externalMidiRescanButton.setBounds (externalMidiRow.removeFromRight (
+        theme::actionButtonWidth ("Rescan", externalMidiRowHeight)));
+    externalMidiRow.removeFromRight (gap);
+    externalMidiBox.setBounds (externalMidiRow);
 
     r.removeFromTop (gap);
 

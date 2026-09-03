@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include "ExternalMidiOutput.h"
 #include "Parameters.h"
 #include "SequencerEngine.h"
 #include "UndoHistory.h"
@@ -46,6 +47,12 @@ public:
         It lives on the processor rather than the editor so that closing the plugin window
         does not throw the history away. */
     UndoHistory undoHistory { *this };
+
+    /** Mirrors every event this instance generates out to a system MIDI port, completely
+        outside Ableton's own MIDI routing -- see ExternalMidiOutput's own header for why.
+        Lives on the processor rather than the editor so the connection survives the editor
+        being closed. */
+    ExternalMidiOutput externalMidiOutput;
 
     const SequencerEngine& getEngine() const noexcept { return engine; }
 

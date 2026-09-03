@@ -164,5 +164,23 @@ private:
     std::atomic<float>* mpeEnabledParam = nullptr;
     int lastMpeEnabled = -1;
 
+    // Global, not per-workspace -- routes both Note and CC output alike, so it sits in its own
+    // row under the header rather than in either tab's settings page. Styled as a valueRow
+    // ComboBox (see theme::Role) even though it has no APVTS parameter behind it: there is
+    // nothing here for a host to automate or recall through undo, only an environment choice
+    // that differs machine to machine -- see ExternalMidiOutput's own header.
+    juce::ComboBox externalMidiBox;
+    juce::TextButton externalMidiRescanButton { "Rescan" };
+
+    // Parallel to the ComboBox's items from id 2 up (id 1 is the fixed "Host MIDI only"
+    // entry): externalMidiDeviceIds[id - 2] is that item's device identifier.
+    juce::StringArray externalMidiDeviceIds;
+
+    /** Re-enumerates system MIDI outputs and rebuilds the ComboBox's item list, keeping
+        whichever device is currently open selected if it's still in the list. Called once at
+        startup and again on demand from the Rescan button -- a port created in loopMIDI after
+        the plugin window opened otherwise never appears without reopening the editor. */
+    void populateExternalMidiDevices();
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RavelAudioProcessorEditor)
 };
