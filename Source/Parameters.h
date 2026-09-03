@@ -323,7 +323,8 @@ inline constexpr auto ccOnId         = "cc_on";
 inline constexpr auto ccNumberId     = "cc_num";
 inline constexpr auto ccChannelId    = "cc_ch";
 
-// Shifts the Note-lane mix before it becomes pitch.
+// Transposes the pitch the Note-lane fold resolves to, in whole octaves (-3..+3). Unlike
+// ccOffsetId it does not shift the fold itself -- see the note by its parameter definition.
 inline constexpr auto noteOffsetId   = "offset";
 
 // Shifts the CC-lane mix before it becomes the Mix CC. Independent of any CC lane's own

@@ -79,8 +79,9 @@ public:
         int   ccNumber      = 1;
         int   ccChannel     = 1;
 
-        // Shifts the Note-lane mix before it becomes pitch.
-        float noteOffset    = 0.0f;
+        // Transposes the resolved pitch by whole octaves. Applied in pitchFor(), after the
+        // fold and after the scale, so it never squashes the pattern against the mix clamp.
+        int   noteOctaves   = 0;
 
         // Shifts the CC-lane mix before it becomes the Mix CC. Independent of any CC
         // lane's own ccOffset, which shifts that lane's own tap instead.

@@ -287,10 +287,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     layout.add (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { ccChannelId, versionHint }, "CC Channel", 1, 16, 1));
 
-    layout.add (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { noteOffsetId, versionHint }, "Offset",
-        juce::NormalisableRange<float> (-1.0f, 1.0f, 0.001f), 0.0f,
-        juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
+    // Whole octaves, applied to the resolved pitch rather than to the fold that produced it.
+    // Shifting the fold instead would push the mix against its 0..1 clamp and flatten the top
+    // or bottom of the pattern; transposing afterwards moves every note by the same interval
+    // and leaves the pattern's shape -- and, in Quantize mode, its scale degrees -- intact.
+    // Notes still clamp to the MIDI range, so how much of a +/-3 octave shift is reachable
+    // depends on Root and Range.
+    layout.add (std::make_unique<juce::AudioParameterInt> (
+        juce::ParameterID { noteOffsetId, versionHint }, "Offset", -3, 3, 0,
+        juce::AudioParameterIntAttributes().withStringFromValueFunction (
+            [] (int v, int) { return (v > 0 ? "+" + juce::String (v) : juce::String (v)) + " oct"; })));
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { ccOffsetId, versionHint }, "CC Offset",

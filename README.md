@@ -204,8 +204,12 @@ whichever of the two top-level tabs it belongs to, laid out as a flat row of col
 | Output | Send, Number, Channel, Offset, Slew |
 | Clock | Swing |
 
-**Offset** shifts a stack's fold before it becomes pitch or CC: the Notes one is bipolar
-(−100 % … +100 %), the CC one is 0–100 %. **Slew** only ever smooths CC — the Mix CC and every
+The two Offsets are not the same control. The **CC** one shifts that stack's fold before it
+becomes the Mix CC, 0–100 %. The **Notes** one transposes in whole octaves, −3 … +3, and applies
+*after* Root, Range and the scale have resolved a pitch — so a pattern keeps its shape and its
+scale degrees and simply moves, instead of being squashed against the fold's 0–100 % clamp.
+Notes still clamp to the MIDI range, so how much of a ±3 octave shift is reachable depends on
+Root and Range. **Slew** only ever smooths CC — the Mix CC and every
 lane's own tap — and never touches pitch, so it lives on the CC tab. **Free run** is one shared
 switch for both stacks, because splitting it would mean running two independent timelines
 through the whole engine for a narrow benefit. **Trigger** picks which Note lane's advance fires
@@ -397,9 +401,9 @@ out of scope for a plugin only running on your own machine.)
 .\build\RavelProcessorTests_artefacts\Release\RavelProcessorTests.exe
 ```
 
-161 checks across two suites, neither needing a plugin host.
+183 checks across two suites, neither needing a plugin host.
 
-`Tests/EngineTests.cpp` (98 checks) drives `SequencerEngine` over a synthetic timeline. The
+`Tests/EngineTests.cpp` (117 checks) drives `SequencerEngine` over a synthetic timeline. The
 engine takes PPQ positions as plain arguments rather than reading a playhead itself, which is
 what makes that possible. Covers step timing, gate length, per-lane length and rate, disabled
 steps, the mix modes, transport jumps, stuck-note release on stop, directions, probability,
@@ -409,7 +413,7 @@ path — including that note number plus pitch bend reconstructs the intended fr
 that non-12 EDO scales land where the tuning says, and that the bend range is actually
 transmitted.
 
-`Tests/ProcessorTests.cpp` (63 checks) drives the real `RavelAudioProcessor::processBlock`
+`Tests/ProcessorTests.cpp` (66 checks) drives the real `RavelAudioProcessor::processBlock`
 through a mock playhead. This covers the layer where the plugin could compile, load and still
 emit nothing: playhead handling, the free-run fallback, the parameter snapshot, state
 round-trip, every pattern action, lane add/remove and its undo behaviour, and the MIDI

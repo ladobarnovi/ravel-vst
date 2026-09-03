@@ -165,7 +165,7 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
     s.ccOn              = pCcOn->load() > 0.5f;
     s.ccNumber          = (int) std::lround (pCcNumber->load());
     s.ccChannel         = (int) std::lround (pCcChannel->load());
-    s.noteOffset        = pNoteOffset->load();
+    s.noteOctaves       = (int) std::lround (pNoteOffset->load());
     s.ccOffset          = pCcOffset->load();
     s.slewMs            = pSlew->load();
     s.noteSwing         = pNoteSwing->load();

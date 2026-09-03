@@ -273,7 +273,10 @@ void RavelAudioProcessorEditor::buildWorkspaces()
     bendRangeRow = output.add (params::bendRangeId, "Bend range");
     bendRangeRow->setTooltip ("This property has to match your instrument's pitch bend range value");
     noteChannelRow = output.add (params::midiChannelId, "Note channel");
-    output.add (params::noteOffsetId, "Offset");
+    output.add (params::noteOffsetId, "Offset")
+          ->setTooltip ("Transposes every note by whole octaves, after Root, Range and the "
+                        "scale have resolved the pitch -- the pattern keeps its shape and "
+                        "its scale degrees, it just moves. Notes clamp to the MIDI range");
     output.add (params::mpeEnabledId, "MPE")
           ->setTooltip ("Gives every simultaneously-sounding note its own MIDI channel -- a "
                         "standard MPE zone, master channel 1 plus member channels 2-16 -- so "
