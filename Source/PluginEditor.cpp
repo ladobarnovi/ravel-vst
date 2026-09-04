@@ -457,10 +457,10 @@ void RavelAudioProcessorEditor::removeCcLane (int laneIndex)
 //==============================================================================
 void RavelAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    // The panel background itself is drawn by content, in its own (unscaled) coordinate
-    // space -- this fill is just the base coat, mostly covered but cheap insurance against
-    // any rounding gap at content's scaled edges.
-    g.fillAll (theme::background);
+    // The one ground the whole window sits on. content draws no rectangle of its own over
+    // it any more, so this is not a base coat under a panel -- it is the surface, and it
+    // reaches the window's edges rather than leaving a darker margin framing them.
+    g.fillAll (theme::surface);
 }
 
 void RavelAudioProcessorEditor::updateSizeConstraints()
@@ -506,7 +506,7 @@ void RavelAudioProcessorEditor::resized()
 
 namespace
 {
-    /** The lane-stack-plus-add-button-plus-settings layout, run once per workspace against
+    /** The lane-stack-plus-add-button-plus-footer layout, run once per workspace against
         that workspace's own bounds. Both get this same shape -- only the lane kind, lane
         height and settings page differ -- so it is written once rather than duplicated for
         Notes and for CC.
@@ -519,7 +519,12 @@ namespace
                          juce::OwnedArray<LaneComponent>& lanesArray, juce::TextButton& addButton,
                          TabPage& settingsPage)
     {
-        auto r = workspace.getLocalBounds();
+        // The workspace itself is full window width and runs to the window's bottom edge
+        // (see layoutContent) so that the footer below can span edge to edge and sit flush
+        // against the bottom -- a bar, not a card floating inside the outer margin. The lane
+        // stack and add-lane bar are not the footer, so they get that margin back here,
+        // horizontally, to stay aligned under the header and tab strip above them.
+        auto r = workspace.getLocalBounds().reduced (margin, 0);
 
         for (int lane = 0; lane < juce::jmin (activeLaneCount, lanesArray.size()); ++lane)
         {
@@ -535,11 +540,17 @@ namespace
 
         r.removeFromTop (gap);
 
-        // Everything left over is the settings block, and all of it -- not just the page's
-        // reduced bounds -- is what the workspace paints its own ground under, so the
-        // section runs edge to edge in the panel instead of floating inside it.
-        workspace.settingsArea = r;
-        settingsPage.setBounds (r.reduced (14, 8));
+        // The footer: full workspace width (not r's margin-inset width) and down to the
+        // workspace's own bottom edge, which is the window's bottom edge. See
+        // WorkspaceComponent::paint(). Its fill goes edge to edge, but the settings page
+        // inside it is inset by the same margin the lane stack and Add lane button use
+        // above -- reduced(margin, ...) rather than r's own bounds, since r is already
+        // margin-inset and reducing it again would double up -- so the Pitch/Output/Voice/
+        // Clock columns line up with the lane cards and the button, not with the bar's own
+        // wider edges.
+        workspace.settingsArea = juce::Rectangle<int> (0, r.getY(),
+                                                        workspace.getWidth(), workspace.getHeight() - r.getY());
+        settingsPage.setBounds (workspace.settingsArea.reduced (margin, 8));
     }
 }
 
@@ -563,8 +574,8 @@ void RavelAudioProcessorEditor::layoutContent()
     redoButton.setBounds (history.removeFromLeft (historyButton));
 
     //--------------------------------------------------------------------------
-    // Opposite the logo, flush against the header's right edge, on its own pill rather than
-    // the bare window background -- see ContentComponent::paint(). Global rather than
+    // Opposite the logo, flush against the header's right edge, on a raised pill rather than
+    // flat on the surface -- see ContentComponent::paint(). Global rather than
     // per-workspace, so the header is where it belongs: it routes both Note and CC output
     // alike, not something either tab owns.
     const int externalMidiChipWidth = externalMidiPadding * 2 + externalMidiComboWidth + gap
@@ -587,12 +598,14 @@ void RavelAudioProcessorEditor::layoutContent()
     outputTabs.setBounds (r.removeFromTop (TabStrip::height));
     r.removeFromTop (gap);
 
-    // Both workspaces get the same remaining bounds; the tab strip decides which one is
-    // visible. The panel background itself tracks whichever is actually on screen.
-    content.panelArea = r;
-
-    notesWorkspace.setBounds (r);
-    ccWorkspace.setBounds (r);
+    // Full window width rather than r's margin-inset width, and down to content's own
+    // bottom edge rather than stopping at r's bottom -- the workspace needs both so the
+    // footer it lays out (see layoutWorkspace) can span edge to edge and sit flush against
+    // the window's bottom. Both workspaces get the same bounds; the tab strip decides which
+    // one is visible.
+    juce::Rectangle<int> workspaceBounds (0, r.getY(), nativeContentWidth, nativeContentHeight - r.getY());
+    notesWorkspace.setBounds (workspaceBounds);
+    ccWorkspace.setBounds (workspaceBounds);
 
     layoutWorkspace (notesWorkspace, noteLaneCount, laneHeight, noteLanes, addNoteLaneButton, notesSettingsPage);
     layoutWorkspace (ccWorkspace, ccLaneCount, laneHeight, ccLanes, addCcLaneButton, ccSettingsPage);

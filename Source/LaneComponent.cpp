@@ -154,15 +154,19 @@ void StepSlot::applyTrigState()
 
     // The empty part of the bar carries the out-of-range state on its own, which is what
     // makes it visible on a step whose value is zero -- there is no fill there to dim.
+    // Mixed toward theme::raised, which is the lane's own fill -- an out-of-range slot
+    // has to fade into the surface it is actually drawn on. Mixing toward theme::surface (the
+    // ground under the lane, not the lane) would overshoot past it and leave the slot
+    // reading as a dark hole punched in the lane rather than as an absent step.
     visible.setColour (juce::Slider::backgroundColourId,
                        withinLength ? theme::track
-                                    : theme::track.interpolatedWith (theme::panel, 0.85f));
+                                    : theme::track.interpolatedWith (theme::raised, 0.85f));
     visible.repaint();
 
-    // Mixed toward the panel rather than made transparent: drawStepTrig sets its own alpha
+    // Mixed toward the lane rather than made transparent: drawStepTrig sets its own alpha
     // on whatever colour it finds here, so an alpha stored on this one would be discarded.
     onButton.setColour (juce::ToggleButton::tickColourId,
-                        live ? accent : accent.interpolatedWith (theme::panel, 0.8f));
+                        live ? accent : accent.interpolatedWith (theme::raised, 0.8f));
     onButton.repaint();
 }
 
@@ -453,9 +457,12 @@ void LaneComponent::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
 
-    // A flat fill and no outline: the lane reads as a surface a step lighter than the
-    // window, which separates it without adding another rectangle to the picture.
-    g.setColour (theme::panel);
+    // A flat fill and no outline: the lane reads as a card raised off the window's one
+    // surface, which separates it without adding another rectangle to the picture. This is
+    // the only thing separating it now -- the window no longer draws a panel behind the
+    // lane stack -- so matching theme::surface here would leave a lane, the gap around it,
+    // the Add lane bar and the settings block below it all one indistinguishable colour.
+    g.setColour (theme::raised);
     g.fillRoundedRectangle (bounds, 6.0f);
 
     // Accent stripe down the left edge identifies the lane at a glance, and goes faint

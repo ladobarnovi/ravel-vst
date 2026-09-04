@@ -61,18 +61,15 @@ private:
     {
         void paint (juce::Graphics& g) override
         {
-            if (! panelArea.isEmpty())
-            {
-                g.setColour (theme::panel);
-                g.fillRoundedRectangle (panelArea.toFloat(), 6.0f);
-            }
-
-            // A pill of its own, distinct from both the plain window background behind it
-            // and the panel below -- sitting on the bare background made it read as an
-            // afterthought when it lived in its own bare row. See theme::panelLight.
+            // No panel rectangle here. The workspace used to be a rounded card floating on a
+            // darker ground, which meant a margin's worth of that ground showed as a dark
+            // border framing the whole window. The window is one surface instead, edge to
+            // edge, and the margin is now only breathing room in the same colour -- what
+            // sits above the surface says so by being raised (a lane, this pill), not by
+            // having a darker frame drawn around it.
             if (! externalMidiArea.isEmpty())
             {
-                g.setColour (theme::panelLight);
+                g.setColour (theme::raised);
                 g.fillRoundedRectangle (externalMidiArea.toFloat(), 5.0f);
             }
         }
@@ -82,7 +79,6 @@ private:
         void resized() override { if (onResized) onResized(); }
 
         std::function<void()> onResized;
-        juce::Rectangle<int> panelArea;
         juce::Rectangle<int> externalMidiArea;
     };
 
@@ -146,11 +142,14 @@ private:
     // Opens on Notes. Reuses TabStrip/TabPage exactly as the old Pitch/Timing/Routing strip
     // did; the difference is that a "page" here is a whole workspace (lane stack, add
     // button and settings) rather than only a settings column.
-    /** A workspace's background. The lane stack sits straight on the panel, but the settings
-        block underneath it is a different kind of thing -- settings that apply to the whole
-        workspace, rather than one lane's pattern -- so it is cut back to the window ground to
-        say so. Drawn here rather than by content because the block's top edge moves with this
-        workspace's own lane count, and content holds both workspaces at once.
+    /** A workspace's footer: the settings block below the lane stack. Raised off the
+        window's surface the same as a lane is, rather than a hole cut into it or a bare
+        continuation of the ground -- that's what marks it as its own section without
+        needing a rule drawn at its top edge. Full window width and flush to the window's
+        bottom edge, a bar rather than a card floating inside the outer margin (see
+        layoutWorkspace()). Drawn by the workspace rather than by content because its
+        position and height move with this workspace's own lane count, and content holds
+        both workspaces at once.
     */
     struct WorkspaceComponent final : public juce::Component
     {
@@ -159,19 +158,8 @@ private:
             if (settingsArea.isEmpty())
                 return;
 
-            auto area = settingsArea.toFloat();
-
-            // Square where it meets the lane stack, rounded where it meets the panel's own
-            // bottom edge -- same radius, so the panel's silhouette is unchanged.
-            juce::Path shape;
-            shape.addRoundedRectangle (area.getX(), area.getY(), area.getWidth(), area.getHeight(),
-                                       6.0f, 6.0f, false, false, true, true);
-
-            g.setColour (theme::background);
-            g.fillPath (shape);
-
-            g.setColour (theme::outline);
-            g.fillRect (area.removeFromTop (1.0f));
+            g.setColour (theme::raised);
+            g.fillRect (settingsArea);
         }
 
         juce::Rectangle<int> settingsArea;

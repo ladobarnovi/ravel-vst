@@ -6,11 +6,27 @@
 
 namespace theme
 {
-    const juce::Colour background  { 0xff141619 };
-    const juce::Colour panel       { 0xff1b1e23 };
-    const juce::Colour panelLight  { 0xff23272e };
-    const juce::Colour track       { 0xff262b33 };
-    const juce::Colour outline     { 0xff2c323a };
+    /** One ramp, and every surface in the window is exactly one of these.
+
+        The names say where a colour sits in the stack rather than how light it is, because
+        the previous set did not: `background` was simultaneously the window's own ground
+        *and* the fill for sunken controls. That is what let a section nested two levels in
+        (window -> panel -> settings) get painted the same as level zero.
+
+        Depth only ever increases inward: surface -> raised -> track. `well` is the single
+        exception and goes the other way, for a control cut *into* whatever it sits on.
+
+        The steps are deliberately even, roughly ten units of channel value apart. The
+        previous values crowded raised and track three units apart, which left a step slot
+        indistinguishable from the lane it sits in and a popup menu's hover highlight
+        invisible against the menu.
+    */
+    const juce::Colour well     { 0xff101216 };  ///< Cut into a surface: a select box, a pressed button.
+    const juce::Colour surface  { 0xff1a1e24 };  ///< The window itself, edge to edge.
+    const juce::Colour raised   { 0xff242932 };  ///< A card on the window: a lane, the header's MIDI pill.
+    const juce::Colour track    { 0xff2f3540 };  ///< A control's own ground: a step slot, a latched pill.
+    const juce::Colour outline  { 0xff3a4150 };  ///< Hairlines and borders.
+
     const juce::Colour text        { 0xffd8dee6 };
     const juce::Colour textDim     { 0xff858d99 };
 
@@ -241,7 +257,7 @@ class RavelLookAndFeel final : public juce::LookAndFeel_V4
 public:
     RavelLookAndFeel()
     {
-        setColour (juce::ResizableWindow::backgroundColourId, theme::background);
+        setColour (juce::ResizableWindow::backgroundColourId, theme::surface);
         setColour (juce::Label::textColourId,                 theme::text);
 
         setColour (juce::ComboBox::backgroundColourId, juce::Colours::transparentBlack);
@@ -249,7 +265,7 @@ public:
         setColour (juce::ComboBox::outlineColourId,    juce::Colours::transparentBlack);
         setColour (juce::ComboBox::arrowColourId,      juce::Colours::transparentBlack);
 
-        setColour (juce::PopupMenu::backgroundColourId,            theme::panelLight);
+        setColour (juce::PopupMenu::backgroundColourId,            theme::raised);
         setColour (juce::PopupMenu::textColourId,                  theme::text);
         setColour (juce::PopupMenu::highlightedBackgroundColourId, theme::track);
         setColour (juce::PopupMenu::highlightedTextColourId,       theme::text);
@@ -315,9 +331,9 @@ public:
             // Down is darker and hover is lighter, rather than both moving the same way:
             // on a dark panel a chip that sinks under the finger is the half of the
             // gesture that reads as having been pressed rather than merely pointed at.
-            const auto fill = shouldDrawButtonAsDown        ? theme::background
-                            : shouldDrawButtonAsHighlighted ? theme::panelLight.brighter (0.12f)
-                                                            : theme::panelLight;
+            const auto fill = shouldDrawButtonAsDown        ? theme::well
+                            : shouldDrawButtonAsHighlighted ? theme::raised.brighter (0.12f)
+                                                            : theme::raised;
 
             g.setColour (button.isEnabled() ? fill : fill.withAlpha (0.45f));
             g.fillRoundedRectangle (bounds, corner);
@@ -448,7 +464,7 @@ public:
 
     //==========================================================================
     // LookAndFeel_V4's stock tooltip is a bold 13pt font on a colour lifted from the
-    // colour scheme -- close enough to theme::panel to read as "no background at all"
+    // colour scheme -- close enough to theme::surface to read as "no background at all"
     // against the plugin's own panel, and the font dwarfs every row caption around it.
     // Both overrides below share tooltipFont/tooltipPadding so the box drawn here always
     // matches the text laid out for it.
@@ -471,7 +487,7 @@ public:
         const auto bounds = juce::Rectangle<float> ((float) width, (float) height);
         constexpr float corner = 4.0f;
 
-        g.setColour (theme::panelLight);
+        g.setColour (theme::raised);
         g.fillRoundedRectangle (bounds, corner);
 
         g.setColour (theme::outline);
@@ -573,7 +589,7 @@ private:
         auto boxArea = selectChipBoxArea (box).toFloat();
         constexpr float corner = 4.0f;
 
-        g.setColour (theme::background);
+        g.setColour (theme::well);
         g.fillRoundedRectangle (boxArea, corner);
 
         g.setColour (highlighted ? theme::outline.brighter (0.35f) : theme::outline);
@@ -634,7 +650,7 @@ private:
                                                         : pill.getX() + 2.0f,
                                                       pill.getY() + 2.0f, knob, knob);
 
-        g.setColour (on ? theme::panel : theme::textDim);
+        g.setColour (on ? theme::surface : theme::textDim);
         g.fillEllipse (knobArea);
     }
 
