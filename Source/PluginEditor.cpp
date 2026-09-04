@@ -286,8 +286,7 @@ void RavelAudioProcessorEditor::buildWorkspaces()
     auto& voice = notesSettingsPage.addColumn ("Voice");
     voice.add (params::voiceCountId, "Voices");
     voice.add (params::polyModeId, "Poly")
-         ->setTooltip ("Each lane triggers its own note off its own clock, instead of the "
-                       "stack mixing into one");
+         ->setTooltip ("In Poly mode each lane outputs its own independent note");
 
     auto& clock = notesSettingsPage.addColumn ("Clock");
     clock.add (params::swingId,   "Swing")
