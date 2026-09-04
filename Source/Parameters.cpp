@@ -167,16 +167,11 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
                 defaultDepth[lane],
                 juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
 
-            // Direction only ever shaped how a lane's own steps traverse -- a Note lane's
-            // nuance. A CC lane still folds into the Mix CC the same way, just always
-            // Forward: see LaneSnapshot's own defaults, which is what an absent parameter
-            // here leaves it reading.
-            if (! isCc)
-            {
-                layout.add (std::make_unique<juce::AudioParameterChoice> (
-                    juce::ParameterID { laneDirId (lane, kind), versionHint },
-                    laneName + "Direction", directionNames, 0));
-            }
+            // A CC lane's own steps traverse the same way a Note lane's do -- Forward,
+            // Reverse, Ping-Pong or Random -- so both kinds get this parameter.
+            layout.add (std::make_unique<juce::AudioParameterChoice> (
+                juce::ParameterID { laneDirId (lane, kind), versionHint },
+                laneName + "Direction", directionNames, 0));
 
             if (! isCc)
                 continue;
@@ -418,9 +413,7 @@ namespace
         ids.push_back (laneLengthId   (lane, kind));
         ids.push_back (laneDivId      (lane, kind));
         ids.push_back (laneDepthId    (lane, kind));
-
-        if (kind == LaneKind::note)
-            ids.push_back (laneDirId (lane, kind));
+        ids.push_back (laneDirId      (lane, kind));
 
         if (kind == LaneKind::cc)
         {

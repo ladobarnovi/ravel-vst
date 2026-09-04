@@ -5,8 +5,8 @@ namespace
     // Tall enough for the left column's four layer buttons (Value, Velocity, Prob, Gate)
     // plus the lane number above them; the step bars take whatever is left, so a taller
     // lane just makes them taller. Also covers a CC lane's own parameter block: Length/
-    // Rate/Depth plus Send/Number/Channel/Offset is 7 rows on ControlGroup's 2-column grid,
-    // taller than a Note lane's Length/Rate/Depth/Direction -- but the layer buttons set the
+    // Rate/Depth/Direction plus Send/Number/Channel/Offset is 8 rows on ControlGroup's
+    // 2-column grid, taller than a Note lane's own four -- but the layer buttons set the
     // floor for both, so one constant still fits.
     constexpr int laneHeight    = 150;
 
@@ -15,10 +15,18 @@ namespace
     constexpr int gap           = 8;
     constexpr int margin        = 12;
 
-    // The External MIDI row's own height. Same as laneBarHeight -- it carries a button
-    // (Rescan) the same way that bar's Add lane does -- rather than theme::rowHeight, which is
-    // sized for a bare caption-plus-value row with nothing beside it.
+    // The External MIDI control's own height, inside its header pill. Same as laneBarHeight
+    // -- it carries a button (Rescan) the same way that bar's Add lane does -- rather than
+    // theme::rowHeight, which is sized for a bare caption-plus-value row with nothing beside
+    // it.
     constexpr int externalMidiRowHeight = laneBarHeight;
+
+    // Fixed rather than however much of the header the title and history arrows leave over:
+    // a fixed width is what lets the pill sit flush against the header's right edge instead
+    // of stretching to fill it. Wide enough for "External MIDI" as a caption plus "Host MIDI
+    // only" as the longest stock choice, both at theme::rowFont.
+    constexpr int externalMidiComboWidth = 210;
+    constexpr int externalMidiPadding    = 10;
 
     // The window's native (100%-zoom) width: whatever a lane needs to draw 16 steps at
     // lane::stepSlotWidth, plus the margin either side. Derived rather than typed in, so
@@ -51,8 +59,7 @@ namespace
                  + TabStrip::height + gap
                  + numActiveLanes * (laneHeightForKind + gap)
                  + laneBarHeight + gap
-                 + settingsPanelHeight + gap
-                 + externalMidiRowHeight;
+                 + settingsPanelHeight;
     }
 
     /** A settings page's own panel height: the reduced(14, 8) margin layoutContent() applies
@@ -106,11 +113,11 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
 
     updateHistoryButtons();
 
-    // Styled exactly like an APVTS-bound value row (see Controls.cpp) even though it isn't
-    // one -- theme::Role::valueRow is what the LookAndFeel keys off, not the presence of an
-    // attachment, so a plain ComboBox picks up the same "caption ....... value" rendering for
-    // free.
-    theme::setRole (externalMidiBox, theme::Role::valueRow);
+    // Standing alone in its own header pill rather than among a grid of peers the way a
+    // TabPage's value rows do, so it gets the Role that draws itself as an obvious dropdown
+    // -- a boxed, arrowed value -- rather than valueRow's bare caption/value pair, which
+    // leans on that grid to read as a control at all. See theme::Role::selectChip.
+    theme::setRole (externalMidiBox, theme::Role::selectChip);
     theme::setCaption (externalMidiBox, "External MIDI");
     externalMidiBox.setTooltip ("Mirrors every note and CC this instance generates straight out "
                                 "a system MIDI port -- a loopMIDI port, most likely -- bypassing "
@@ -555,15 +562,26 @@ void RavelAudioProcessorEditor::layoutContent()
     history.removeFromLeft (4);
     redoButton.setBounds (history.removeFromLeft (historyButton));
 
-    r.removeFromTop (gap);
-
     //--------------------------------------------------------------------------
-    // Reserved off the bottom before anything above it is laid out, so the tab content and
-    // panel background both end above this footer rather than being squeezed by it. Global
-    // rather than per-workspace, so it lives outside the panel entirely -- on the window
-    // background, the same way the header sits above the panel rather than inside it.
-    auto externalMidiRow = r.removeFromBottom (externalMidiRowHeight);
-    r.removeFromBottom (gap);
+    // Opposite the logo, flush against the header's right edge, on its own pill rather than
+    // the bare window background -- see ContentComponent::paint(). Global rather than
+    // per-workspace, so the header is where it belongs: it routes both Note and CC output
+    // alike, not something either tab owns.
+    const int externalMidiChipWidth = externalMidiPadding * 2 + externalMidiComboWidth + gap
+                                        + theme::actionButtonWidth ("Rescan", externalMidiRowHeight);
+
+    auto externalMidiChip = header.removeFromRight (externalMidiChipWidth);
+    content.externalMidiArea = externalMidiChip;
+
+    auto externalMidiInner = externalMidiChip.reduced (
+        externalMidiPadding, (headerHeight - externalMidiRowHeight) / 2);
+
+    externalMidiRescanButton.setBounds (externalMidiInner.removeFromRight (
+        theme::actionButtonWidth ("Rescan", externalMidiRowHeight)));
+    externalMidiInner.removeFromRight (gap);
+    externalMidiBox.setBounds (externalMidiInner);
+
+    r.removeFromTop (gap);
 
     //--------------------------------------------------------------------------
     outputTabs.setBounds (r.removeFromTop (TabStrip::height));
@@ -578,12 +596,6 @@ void RavelAudioProcessorEditor::layoutContent()
 
     layoutWorkspace (notesWorkspace, noteLaneCount, laneHeight, noteLanes, addNoteLaneButton, notesSettingsPage);
     layoutWorkspace (ccWorkspace, ccLaneCount, laneHeight, ccLanes, addCcLaneButton, ccSettingsPage);
-
-    //--------------------------------------------------------------------------
-    externalMidiRescanButton.setBounds (externalMidiRow.removeFromRight (
-        theme::actionButtonWidth ("Rescan", externalMidiRowHeight)));
-    externalMidiRow.removeFromRight (gap);
-    externalMidiBox.setBounds (externalMidiRow);
 }
 
 //==============================================================================

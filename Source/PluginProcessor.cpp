@@ -38,6 +38,7 @@ RavelAudioProcessor::RavelAudioProcessor()
         cp.active    = apvts.getRawParameterValue (params::laneOnId (lane, params::LaneKind::cc));
         cp.length    = apvts.getRawParameterValue (params::laneLengthId (lane, params::LaneKind::cc));
         cp.division  = apvts.getRawParameterValue (params::laneDivId (lane, params::LaneKind::cc));
+        cp.direction = apvts.getRawParameterValue (params::laneDirId (lane, params::LaneKind::cc));
         cp.depth     = apvts.getRawParameterValue (params::laneDepthId (lane, params::LaneKind::cc));
         cp.ccOn      = apvts.getRawParameterValue (params::laneCcOnId (lane));
         cp.ccNumber  = apvts.getRawParameterValue (params::laneCcNumId (lane));
@@ -134,10 +135,9 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
         cs.active    = lane < ccLaneCount && cp.active->load() > 0.5f;
         cs.length    = (int) std::lround (cp.length->load());
         cs.division  = (int) std::lround (cp.division->load());
+        cs.direction = (int) std::lround (cp.direction->load());
         cs.depth     = cp.depth->load();
 
-        // No Direction parameter for a CC lane -- it always folds Forward, which is exactly
-        // what LaneSnapshot's own default already gives cs here.
         cs.ccOn      = cp.ccOn->load() > 0.5f;
         cs.ccNumber  = (int) std::lround (cp.ccNumber->load());
         cs.ccChannel = (int) std::lround (cp.ccChannel->load());

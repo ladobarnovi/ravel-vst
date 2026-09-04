@@ -10,6 +10,7 @@
 #include "PluginProcessor.h"
 
 #include <cstdio>
+#include <vector>
 
 namespace
 {
@@ -743,6 +744,74 @@ int main()
 
         check (std::abs (get (params::stepValueId (1, 0)) - 0.5f) < 0.01f,
                "and puts the removed lane's pattern back with it");
+    }
+
+    //==========================================================================
+    // Proves the wiring end to end -- parameter, through buildSnapshot(), into the engine --
+    // rather than only the engine's own handling of a Snapshot's direction field, which
+    // EngineTests already covers generically for both lane pools.
+    section ("A CC lane's own Direction reverses which step its tap latches first");
+    {
+        RavelAudioProcessor processor;
+
+        const auto set = [&processor] (const juce::String& id, float actual)
+        {
+            if (auto* p = processor.apvts.getParameter (id))
+                p->setValueNotifyingHost (p->convertTo0to1 (actual));
+        };
+
+        set (params::laneLengthId (0, params::LaneKind::cc), 4.0f);
+        set (params::laneCcNumId (0), 50.0f);
+        set (params::laneDirId (0, params::LaneKind::cc), 1.0f);   // Reverse
+
+        for (int step = 0; step < 4; ++step)
+            set (params::stepValueId (0, step, params::LaneKind::cc), 0.3f * (float) step);
+
+        processor.setPlayConfigDetails (0, 2, 48000.0, 512);
+        processor.prepareToPlay (48000.0, 512);
+
+        MockPlayHead playHead;
+        processor.setPlayHead (&playHead);
+        playHead.info.setBpm (120.0);
+        playHead.info.setIsPlaying (true);
+
+        std::vector<int> laneCcValues;
+
+        juce::AudioBuffer<float> audio (2, 512);
+        juce::MidiBuffer midi;
+
+        // One beat at 120bpm/48kHz/1/16 steps = 4 steps of 6000 samples, enough to see the
+        // first two steps' worth of the lane's own tap.
+        for (int pos = 0; pos < 12000; pos += 512)
+        {
+            const int numSamples = juce::jmin (512, 12000 - pos);
+
+            playHead.info.setPpqPosition ((double) pos / 24000.0);
+            playHead.info.setTimeInSamples ((juce::int64) pos);
+
+            audio.clear();
+            midi.clear();
+
+            juce::AudioBuffer<float> block (audio.getArrayOfWritePointers(), 2, numSamples);
+            processor.processBlock (block, midi);
+
+            for (const auto metadata : midi)
+            {
+                const auto message = metadata.getMessage();
+
+                if (message.isController() && message.getControllerNumber() == 50)
+                    laneCcValues.push_back (message.getControllerValue());
+            }
+        }
+
+        check (laneCcValues.size() >= 2, "the lane's own tap sends at least two CC events");
+
+        // Reverse walks a length-4 lane 3, 2, 1, 0 -- see EngineTests' "Reverse direction" --
+        // so the tap latches step 3's value (0.9, CC 114) first and step 2's (0.6, CC 76)
+        // second, rather than Forward's step 0 (CC 0) then step 1 (CC 38).
+        check (laneCcValues.size() >= 2
+                 && laneCcValues[0] == 114 && laneCcValues[1] == 76,
+               "and the CC lane's own Direction parameter reaches the engine, walking backwards");
     }
 
     //==========================================================================

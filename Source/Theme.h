@@ -44,6 +44,9 @@ namespace theme
     {
         standard = 0,   ///< Leave it to LookAndFeel_V4.
         valueRow,       ///< "caption ....... value" on one line, with a fill hairline.
+        selectChip,     ///< A caption beside a boxed, arrowed value -- a ComboBox standing
+                        ///< alone rather than among the peers a valueRow's bare caption/value
+                        ///< pair leans on to read as a control at all.
         stepBar,        ///< Tall vertical step value bar.
         stepChance,     ///< Tick across a step bar; only its right gutter takes the mouse.
         stepTrig,       ///< Flat strip under a step bar: this step's on/off toggle.
@@ -376,7 +379,15 @@ public:
     void drawComboBox (juce::Graphics& g, int width, int height, bool,
                        int, int, int, int, juce::ComboBox& box) override
     {
-        if (theme::roleOf (box) != theme::Role::valueRow)
+        const auto role = theme::roleOf (box);
+
+        if (role == theme::Role::selectChip)
+        {
+            drawSelectChip (g, box);
+            return;
+        }
+
+        if (role != theme::Role::valueRow)
         {
             juce::LookAndFeel_V4::drawComboBox (g, width, height, false, 0, 0, 0, 0, box);
             return;
@@ -396,7 +407,21 @@ public:
 
     void positionComboBoxText (juce::ComboBox& box, juce::Label& label) override
     {
-        if (theme::roleOf (box) != theme::Role::valueRow)
+        const auto role = theme::roleOf (box);
+
+        if (role == theme::Role::selectChip)
+        {
+            auto textArea = selectChipBoxArea (box).reduced (7, 0);
+            textArea.removeFromRight (selectChipArrowWidth);
+
+            label.setBounds (textArea);
+            label.setFont (theme::rowFont());
+            label.setJustificationType (juce::Justification::centredLeft);
+            label.setColour (juce::Label::textColourId, theme::text.withAlpha (0.9f));
+            return;
+        }
+
+        if (role != theme::Role::valueRow)
         {
             juce::LookAndFeel_V4::positionComboBoxText (box, label);
             return;
@@ -511,6 +536,63 @@ private:
         juce::TextLayout layout;
         layout.createLayoutWithBalancedLineLengths (s, tooltipWidth);
         return layout;
+    }
+
+    // Reserved on the right of the boxed area for the chevron, so it never crowds the value
+    // text -- shared between drawSelectChip and positionComboBoxText so the two agree on
+    // exactly where that text stops.
+    static constexpr int selectChipArrowWidth = 18;
+
+    /** The boxed, arrowed portion of a selectChip ComboBox: everything after its caption.
+        Shared between drawing the box and positioning the label inside it, so the caption's
+        own width -- which depends on its text -- can never leave the two disagreeing about
+        where the box starts.
+    */
+    static juce::Rectangle<int> selectChipBoxArea (juce::ComboBox& box)
+    {
+        const auto captionWidth = (int) std::ceil (
+            juce::GlyphArrangement::getStringWidth (theme::rowFont(), box.getName()));
+
+        return box.getLocalBounds().withTrimmedLeft (captionWidth + 8);
+    }
+
+    /** A caption beside a visibly boxed, arrowed value -- what marks a ComboBox as a dropdown
+        on its own, the way valueRow's bare caption/value pair only manages inside a grid of
+        its peers (see the Role's own comment). Sunk a shade darker than whatever it sits on,
+        the way a text field reads as a control cut into its surroundings rather than painted
+        on top of them.
+    */
+    void drawSelectChip (juce::Graphics& g, juce::ComboBox& box)
+    {
+        const bool highlighted = box.isMouseOver (true) || box.isPopupActive();
+
+        g.setFont (theme::rowFont());
+        g.setColour (theme::textDim);
+        g.drawText (box.getName(), box.getLocalBounds(), juce::Justification::centredLeft, false);
+
+        auto boxArea = selectChipBoxArea (box).toFloat();
+        constexpr float corner = 4.0f;
+
+        g.setColour (theme::background);
+        g.fillRoundedRectangle (boxArea, corner);
+
+        g.setColour (highlighted ? theme::outline.brighter (0.35f) : theme::outline);
+        g.drawRoundedRectangle (boxArea.reduced (0.5f), corner, 1.0f);
+
+        // The one glyph that reads as "dropdown" on sight, standing in for the caption/value
+        // pair's own context when there is no row of peers around it to supply that meaning.
+        constexpr float arrowHalfWidth = 4.0f;
+        constexpr float arrowHeight    = 3.5f;
+
+        const auto arrowCentre = boxArea.removeFromRight ((float) selectChipArrowWidth).getCentre();
+
+        juce::Path arrow;
+        arrow.addTriangle (arrowCentre.x - arrowHalfWidth, arrowCentre.y - arrowHeight * 0.5f,
+                           arrowCentre.x + arrowHalfWidth, arrowCentre.y - arrowHeight * 0.5f,
+                           arrowCentre.x,                  arrowCentre.y + arrowHeight * 0.5f);
+
+        g.setColour (highlighted ? theme::text.withAlpha (0.85f) : theme::textDim);
+        g.fillPath (arrow);
     }
 
     void drawSliderAsValueRow (juce::Graphics& g, juce::Rectangle<int> bounds, juce::Slider& slider)

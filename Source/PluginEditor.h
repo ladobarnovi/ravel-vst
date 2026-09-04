@@ -66,6 +66,15 @@ private:
                 g.setColour (theme::panel);
                 g.fillRoundedRectangle (panelArea.toFloat(), 6.0f);
             }
+
+            // A pill of its own, distinct from both the plain window background behind it
+            // and the panel below -- sitting on the bare background made it read as an
+            // afterthought when it lived in its own bare row. See theme::panelLight.
+            if (! externalMidiArea.isEmpty())
+            {
+                g.setColour (theme::panelLight);
+                g.fillRoundedRectangle (externalMidiArea.toFloat(), 5.0f);
+            }
         }
 
         // resized() can't reach the outer editor's members directly, so it forwards to
@@ -74,6 +83,7 @@ private:
 
         std::function<void()> onResized;
         juce::Rectangle<int> panelArea;
+        juce::Rectangle<int> externalMidiArea;
     };
 
     ContentComponent content;
@@ -195,7 +205,7 @@ private:
     int lastPolyMode = -1;
 
     // Global, not per-workspace -- routes both Note and CC output alike, so it sits in its own
-    // footer row at the bottom of the window rather than in either tab's settings page. Styled
+    // pill in the header, opposite the logo, rather than in either tab's settings page. Styled
     // as a valueRow ComboBox (see theme::Role) even though it has no APVTS parameter behind
     // it: there is nothing here for a host to automate or recall through undo, only an
     // environment choice that differs machine to machine -- see ExternalMidiOutput's own

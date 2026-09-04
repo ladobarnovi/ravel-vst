@@ -115,17 +115,17 @@ private:
 //==============================================================================
 /** A full lane: 16 steps plus the feel parameters worth reaching for while it plays.
 
-    A Note lane and a CC lane share the same Length/Rate/Depth. Direction is Note-only -- a
-    CC lane always folds Forward. Only a CC lane also carries its own Send/Number/Channel/
-    Offset, since only CC has a per-lane destination independent of that fold. See LaneKind.
+    A Note lane and a CC lane share the same Length/Rate/Depth/Direction. Only a CC lane also
+    carries its own Send/Number/Channel/Offset, since only CC has a per-lane destination
+    independent of that fold. See LaneKind.
 */
 class LaneComponent final : public juce::Component
 {
 public:
     /** For a CC-kind lane, no layer selector is ever created -- the bars always edit Value
-        -- and the parameter block trades Direction for the lane's own Send/Number/Channel/
-        Offset: a CC lane still folds into the Mix CC like any lane folds into a mix (always
-        Forward), and keeps its own direct tap besides. */
+        -- and the parameter block goes on to add the lane's own Send/Number/Channel/Offset
+        after Direction: a CC lane still folds into the Mix CC like any lane folds into a mix,
+        and keeps its own direct tap besides. */
     LaneComponent (juce::AudioProcessorValueTreeState& state, int laneIndex,
                    params::LanePattern& sharedClipboard,
                    params::LaneKind kind = params::LaneKind::note);
