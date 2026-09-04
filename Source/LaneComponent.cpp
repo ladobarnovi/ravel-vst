@@ -515,8 +515,15 @@ void LaneComponent::resized()
     // so a host that forces the editor narrower than its native size still lays out.
     const int slotWidth = juce::jmin (lane::stepSlotWidth, r.getWidth() / params::numSteps);
 
-    for (auto* slot : slots)
-        slot->setBounds (r.removeFromLeft (slotWidth).withTrimmedRight (slotGap));
+    for (int i = 0; i < slots.size(); ++i)
+    {
+        slots.getUnchecked (i)->setBounds (r.removeFromLeft (slotWidth).withTrimmedRight (slotGap));
+
+        // Extra room after every fourth step, so the row reads as four groups instead of
+        // one long strip -- skipped after the last step, which already ends at the divider.
+        if ((i + 1) % 4 == 0 && i + 1 < slots.size())
+            r.removeFromLeft (lane::groupGap);
+    }
 
     //--------------------------------------------------------------------------
     // Pushed to the two ends of the lane rather than centred as one block: the parameter

@@ -24,12 +24,22 @@ namespace lane
     /** Pitch of one step slot: the bar plus the gap before the next slot. */
     inline constexpr int stepSlotWidth = 40;
 
+    /** Extra space after every fourth step, so the sixteen steps read as four groups of
+        four instead of one undifferentiated row. On top of stepSlotWidth's own per-step
+        pitch, not in place of it -- see LaneComponent::resized(). */
+    inline constexpr int groupGap = 6;
+
+    /** One of these gaps sits between each pair of groups: three for four groups of four. */
+    inline constexpr int numGroupGaps = params::numSteps / 4 - 1;
+
     /** Everything in a lane that is not step area. */
     inline constexpr int chromeWidth = inset * 2 + railWidth + railGap + numberWidth
                                          + columnGap + dividerGap + paramWidth;
 
-    /** The width a lane wants: its chrome plus a full-size slot per step. */
-    inline constexpr int nativeWidth = chromeWidth + params::numSteps * stepSlotWidth;
+    /** The width a lane wants: its chrome, a full-size slot per step, and the group gaps
+        between them. */
+    inline constexpr int nativeWidth = chromeWidth + params::numSteps * stepSlotWidth
+                                         + numGroupGaps * groupGap;
 }
 
 /** Which of a step's four continuous parameters the tall bars currently edit.

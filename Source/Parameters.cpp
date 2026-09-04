@@ -56,7 +56,7 @@ namespace
     // Note lanes start with a touch of pitch on every step instead of sitting dead on the
     // root, so a freshly added lane is audibly pitched right away rather than silent-looking
     // zero until it's drawn on.
-    constexpr float defaultNoteValue = 0.1f;
+    constexpr float defaultNoteValue = 0.25f;
 
     constexpr int   defaultLength[numLanes]   { numSteps, numSteps, numSteps, numSteps };
 
