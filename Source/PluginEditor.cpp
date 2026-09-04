@@ -23,7 +23,7 @@ namespace
 
     // Fixed rather than however much of the header the title and history arrows leave over:
     // a fixed width is what lets the pill sit flush against the header's right edge instead
-    // of stretching to fill it. Wide enough for "External MIDI" as a caption plus "Host MIDI
+    // of stretching to fill it. Wide enough for "MIDI output" as a caption plus "Host MIDI
     // only" as the longest stock choice, both at theme::rowFont.
     constexpr int externalMidiComboWidth = 210;
     constexpr int externalMidiPadding    = 10;
@@ -118,7 +118,7 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
     // -- a boxed, arrowed value -- rather than valueRow's bare caption/value pair, which
     // leans on that grid to read as a control at all. See theme::Role::selectChip.
     theme::setRole (externalMidiBox, theme::Role::selectChip);
-    theme::setCaption (externalMidiBox, "External MIDI");
+    theme::setCaption (externalMidiBox, "MIDI output");
     externalMidiBox.setTooltip ("Mirrors every note and CC this instance generates straight out "
                                 "a system MIDI port -- a loopMIDI port, most likely -- bypassing "
                                 "Ableton's own MIDI routing entirely. The host still receives "
