@@ -48,10 +48,15 @@ namespace
 {
     constexpr int versionHint = 1;
 
-    // Every lane starts as eight steps of zero: a flat pattern on the root, which is a blank
+    // Every CC lane starts as sixteen steps of zero: a flat pattern, which is a blank
     // sheet to draw on rather than a demo to clear away first. A canned pattern would also
     // make the second lane you add sound like it came with an opinion.
     constexpr float defaultValues[numLanes][numSteps] {};
+
+    // Note lanes start with a touch of pitch on every step instead of sitting dead on the
+    // root, so a freshly added lane is audibly pitched right away rather than silent-looking
+    // zero until it's drawn on.
+    constexpr float defaultNoteValue = 0.1f;
 
     constexpr int   defaultLength[numLanes]   { numSteps, numSteps, numSteps, numSteps };
 
@@ -96,7 +101,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
                     juce::ParameterID { stepValueId (lane, step, kind), versionHint },
                     stepName,
                     juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f),
-                    defaultValues[lane][step],
+                    isCc ? defaultValues[lane][step] : defaultNoteValue,
                     juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
 
                 layout.add (std::make_unique<juce::AudioParameterBool> (

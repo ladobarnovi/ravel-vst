@@ -282,7 +282,7 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
     auto* lengthRow = paramGroup.add (params::laneLengthId (laneIndex, kind), "Length");
     lengthRow->setTooltip ("How many of the eight steps the lane cycles through");
     paramGroup.add (params::laneDivId (laneIndex, kind),    "Rate");
-    paramGroup.add (params::laneDepthId (laneIndex, kind),  "Depth");
+    paramGroup.add (params::laneDepthId (laneIndex, kind),  "Mix Amount");
     paramGroup.add (params::laneDirId (laneIndex, kind),    "Direction");
 
     if (kind == params::LaneKind::cc)
