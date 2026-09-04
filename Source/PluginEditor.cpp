@@ -48,11 +48,11 @@ namespace
     int windowHeightForWorkspace (int numActiveLanes, int laneHeightForKind, int settingsPanelHeight)
     {
         return margin * 2 + headerHeight + gap
-                 + externalMidiRowHeight + gap
                  + TabStrip::height + gap
                  + numActiveLanes * (laneHeightForKind + gap)
                  + laneBarHeight + gap
-                 + settingsPanelHeight;
+                 + settingsPanelHeight + gap
+                 + externalMidiRowHeight;
     }
 
     /** A settings page's own panel height: the reduced(14, 8) margin layoutContent() applies
@@ -558,14 +558,12 @@ void RavelAudioProcessorEditor::layoutContent()
     r.removeFromTop (gap);
 
     //--------------------------------------------------------------------------
-    auto externalMidiRow = r.removeFromTop (externalMidiRowHeight);
-
-    externalMidiRescanButton.setBounds (externalMidiRow.removeFromRight (
-        theme::actionButtonWidth ("Rescan", externalMidiRowHeight)));
-    externalMidiRow.removeFromRight (gap);
-    externalMidiBox.setBounds (externalMidiRow);
-
-    r.removeFromTop (gap);
+    // Reserved off the bottom before anything above it is laid out, so the tab content and
+    // panel background both end above this footer rather than being squeezed by it. Global
+    // rather than per-workspace, so it lives outside the panel entirely -- on the window
+    // background, the same way the header sits above the panel rather than inside it.
+    auto externalMidiRow = r.removeFromBottom (externalMidiRowHeight);
+    r.removeFromBottom (gap);
 
     //--------------------------------------------------------------------------
     outputTabs.setBounds (r.removeFromTop (TabStrip::height));
@@ -580,6 +578,12 @@ void RavelAudioProcessorEditor::layoutContent()
 
     layoutWorkspace (notesWorkspace, noteLaneCount, laneHeight, noteLanes, addNoteLaneButton, notesSettingsPage);
     layoutWorkspace (ccWorkspace, ccLaneCount, laneHeight, ccLanes, addCcLaneButton, ccSettingsPage);
+
+    //--------------------------------------------------------------------------
+    externalMidiRescanButton.setBounds (externalMidiRow.removeFromRight (
+        theme::actionButtonWidth ("Rescan", externalMidiRowHeight)));
+    externalMidiRow.removeFromRight (gap);
+    externalMidiBox.setBounds (externalMidiRow);
 }
 
 //==============================================================================

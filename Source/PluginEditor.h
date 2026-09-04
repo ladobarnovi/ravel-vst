@@ -195,10 +195,11 @@ private:
     int lastPolyMode = -1;
 
     // Global, not per-workspace -- routes both Note and CC output alike, so it sits in its own
-    // row under the header rather than in either tab's settings page. Styled as a valueRow
-    // ComboBox (see theme::Role) even though it has no APVTS parameter behind it: there is
-    // nothing here for a host to automate or recall through undo, only an environment choice
-    // that differs machine to machine -- see ExternalMidiOutput's own header.
+    // footer row at the bottom of the window rather than in either tab's settings page. Styled
+    // as a valueRow ComboBox (see theme::Role) even though it has no APVTS parameter behind
+    // it: there is nothing here for a host to automate or recall through undo, only an
+    // environment choice that differs machine to machine -- see ExternalMidiOutput's own
+    // header.
     juce::ComboBox externalMidiBox;
     juce::TextButton externalMidiRescanButton { "Rescan" };
 
