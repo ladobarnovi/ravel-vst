@@ -45,10 +45,8 @@ namespace lane
 /** Which of a step's four continuous parameters the tall bars currently edit.
 
     All four are full-height bars stacked in the same rectangle with one visible at a time,
-    rather than four smaller bars competing for the slot. The three that are hidden still show
-    as faint ticks, so the whole step stays readable while only one is editable -- and every
-    bar keeps its own parameter attachment, since nothing has to be rebound when the
-    selection changes.
+    rather than four smaller bars competing for the slot. Every bar keeps its own parameter
+    attachment, since nothing has to be rebound when the selection changes.
 */
 enum class StepLayer { value = 0, velocity = 1, chance = 2, gate = 3 };
 
@@ -56,7 +54,7 @@ enum class StepLayer { value = 0, velocity = 1, chance = 2, gate = 3 };
 inline constexpr int numStepLayers = 4;
 
 //==============================================================================
-/** One step: a tall bar for the selected layer, ticks for the others, and a trig strip. */
+/** One step: a tall bar for the selected layer, and a trig strip. */
 class StepSlot final : public juce::Component
 {
 public:
@@ -76,14 +74,6 @@ public:
         and its playhead but never competes with the lanes that are actually sounding. */
     void setLaneActive (bool laneIsActive);
 
-    /** False with Notes off, where velocity and gate are never read. Suppresses those two
-        ticks, which would otherwise go on showing values nothing acts on.
-
-        Chance ticks are deliberately not covered by this: chance still gates the mix, and so
-        still shapes the CC output, even with the selector gone.
-    */
-    void setNoteLayersAvailable (bool available);
-
     /** Marks the slot as sitting past the lane's Length, which the sequencer never reaches.
         The slot recedes into the panel rather than disappearing: it is still editable, so a
         pattern can be drawn past the end and brought into play by raising Length. */
@@ -93,10 +83,6 @@ private:
     /** Recolours the visible bar to match the trig, so a muted step reads as muted without
         needing a separate indicator. */
     void applyTrigState();
-
-    /** A faint mark at a hidden layer's level, drawn over the visible bar. Each layer owns
-        one of four horizontal quarters, so no two ticks can ever sit on top of each other. */
-    void drawLayerTick (juce::Graphics&, const juce::Slider&, StepLayer) const;
 
     /** The rectangle the bars share, which is the slot minus the trig strip. */
     juce::Rectangle<int> barArea() const;
@@ -114,7 +100,6 @@ private:
     bool playing = false;
     bool laneActive = true;
     bool withinLength = true;
-    bool noteLayersAvailable = true;
     StepLayer currentLayer = StepLayer::value;
 
     juce::Slider& sliderFor (StepLayer) noexcept;
@@ -152,11 +137,7 @@ public:
     /** Takes the layer selector away while Notes is off, leaving the bars editing Value.
 
         Velocity and Gate are unread with Notes off -- both are only ever arguments to
-        startNote. Chance is not: it still gates whether a step reaches the mix, and the mix
-        is what CC follows. It is hidden here because it is not wanted, not because it is
-        inert, so the slots go on drawing chance ticks -- see StepSlot::setNoteLayersAvailable.
-        That keeps a step whose probability is still shaping the CC stream from doing it
-        invisibly.
+        startNote.
     */
     void setLayerSelectionAvailable (bool available);
 

@@ -14,10 +14,7 @@ namespace
 //==============================================================================
 StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, int stepIndex,
                     params::LaneKind kind)
-    : accent (theme::laneAccent (laneIndex)),
-      // A CC step never has a selector to switch it away from Value, and it has no
-      // Velocity/Gate parameter to show a tick for regardless -- see setNoteLayersAvailable.
-      noteLayersAvailable (kind == params::LaneKind::note)
+    : accent (theme::laneAccent (laneIndex))
 {
     struct LayerSetup
     {
@@ -117,15 +114,6 @@ void StepSlot::setLaneActive (bool laneIsActive)
     repaint();
 }
 
-void StepSlot::setNoteLayersAvailable (bool available)
-{
-    if (noteLayersAvailable == available)
-        return;
-
-    noteLayersAvailable = available;
-    repaint();
-}
-
 void StepSlot::setWithinLength (bool isWithinLength)
 {
     if (withinLength == isWithinLength)
@@ -175,47 +163,8 @@ juce::Rectangle<int> StepSlot::barArea() const
     return getLocalBounds().withTrimmedBottom (trigHeight + trigGap);
 }
 
-void StepSlot::drawLayerTick (juce::Graphics& g, const juce::Slider& slider, StepLayer layer) const
-{
-    const auto range = slider.getRange();
-
-    if (range.getLength() <= 0.0)
-        return;
-
-    const auto bar = barArea().toFloat();
-    const float proportion = (float) ((slider.getValue() - range.getStart()) / range.getLength());
-    const float y = bar.getBottom() - bar.getHeight() * juce::jlimit (0.0f, 1.0f, proportion);
-
-    // One quarter each, in layer order, so the visible ticks never overlap whichever layer
-    // happens to be the selected one.
-    const float width = bar.getWidth() / (float) numStepLayers;
-    const float x = bar.getX() + width * (float) (int) layer;
-
-    g.setColour (theme::text.withAlpha (withinLength ? 0.55f : 0.18f));
-    g.fillRect (x, juce::jlimit (bar.getY(), bar.getBottom() - 1.5f, y - 0.75f), width, 1.5f);
-}
-
 void StepSlot::paintOverChildren (juce::Graphics& g)
 {
-    // The two layers that are not being edited show as ticks, so changing what the bars edit
-    // never hides the rest of the step. Each is drawn only when it is away from its default,
-    // so an untouched lane stays clean.
-    if (currentLayer != StepLayer::value && valueSlider.getValue() > 0.001)
-        drawLayerTick (g, valueSlider, StepLayer::value);
-
-    // Velocity and gate go unread with Notes off, so their ticks come off with their buttons
-    // -- a mark showing a value nothing acts on is worse than no mark.
-    if (noteLayersAvailable && currentLayer != StepLayer::velocity && velocitySlider.getValue() < 0.999)
-        drawLayerTick (g, velocitySlider, StepLayer::velocity);
-
-    // Chance stays in both modes: it gates whether the step reaches the mix, and the mix is
-    // what the CC output follows.
-    if (currentLayer != StepLayer::chance && chanceSlider.getValue() < 0.999)
-        drawLayerTick (g, chanceSlider, StepLayer::chance);
-
-    if (noteLayersAvailable && currentLayer != StepLayer::gate && std::abs (gateSlider.getValue() - 60.0) > 0.5)
-        drawLayerTick (g, gateSlider, StepLayer::gate);
-
     if (! playing)
         return;
 
@@ -573,11 +522,6 @@ void LaneComponent::setLayerSelectionAvailable (bool available)
     // switched off with them still editing a layer whose button has just gone.
     if (! available)
         setLayer (StepLayer::value);
-
-    // Velocity and gate ticks come off with them; chance ticks stay, because chance is still
-    // gating the mix and so still moving the CC output.
-    for (auto* slot : slots)
-        slot->setNoteLayersAvailable (available);
 
     resized();
 }
