@@ -173,7 +173,9 @@ shown, which is what makes them automatable and undoable like any other control.
 
 ### The tabs
 
-The header carries the title and the two undo arrows, nothing else. Everything global sits under
+The header carries the title, the two undo arrows, and — opposite the logo — the **MIDI output**
+pill, which routes both stacks alike and so belongs to neither tab (see
+[MPE into Live](#mpe-into-live-the-virtual-port-route)). Everything else global sits under
 whichever of the two top-level tabs it belongs to, laid out as a flat row of columns:
 
 **Notes**
@@ -343,6 +345,10 @@ listening on one channel will hear only the notes that land there. There is no s
 fallback — **Note channel** used to select one and has been removed along with the switch,
 since the zone master is fixed at channel 1.
 
+Getting that zone into an instrument inside Live takes a virtual MIDI port rather than Live's
+own routing, for reasons that are Live's rather than Ravel's — see
+[MPE into Live](#mpe-into-live-the-virtual-port-route).
+
 ---
 
 ## Building
@@ -453,19 +459,95 @@ MIDI. It is silent by design — its output is MIDI, not audio.
 Track 2 now plays whatever Ravel sequences. This is the same routing trick Scaler and
 Cthulhu use in Live.
 
+That is the simple case, and it is enough as long as every note can share one channel. It is
+**not** enough for MPE: this path collapses the zone. If you are running a non-12-EDO scale,
+Quantize off, or anything polyphonic that leans on per-note bend, use the route below instead.
+
+### MPE into Live: the virtual port route
+
+Ravel's output is always an MPE Lower Zone — one member channel per sounding note, each with
+its own pitch bend (see [MPE](#mpe)). Live discards that on the way in, twice over:
+
+- **Track-to-track routing collapses channels.** `MIDI From → 1-Ravel` hands the receiving
+  track the notes with their channel stripped, so fifteen member channels arrive as one. Every
+  note then shares a single pitch-bend register and the most recent bend wins — two overlapping
+  notes cannot hold different microtones, which is the exact problem the zone exists to solve.
+- **Live's own external MIDI output collapses them too.** `MIDI To → loopMIDI Port` makes you
+  pick one channel (`Ch. 1`, `Ch. 2` …), so leaving Live for a virtual port is the same
+  flattening one step later.
+
+So Ravel writes to the port itself. The **MIDI output** dropdown at the top right of the header
+opens a system MIDI port from inside the plugin and sends every note, CC and pitch bend straight
+to it, channels intact. Those messages never enter Live's MIDI graph at all, so nothing about
+Live's routing can touch them.
+
+It **mirrors** rather than moves: the host still receives exactly the same events on the
+plugin's own output as it always did. Picking a port adds a second destination, it does not
+redirect the first — which is why the last step below is leaving the Ravel track's **MIDI To**
+disconnected. That, rather than anything the plugin decides on its own, is what makes the
+virtual port the only path a note takes.
+
+#### Windows — loopMIDI
+
+1. Install [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html) and create a port.
+   Name it something you will recognise in a dropdown — `Ravel` will do.
+2. In Ravel's header, set **MIDI output → Ravel**. Ports are enumerated when the window opens,
+   so if you created it after that, hit **Rescan** first.
+3. Live **Preferences → Link/Tempo/MIDI**: find that port in the **MIDI Ports** list under
+   **Input** and switch on **Track** and **MPE**. The MPE toggle is the one that matters — it
+   is what tells Live to read channels 2–16 as a single zone instead of as fifteen unrelated
+   channels. Leave **Remote** off, or those notes will start MIDI-mapping things.
+4. On the instrument track: **MIDI From → Ravel**, the channel selector beneath it on **All
+   Channels**, **Monitor** on **In**.
+5. Load an MPE-capable instrument and turn its own MPE on — Live's Wavetable, Sampler, Drift
+   and Meld each have an MPE tab; third-party plugins have their own switch.
+6. Back on the Ravel track, leave **MIDI To** on **None**. If it is still pointed at the
+   instrument track, every note arrives twice — once with its channel, once without.
+
+#### macOS — the IAC Driver
+
+macOS ships loopMIDI's equivalent under a worse name; there is nothing to install.
+
+1. Open **Audio MIDI Setup**, then **Window → Show MIDI Studio**, and double-click **IAC
+   Driver**.
+2. Tick **Device is online**. `Bus 1` exists by default; add a port if the list is empty.
+3. From there, steps 2–6 above are identical — read `IAC Driver Bus 1` wherever they say
+   `Ravel`.
+
+#### What to watch for
+
+- **Do not close the loop.** The Ravel track's **MIDI From** must not be that port, and the
+  instrument track's **MIDI To** must not be either.
+- **Timing is block-granular, not sample-accurate.** Events leave for the port as the audio
+  block that produced them is processed, and their sample offset within that block is dropped,
+  so a note can land up to one buffer away from where the host's own copy of it lands — under
+  3 ms at 128 samples / 48 kHz. Live's input port adds its own latency on top. Fine for playing
+  parts; the host output stays the sample-accurate path.
+- **The choice is saved with the session, by port.** Open that session on a machine where the
+  port does not exist and Ravel quietly stays on host output rather than failing.
+- **One port per instance.** Two instances writing to the same port both allocate out of the
+  same 15 member channels without knowing about each other, and will steal each other's notes.
+  Give each its own port.
+
 ### Modulating Live's own parameters
 
 Worth being upfront: **a VST3 cannot reach into Live and drive another device's knob.**
 There is no such mechanism in the plugin format. What works is a MIDI CC loopback:
 
-1. Install [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html) and create a port.
+1. Create a virtual port — loopMIDI on Windows, an IAC Driver bus on macOS, both set up
+   [above](#mpe-into-live-the-virtual-port-route).
 2. **Preferences → Link/Tempo/MIDI**: enable that port as an **Input**, with both
-   **Track** and **Remote** switched on.
+   **Track** and **Remote** switched on. **MPE** stays off here — this is plain single-channel
+   CC.
 3. On the **CC** tab, build a pattern and pick a **Number** — either the Mix CC in the Output
    column, or a single lane's own Send and Number on its own strip.
 4. On the track receiving Ravel's MIDI, set **MIDI To → loopMIDI Port**.
 5. Start playback so CC is flowing, press **Ctrl+M**, click the parameter you want to
    modulate, and Live latches onto the incoming CC.
+
+Step 4 can equally be Ravel's own **MIDI output** dropdown pointed at that port, which leaves
+the track's **MIDI To** free for an instrument. Channel collapse does not matter to CC, so
+either path works here; the dropdown is only strictly necessary for notes.
 
 Because each CC lane has its own destination on top of the Mix CC, one instance can drive up to
 five mapped parameters. If this instance is only for CC, mute its Note lanes so it stops
