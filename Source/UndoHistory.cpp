@@ -41,7 +41,8 @@ void UndoHistory::captureBeforeEdit()
     juce::MessageManager::callAsync ([weakThis]
     {
         if (auto* self = weakThis.get())
-            self->editOpen = false;
+            if (! self->editHeld)
+                self->editOpen = false;
     });
 
     undoStack.push_back (takeSnapshot());
@@ -51,6 +52,16 @@ void UndoHistory::captureBeforeEdit()
 
     // Editing after an undo is a new branch: what was undone is no longer reachable.
     redoStack.clear();
+}
+
+void UndoHistory::setEditHeldOpen (bool shouldHold) noexcept
+{
+    editHeld = shouldHold;
+
+    // Closed here rather than left to the async reset above, which fired long ago: the hold
+    // outlives it, so by the time a stroke ends there is nothing else left to close it.
+    if (! shouldHold)
+        editOpen = false;
 }
 
 //==============================================================================

@@ -9,6 +9,21 @@ namespace
     // ruled under the whole step area. Part of lane::stepSlotWidth, not extra to it: the
     // gap comes out of the slot, so the pitch from one step to the next stays exact.
     constexpr int slotGap      = 5;
+
+    /** What each layer's bar edits. Out here rather than in the constructor's table because
+        the slot's tooltip asks for it again every time the mouse rests on a bar, and the
+        layer under the bars changes without the slot being rebuilt. */
+    const char* layerTooltip (StepLayer layer) noexcept
+    {
+        switch (layer)
+        {
+            case StepLayer::velocity: return "This step's accent, as a trim on the global Velocity";
+            case StepLayer::chance:   return "Probability this step fires";
+            case StepLayer::gate:     return "How long this step's note is held, as % of the step";
+            case StepLayer::value:
+            default:                  return "Step value -- drives pitch";
+        }
+    }
 }
 
 //==============================================================================
@@ -21,7 +36,6 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
         juce::Slider& slider;
         juce::String  paramID;
         double        resetTo;
-        const char*   tooltip;
     };
 
     // Velocity and Gate are note-only parameters -- a CC lane's step has neither (see
@@ -30,12 +44,10 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
 
     const LayerSetup setups[]
     {
-        { valueSlider,    params::stepValueId (laneIndex, stepIndex, kind),  0.0,  "Step value -- drives pitch" },
-        { velocitySlider, isCc ? juce::String() : params::stepVelocityId (laneIndex, stepIndex),
-          1.0,  "This step's accent, as a trim on the global Velocity" },
-        { chanceSlider,   params::stepChanceId (laneIndex, stepIndex, kind), 1.0,  "Probability this step fires" },
-        { gateSlider,     isCc ? juce::String() : params::stepGateId (laneIndex, stepIndex),
-          60.0, "How long this step's note is held, as % of the step" },
+        { valueSlider,    params::stepValueId (laneIndex, stepIndex, kind),  0.0 },
+        { velocitySlider, isCc ? juce::String() : params::stepVelocityId (laneIndex, stepIndex),  1.0 },
+        { chanceSlider,   params::stepChanceId (laneIndex, stepIndex, kind), 1.0 },
+        { gateSlider,     isCc ? juce::String() : params::stepGateId (laneIndex, stepIndex),      60.0 },
     };
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>* attachments[]
@@ -54,9 +66,18 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
         slider.setSliderStyle (juce::Slider::LinearBarVertical);
         slider.setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
         slider.setColour (juce::Slider::backgroundColourId, theme::track);
-        slider.setPopupDisplayEnabled (true, true, getParentComponent());
+
+        // On drag only. The hover half of it went with the slider's mouse handling, since a
+        // component that is never under the mouse is never hovered; the slot's own tooltip
+        // carries the value instead. See getTooltip.
+        slider.setPopupDisplayEnabled (true, false, getParentComponent());
         slider.setDoubleClickReturnValue (true, setups[i].resetTo);
-        slider.setTooltip (setups[i].tooltip);
+
+        // The slot takes the mouse for all four bars and passes each event on to whichever
+        // one the stroke has reached -- see this class's own comment. A bar that took its own
+        // mouse-down would hold the rest of the drag whatever the cursor went on to do.
+        slider.setInterceptsMouseClicks (false, false);
+
         theme::setRole (slider, theme::Role::stepBar);
         addChildComponent (slider);
 
@@ -161,6 +182,102 @@ void StepSlot::applyTrigState()
 juce::Rectangle<int> StepSlot::barArea() const
 {
     return getLocalBounds().withTrimmedBottom (trigHeight + trigGap);
+}
+
+bool StepSlot::barContains (juce::Point<int> positionInSlot) const
+{
+    return barArea().contains (positionInSlot);
+}
+
+juce::Slider* StepSlot::activeBar() noexcept
+{
+    // Visibility is what tells the two apart: setLayer shows exactly the one bar the slot is
+    // editing, and on a CC slot the layers that were never built are never shown.
+    auto& bar = sliderFor (currentLayer);
+    return bar.isVisible() ? &bar : nullptr;
+}
+
+juce::String StepSlot::getTooltip()
+{
+    if (auto* bar = activeBar())
+        return bar->getTextFromValue (bar->getValue()) + " -- " + layerTooltip (currentLayer);
+
+    return layerTooltip (currentLayer);
+}
+
+//==============================================================================
+void StepSlot::beginBarDrag (const juce::MouseEvent& e)
+{
+    if (auto* bar = activeBar())
+        bar->mouseDown (e.getEventRelativeTo (bar));
+}
+
+void StepSlot::continueBarDrag (const juce::MouseEvent& e)
+{
+    if (auto* bar = activeBar())
+        bar->mouseDrag (e.getEventRelativeTo (bar));
+}
+
+void StepSlot::endBarDrag (const juce::MouseEvent& e)
+{
+    if (auto* bar = activeBar())
+        bar->mouseUp (e.getEventRelativeTo (bar));
+}
+
+//==============================================================================
+void StepSlot::mouseDown (const juce::MouseEvent& e)
+{
+    // The trig strip is a button of its own and takes its own clicks, so the only part of
+    // the slot that reaches here is the bar -- except for the few pixels of gap between the
+    // two, which start nothing.
+    if (! barContains (e.getPosition()))
+        return;
+
+    if (auto* owner = findParentComponentOfClass<LaneComponent>())
+        owner->startStroke (*this, e);
+}
+
+void StepSlot::mouseDrag (const juce::MouseEvent& e)
+{
+    // Still this slot's event however far the cursor has gone: JUCE keeps a drag with the
+    // component the button went down in. Which step it now belongs to is the lane's to say.
+    if (auto* owner = findParentComponentOfClass<LaneComponent>())
+        owner->continueStroke (e);
+}
+
+void StepSlot::mouseUp (const juce::MouseEvent& e)
+{
+    if (auto* owner = findParentComponentOfClass<LaneComponent>())
+        owner->endStroke (e);
+}
+
+void StepSlot::mouseDoubleClick (const juce::MouseEvent& e)
+{
+    if (! barContains (e.getPosition()))
+        return;
+
+    // Reaches the bar directly rather than through the lane: a double click is one step's
+    // own reset, and there is no stroke for it to be part of.
+    if (auto* bar = activeBar())
+        bar->mouseDoubleClick (e.getEventRelativeTo (bar));
+}
+
+void StepSlot::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
+{
+    // A Slider that makes no use of a wheel event hands it to its parent, which is this slot
+    // -- so an unwanted wheel would come straight back and be offered to the bar again. The
+    // second time through it goes on up instead, which is where the slider was sending it.
+    if (forwardingWheel)
+    {
+        Component::mouseWheelMove (e, wheel);
+        return;
+    }
+
+    if (auto* bar = activeBar())
+    {
+        const juce::ScopedValueSetter<bool> guard (forwardingWheel, true);
+        bar->mouseWheelMove (e.getEventRelativeTo (bar), wheel);
+    }
 }
 
 void StepSlot::paintOverChildren (juce::Graphics& g)
@@ -316,6 +433,124 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
     applyLength();
 }
 
+LaneComponent::~LaneComponent()
+{
+    // A lane cannot normally go while a stroke is running -- the button that removes it is
+    // not reachable with a step bar holding the mouse -- but an undo step left held open
+    // would quietly swallow every edit made after it into the same step.
+    if (strokeSlot != nullptr && onStrokeActive != nullptr)
+        onStrokeActive (false);
+}
+
+//==============================================================================
+void LaneComponent::startStroke (StepSlot& slot, const juce::MouseEvent& e)
+{
+    strokeSlot = &slot;
+    strokePosition = e.getEventRelativeTo (this).position;
+
+    if (onStrokeActive != nullptr)
+        onStrokeActive (true);
+
+    slot.beginBarDrag (e);
+}
+
+void LaneComponent::continueStroke (const juce::MouseEvent& e)
+{
+    if (strokeSlot == nullptr)
+        return;
+
+    const auto laneEvent = e.getEventRelativeTo (this);
+    const auto to = laneEvent.position;
+
+    const int target = slotIndexForStroke (to.x);
+    int index = slots.indexOf (strokeSlot);
+
+    if (target < 0 || index < 0)
+        return;
+
+    const int direction = target > index ? 1 : -1;
+
+    // Every step between the last position and this one, not only the one the cursor has
+    // landed on. A drag reports positions a frame apart, and at any speed worth calling a
+    // swipe those are further apart than a step is wide -- so without this a quick stroke
+    // would paint every third step and leave the rest exactly as it found them, which is the
+    // one thing the stroke exists to avoid.
+    while (index != target)
+    {
+        index += direction;
+
+        // Each is taken at the height the cursor had as it crossed that step rather than at
+        // the height it has ended up at, so a swipe drawn as a diagonal comes out as a ramp
+        // instead of as a row of equal bars.
+        const auto crossing = pointCrossingSlot (index, strokePosition, to);
+
+        handStrokeTo (*slots.getUnchecked (index), laneEvent.withNewPosition (crossing));
+    }
+
+    strokeSlot->continueBarDrag (laneEvent);
+    strokePosition = to;
+}
+
+void LaneComponent::handStrokeTo (StepSlot& slot, const juce::MouseEvent& atPoint)
+{
+    // The step being left keeps whatever it was last dragged to: it is released where it
+    // stands rather than reverted, which is the whole point of the stroke. Ending its drag
+    // also closes its host gesture, so each step remains its own edit as far as the host is
+    // concerned -- only the undo history joins them, and only because the editor holds the
+    // step open for the length of the stroke. See onStrokeActive.
+    strokeSlot->endBarDrag (atPoint);
+    strokeSlot = &slot;
+    strokeSlot->beginBarDrag (atPoint);
+}
+
+void LaneComponent::endStroke (const juce::MouseEvent& e)
+{
+    if (strokeSlot == nullptr)
+        return;
+
+    strokeSlot->endBarDrag (e);
+    strokeSlot = nullptr;
+
+    if (onStrokeActive != nullptr)
+        onStrokeActive (false);
+}
+
+juce::Point<float> LaneComponent::pointCrossingSlot (int index, juce::Point<float> from,
+                                                     juce::Point<float> to) const
+{
+    const auto x = (float) slots.getUnchecked (index)->getBounds().getCentreX();
+
+    // How far along the cursor's travel this step sits, so the height can be read off the
+    // line between the two reported positions. A stroke that only moved vertically never
+    // reaches here, but the division is guarded all the same.
+    const float span = to.x - from.x;
+    const float t = std::abs (span) > 0.001f ? juce::jlimit (0.0f, 1.0f, (x - from.x) / span)
+                                             : 1.0f;
+
+    return { x, from.y + t * (to.y - from.y) };
+}
+
+int LaneComponent::slotIndexForStroke (float xInLane) const
+{
+    int nearest = -1;
+    float nearestDistance = 0.0f;
+
+    for (int i = 0; i < slots.size(); ++i)
+    {
+        const float distance = std::abs ((float) slots.getUnchecked (i)->getBounds().getCentreX()
+                                             - xInLane);
+
+        if (nearest < 0 || distance < nearestDistance)
+        {
+            nearest = i;
+            nearestDistance = distance;
+        }
+    }
+
+    return nearest;
+}
+
+//==============================================================================
 void LaneComponent::applyLength()
 {
     if (lengthSlider == nullptr)

@@ -159,6 +159,12 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
         auto* component = noteLanes.add (new LaneComponent (state, lane, noteClipboard, params::LaneKind::note));
         component->onRemove = [this, lane] { removeNoteLane (lane); };
 
+        // A value painted across several steps in one stroke is one thing the user did, and
+        // steps back in one press. The history is the processor's, which is why the lane has
+        // to be told rather than reaching for it.
+        component->onStrokeActive = [this] (bool active)
+                                    { processorRef.undoHistory.setEditHeldOpen (active); };
+
         notesWorkspace.addChildComponent (component);
     }
 
@@ -172,6 +178,9 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
     {
         auto* component = ccLanes.add (new LaneComponent (state, lane, ccClipboard, params::LaneKind::cc));
         component->onRemove = [this, lane] { removeCcLane (lane); };
+
+        component->onStrokeActive = [this] (bool active)
+                                    { processorRef.undoHistory.setEditHeldOpen (active); };
 
         ccWorkspace.addChildComponent (component);
     }

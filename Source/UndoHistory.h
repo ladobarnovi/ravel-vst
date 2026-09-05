@@ -53,6 +53,18 @@ public:
         in for the message loop turning over between two separate user actions. */
     void closeCurrentEdit() noexcept { editOpen = false; }
 
+    //==========================================================================
+    /** Holds the current undo step open until it is turned off again.
+
+        One turn of the message loop is one edit, which is the right seam for everything that
+        happens in a single click but the wrong one for a gesture that spans many: a value
+        painted across the step bars in one stroke is one thing the user did, and arrives as
+        a separate parameter gesture in a separate drag callback for every step it crosses.
+        The editor brackets such a stroke with this, so it steps back in one press rather
+        than one press per step. Left off, the message-loop rule stands.
+    */
+    void setEditHeldOpen (bool shouldHold) noexcept;
+
 private:
     //==========================================================================
     void parameterValueChanged (int, float) override {}
@@ -75,6 +87,9 @@ private:
     // they arrived in, not by how far apart in time they were. Gestures beginning while this
     // is set join the edit already recorded.
     bool editOpen = false;
+
+    // While set, the window above is not allowed to close on its own -- see setEditHeldOpen.
+    bool editHeld = false;
 
     // Restoring writes parameters exactly the way the UI does, gestures included, so without
     // this guard the restore would be recorded as a fresh edit and undo could never move.

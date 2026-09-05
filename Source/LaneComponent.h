@@ -53,9 +53,22 @@ enum class StepLayer { value = 0, velocity = 1, chance = 2, gate = 3 };
 /** How many layers a step has, and how many StepLayer values there are. */
 inline constexpr int numStepLayers = 4;
 
+class LaneComponent;
+
 //==============================================================================
-/** One step: a tall bar for the selected layer, and a trig strip. */
-class StepSlot final : public juce::Component
+/** One step: a tall bar for the selected layer, and a trig strip.
+
+    The slot, not the bar inside it, is what takes the mouse. A bar is a Slider, and a Slider
+    that is handed a mouse-down keeps every drag event that follows it, wherever the cursor
+    goes -- which is exactly the behaviour to avoid here, since a drag that crosses into the
+    next step should start editing that step instead. So the sliders are made deaf to the
+    mouse, the slot receives the gesture, and the lane decides which slot's bar each event
+    belongs to and hands it over. What the bar is given is still the ordinary Slider event
+    stream, so snapping, the value bubble and the host gesture the undo history reads all
+    behave as they would have.
+*/
+class StepSlot final : public juce::Component,
+                       public juce::TooltipClient
 {
 public:
     /** For a CC-kind slot, only the Value and Chance sliders get an attachment and become
@@ -66,6 +79,30 @@ public:
 
     void paintOverChildren (juce::Graphics&) override;
     void resized() override;
+
+    void mouseDown        (const juce::MouseEvent&) override;
+    void mouseDrag        (const juce::MouseEvent&) override;
+    void mouseUp          (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
+    void mouseWheelMove   (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+
+    /** The bar's own tooltip, answered by the slot because the tooltip window can only ask
+        whatever is under the mouse -- and the bar never is. Carries the step's current value
+        as well as the layer's description: hovering a bar used to raise the slider's own
+        value bubble, which went the way of its mouse handling. */
+    juce::String getTooltip() override;
+
+    /** True if the point, in this slot's coordinates, is in the bar rather than in the trig
+        strip beneath it. */
+    bool barContains (juce::Point<int> positionInSlot) const;
+
+    /** The three stages of a stroke, as they reach this slot's bar. The event may come from
+        anywhere -- a stroke that started three steps away is still one drag, and its events
+        arrive in the coordinates of the slot it started in -- so each is rebased onto the
+        bar before being handed over. */
+    void beginBarDrag    (const juce::MouseEvent&);
+    void continueBarDrag (const juce::MouseEvent&);
+    void endBarDrag      (const juce::MouseEvent&);
 
     void setPlaying (bool shouldBePlaying);
     void setLayer (StepLayer layer);
@@ -104,6 +141,14 @@ private:
 
     juce::Slider& sliderFor (StepLayer) noexcept;
 
+    /** The bar a stroke would edit, or nullptr where the lane has no such layer to edit -- a
+        CC step has no Velocity or Gate bar to reach for. */
+    juce::Slider* activeBar() noexcept;
+
+    /** Guards the one place the forwarding could turn back on itself: a Slider that makes no
+        use of a wheel event passes it up to its parent, which is this slot. */
+    bool forwardingWheel = false;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StepSlot)
 };
 
@@ -125,6 +170,8 @@ public:
                    params::LanePattern& sharedClipboard,
                    params::LaneKind kind = params::LaneKind::note);
 
+    ~LaneComponent() override;
+
     void paint (juce::Graphics&) override;
     void resized() override;
 
@@ -145,6 +192,30 @@ public:
         removing a lane is a change to the stack rather than to the lane -- the lanes above
         this one move down, and the window resizes. */
     std::function<void()> onRemove;
+
+    /** Invoked with true as a stroke across the step bars begins and false as it ends. The
+        editor supplies it, because what it is for is the undo history, which lives on the
+        processor: a stroke is one thing the user did and should step back in one press,
+        and the history's own rule -- one turn of the message loop is one edit -- would
+        otherwise make a separate step of every drag callback the stroke passes through.
+        See UndoHistory::setEditHeldOpen. */
+    std::function<void (bool)> onStrokeActive;
+
+    //==========================================================================
+    // Called by StepSlot, which receives the mouse but does not decide what it means: which
+    // step a moving cursor is editing is the lane's business, since only the lane can see
+    // the other fifteen.
+
+    /** Opens a stroke on the slot the mouse went down in. */
+    void startStroke (StepSlot& slot, const juce::MouseEvent&);
+
+    /** Carries the stroke on, handing the drag to whichever slot the cursor has reached: the
+        one it is leaving is released where it stands, and the one it arrives at picks the
+        gesture up from there. */
+    void continueStroke (const juce::MouseEvent&);
+
+    /** Closes the stroke on whichever slot it ended over. */
+    void endStroke (const juce::MouseEvent&);
 
 private:
     juce::AudioProcessorValueTreeState& apvts;
@@ -204,6 +275,38 @@ private:
     int dividerX = 0;
 
     int playingStep = -1;
+
+    /** The slot the stroke in progress is editing, which is not necessarily the one it
+        started in. Null between strokes. The slots outlive any stroke -- they are built once
+        and never replaced -- so this does not need to be a SafePointer. */
+    StepSlot* strokeSlot = nullptr;
+
+    /** Where the stroke was when it was last heard from, in the lane's coordinates. A drag
+        reports a handful of positions a frame apart, so this and the position that has just
+        arrived are the two ends of a line the cursor has already travelled -- see
+        continueStroke, which has to fill in the steps along it. */
+    juce::Point<float> strokePosition;
+
+    /** The step a stroke at this distance across the lane should be editing, or -1 in a lane
+        with no steps at all.
+
+        Nearest by centre rather than a hit test: the gaps between the slots, wider still
+        between the groups of four, are dead space a hit test would drop the stroke into, and
+        the bar would stop following the cursor for the few pixels between one step and the
+        next. Height plays no part either -- a stroke that wanders above or below the row
+        keeps painting the step it is over, with only the value it writes running out of
+        range.
+    */
+    int slotIndexForStroke (float xInLane) const;
+
+    /** Moves the stroke onto another step, releasing the one it is leaving where it stands
+        and opening the new one at the given point. */
+    void handStrokeTo (StepSlot& slot, const juce::MouseEvent& atPoint);
+
+    /** Where a stroke that travelled from one point to the other crossed the given step:
+        that step's centre, at the height the line between the two had reached by then. */
+    juce::Point<float> pointCrossingSlot (int index, juce::Point<float> from,
+                                          juce::Point<float> to) const;
 
     void showActionsMenu();
 
