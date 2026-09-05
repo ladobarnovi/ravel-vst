@@ -106,11 +106,11 @@ public:
         /** True: every simultaneously-sounding note gets its own MIDI channel (a standard
             MPE Lower Zone) instead of sharing the Note Channel's one pitch wheel. Off
             reproduces the single-channel behaviour that predated it, where overlapping notes
-            share one wheel and so cannot hold different microtones.
+            share one wheel and so cannot hold different microtones -- midiChannel is read
+            only on that path.
 
-            The plugin always passes true -- there is no parameter behind this any more. It
-            stays a field so the engine's own tests can still drive both allocation paths,
-            and so midiChannel, which only the false path reads, keeps a defined meaning.
+            The parameter behind it defaults to on; this field defaults to off so the
+            engine's own tests start from the simpler allocation path and opt in.
         */
         bool  mpeEnabled    = false;
     };

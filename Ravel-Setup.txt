@@ -1,0 +1,282 @@
+==============================================================================
+RAVEL - SETUP AND MPE ROUTING
+==============================================================================
+
+Ravel is a polyrhythmic step sequencer. It is an instrument plugin that emits
+MIDI rather than audio, so it makes no sound on its own - it drives whatever
+instrument you point it at.
+
+This file covers two things:
+
+  Part 1 - installing the plugin (macOS, then Windows)
+  Part 2 - routing it into an MPE instrument, which needs a virtual MIDI port
+
+Part 2 matters if you care about microtuning, non-12-EDO scales, Quantize off,
+or per-note pitch bend. If you are only playing plain 12-tone patterns on one
+channel, you can stop after Part 1 and just route track-to-track as usual.
+
+
+==============================================================================
+PART 1 - INSTALLING
+==============================================================================
+
+------------------------------------------------------------------------------
+1.1  macOS
+------------------------------------------------------------------------------
+
+You get two bundles: Ravel.vst3 and Ravel.component. They are the same plugin
+in two formats. Live can use either; Logic only uses the AU (.component).
+Install both - it costs nothing.
+
+Step 1. Unzip them, then move each one into its own plugin folder. They are
+        different folders, and each format only gets found in its own.
+        Create the folders first - see the note below for why:
+
+            mkdir -p ~/Library/Audio/Plug-Ins/VST3
+            mkdir -p ~/Library/Audio/Plug-Ins/Components
+            mv Ravel.vst3 ~/Library/Audio/Plug-Ins/VST3/
+            mv Ravel.component ~/Library/Audio/Plug-Ins/Components/
+
+        Those are the standard per-user locations, so no custom-folder setup
+        is needed in the host. If ~/Library looks missing in Finder, it is
+        hidden by default - hold Option while clicking the Go menu.
+
+        The mkdir lines are not decoration. Components/ exists on essentially
+        every Mac because macOS, GarageBand and Logic all create it, but
+        VST3/ is only created by whatever VST3 installer ran first - on a Mac
+        that has never had a VST3 plugin installed, it does not exist. If it
+        is missing, that mv fails and the AU installs while the VST3 silently
+        does not, which looks exactly like the VST3 being broken. Dragging in
+        Finder has the same trap.
+
+Step 2. Clear the quarantine flag. This build is ad-hoc signed - enough for
+        Apple Silicon to load it at all, but there is no Apple Developer
+        certificate and no notarisation behind it, so Gatekeeper will refuse
+        anything still marked as downloaded and the plugin will either not
+        appear at all or fail its scan. Run this once in Terminal, after
+        moving the files:
+
+            xattr -cr ~/Library/Audio/Plug-Ins/VST3/Ravel.vst3
+            xattr -cr ~/Library/Audio/Plug-Ins/Components/Ravel.component
+
+        This is the step people miss. If Ravel does not show up on macOS, it
+        is almost always because this was skipped, or because it was run
+        before the bundles were moved (the paths above are the final ones).
+
+Step 3. Restart the host and let it rescan.
+
+        In Live: Preferences -> Plug-Ins, make sure "Use Audio Units" and
+        "Use VST3 Plug-In System Folders" are on, then hit Rescan.
+
+If the AU still does not appear after a restart, force macOS to re-register
+its plugin list:
+
+    killall -9 AudioComponentRegistrar
+
+That daemon restarts itself immediately; the next host launch rescans.
+
+------------------------------------------------------------------------------
+1.1a  If the AU shows up but the VST3 does not
+------------------------------------------------------------------------------
+
+This is the common failure, and it is nearly always install-side rather than
+anything wrong with the bundle. Work down this list; each step is a question
+with a definite answer, so stop at the first one that comes back wrong.
+
+1.  Is it actually there?
+
+        ls -la ~/Library/Audio/Plug-Ins/VST3/Ravel.vst3/Contents/MacOS/Ravel
+
+    If that errors, the move in Step 1 never landed - go back and run the
+    mkdir lines first. This is the single most likely cause.
+
+2.  Is it still quarantined? Downloaded builds are ad-hoc signed, so
+    Gatekeeper will refuse to load one that still carries the flag:
+
+        xattr -lr ~/Library/Audio/Plug-Ins/VST3/Ravel.vst3
+
+    Any com.apple.quarantine line means Step 2 was skipped, or was run before
+    the bundle was moved. Re-run it on the path above.
+
+3.  Did the signature survive the unzip?
+
+        codesign -vvv --deep ~/Library/Audio/Plug-Ins/VST3/Ravel.vst3
+
+    "valid on disk" and "satisfies its Designated Requirement" is what you
+    want. Some third-party unarchivers rewrite file metadata and break the
+    seal; if this fails, unzip again with the built-in Archive Utility.
+
+4.  What did the host actually say? Live logs every plugin it scans and why
+    it rejected one:
+
+        grep -i -E "ravel|vst3" ~/Library/Preferences/Ableton/Live*/Log.txt \
+            | tail -40
+
+5.  Is the host just showing you a cached result? Live remembers a plugin
+    that failed to scan and will not retry it on its own. Hold Alt while
+    clicking Rescan in Preferences -> Plug-Ins to force a full rescan that
+    ignores the cache.
+
+Worth knowing: Live splits the browser into separate AU and VST3 folders
+under Plug-Ins, so check you are not looking at the AU entry and assuming it
+is the only one.
+
+------------------------------------------------------------------------------
+1.2  Windows
+------------------------------------------------------------------------------
+
+You get one bundle: Ravel.vst3. Put it wherever your host scans for VST3.
+The two normal choices:
+
+  - The system folder, which every host already scans:
+        C:\Program Files\Common Files\VST3\
+
+  - Or your own folder, e.g. Documents\VST3, and point Live at it:
+        Preferences -> Plug-Ins -> VST3 Custom Folder -> browse to it,
+        then Rescan.
+
+There is no quarantine equivalent to clear. Windows may show a SmartScreen
+warning the first time; the plugin is unsigned for the same reason as above.
+
+
+==============================================================================
+PART 2 - MPE INTO LIVE: THE VIRTUAL PORT ROUTE
+==============================================================================
+
+------------------------------------------------------------------------------
+2.1  Why the obvious routing does not work
+------------------------------------------------------------------------------
+
+Ravel always speaks MPE. Its output is a standard MPE Lower Zone: channel 1 is
+the zone master, channels 2-16 are member channels, and every note that sounds
+at the same time as another gets its own member channel with its own pitch
+bend. That per-note channel is what makes poly microtuning possible at all -
+one channel has only one pitch-bend register, so two notes sharing a channel
+cannot hold two different microtones.
+
+Ableton Live throws that away on the way in, in two different places:
+
+  * Track-to-track routing collapses channels.
+    Setting "MIDI From -> 1-Ravel" on another track hands that track the notes
+    with the channel stripped off, so all fifteen member channels arrive as
+    one. Every note then shares a single pitch-bend register and the most
+    recent bend wins - which is exactly the problem the zone exists to solve.
+    Overlapping notes go out of tune.
+
+  * Live's own external MIDI output collapses them too.
+    "MIDI To -> loopMIDI Port" makes you pick one specific channel (Ch. 1,
+    Ch. 2, ...). So sending the track out of Live to a virtual port is the
+    same flattening, just one step later.
+
+This is a limitation in Live's MIDI routing, not something Ravel can fix from
+inside the plugin.
+
+So Ravel does not use Live's routing for this. It writes to a system MIDI port
+itself. The "MIDI output" dropdown at the top right of Ravel's window opens a
+MIDI port directly from inside the plugin and sends every note, CC and pitch
+bend straight out to it, with the channel numbers intact. Those messages never
+enter Live's MIDI graph at all, so nothing about Live's routing can flatten
+them.
+
+One thing to understand before the steps below: this MIRRORS, it does not
+move. The host still receives exactly the same events on the plugin's normal
+output as it always did. Choosing a port adds a second destination, it does
+not redirect the first. That is why the last step is disconnecting the Ravel
+track's "MIDI To" - otherwise your instrument hears every note twice, once
+properly and once channel-collapsed.
+
+------------------------------------------------------------------------------
+2.2  Windows - loopMIDI
+------------------------------------------------------------------------------
+
+loopMIDI is a free virtual MIDI cable by Tobias Erichsen:
+https://www.tobias-erichsen.de/software/loopmidi.html
+
+Step 1. Install loopMIDI and create a port. Name it something you will
+        recognise in a dropdown - "Ravel" will do. It has to be running for
+        the port to exist, so let it start with Windows.
+
+Step 2. In Ravel's window, top right: set "MIDI output" to "Ravel".
+
+        Ports are enumerated when the plugin window opens, so if you created
+        the port after opening Ravel, click "Rescan" first and it will appear.
+
+Step 3. In Live: Preferences -> Link/Tempo/MIDI. Find that port in the MIDI
+        Ports list, under Input, and switch on:
+
+            Track  ->  ON
+            MPE    ->  ON
+            Remote ->  OFF
+
+        The MPE toggle is the one that matters. It is what tells Live to read
+        channels 2-16 as a single MPE zone instead of as fifteen unrelated
+        channels. Leave Remote off, or the incoming notes will start
+        MIDI-mapping whatever is selected.
+
+Step 4. On the track with your instrument:
+
+            MIDI From        ->  Ravel   (the loopMIDI port)
+            channel selector ->  All Channels     <- important
+            Monitor          ->  In
+
+        "All Channels" is the second dropdown, directly beneath MIDI From.
+        If it is set to a single channel you are back to the collapsed case.
+
+Step 5. Load an MPE-capable instrument on that track and turn ITS MPE on.
+        Live's own Wavetable, Sampler, Drift and Meld each have an MPE tab.
+        Third-party plugins have their own MPE switch, usually in their
+        settings. A non-MPE instrument will only hear the notes that happen
+        to land on the channel it listens to.
+
+Step 6. Go back to the Ravel track and set "MIDI To" to "None".
+        If it is still pointed at the instrument track, every note arrives
+        twice - once with its channel, once without.
+
+------------------------------------------------------------------------------
+2.3  macOS - the IAC Driver
+------------------------------------------------------------------------------
+
+macOS already ships loopMIDI's equivalent, under a worse name. There is
+nothing to install.
+
+Step 1. Open Audio MIDI Setup (it is in Applications/Utilities).
+        Then: Window -> Show MIDI Studio, and double-click "IAC Driver".
+
+Step 2. Tick "Device is online". A port called "Bus 1" exists by default; if
+        the Ports list is empty, click + to add one.
+
+Step 3. From here, steps 2 through 6 of the Windows list above are identical.
+        Just read "IAC Driver Bus 1" everywhere they say "Ravel".
+
+------------------------------------------------------------------------------
+2.4  Things to watch for
+------------------------------------------------------------------------------
+
+  * Do not close the loop.
+    The Ravel track's own "MIDI From" must not be set to that same port, and
+    the instrument track's "MIDI To" must not be either. Either one creates a
+    MIDI feedback loop.
+
+  * Timing through the port is block-granular, not sample-accurate.
+    Events leave for the port as the audio block that produced them is
+    processed, and their exact position inside that block is dropped, so a
+    note can land up to one buffer away from where the host's own copy lands.
+    At 128 samples / 48 kHz that is under 3 ms. Live's input port adds a
+    little of its own on top. Fine for playing parts - just do not expect it
+    to be sample-locked to the host's timeline the way the normal plugin
+    output is.
+
+  * The port choice is saved with the session, by port name.
+    Open that session on a machine where the port does not exist and Ravel
+    quietly falls back to host output only, rather than erroring.
+
+  * One port per Ravel instance.
+    Two instances writing to the same port both allocate out of the same 15
+    member channels without knowing about each other, and will steal each
+    other's notes. Give each instance its own port.
+
+  * Nothing sounds at all?
+    Check, in order: the instrument track's Monitor is In; its channel
+    selector is All Channels; Track is on for the port in Preferences; the
+    Ravel track is actually playing (Ravel follows the host transport unless
+    Free Run is on, so press play).

@@ -63,6 +63,7 @@ RavelAudioProcessor::RavelAudioProcessor()
     pSwing         = apvts.getRawParameterValue (params::swingId);
     pVoiceCount    = apvts.getRawParameterValue (params::voiceCountId);
     pPolyMode      = apvts.getRawParameterValue (params::polyModeId);
+    pMpeEnabled    = apvts.getRawParameterValue (params::mpeEnabledId);
     pNoteLaneCount = apvts.getRawParameterValue (params::noteLaneCountId);
     pCcLaneCount   = apvts.getRawParameterValue (params::ccLaneCountId);
 }
@@ -163,10 +164,10 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
     s.swing             = pSwing->load();
     s.voiceCount        = (int) std::lround (pVoiceCount->load());
     s.polyMode          = pPolyMode->load() > 0.5f;
-    // Not a parameter: the plugin always speaks MPE. The engine keeps the flag because it
-    // is what its own tests toggle to cover both channel-allocation paths, but nothing the
-    // user can reach turns it off, and s.midiChannel is inert as a result.
-    s.mpeEnabled        = true;
+    // On: the engine gives each simultaneous note its own MPE member channel and
+    // s.midiChannel is inert. Off: every note goes out on s.midiChannel and shares that
+    // one channel's single pitch wheel.
+    s.mpeEnabled        = pMpeEnabled->load() > 0.5f;
 
     return s;
 }
@@ -244,6 +245,10 @@ juce::AudioProcessorEditor* RavelAudioProcessor::createEditor()
 
 void RavelAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
+    // Stamps which preset this instance is sitting on into the tree before it is copied out,
+    // so reopening the session shows the patch's name rather than "Init".
+    presetManager.writeSessionState();
+
     if (const auto xml = apvts.copyState().createXml())
         copyXmlToBinary (*xml, destData);
 }
@@ -263,6 +268,10 @@ void RavelAudioProcessor::setStateInformation (const void* data, int sizeInBytes
             // Whatever this instance held before the host handed it a session is not a state
             // the user chose, so it is not one Ctrl+Z should be able to walk back into.
             undoHistory.clear();
+
+            // Which preset the session was sitting on. Moves no parameters -- replaceState
+            // above has already restored the patch -- it only reattaches the name to it.
+            presetManager.readSessionState();
 
             // Reconnects to whatever external MIDI port this instance was pointed at when the
             // session was saved. A missing or now-absent identifier (a fresh instance, or a

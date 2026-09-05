@@ -2,6 +2,7 @@
 
 #include "ExternalMidiOutput.h"
 #include "Parameters.h"
+#include "PresetManager.h"
 #include "SequencerEngine.h"
 #include "UndoHistory.h"
 
@@ -47,6 +48,12 @@ public:
         It lives on the processor rather than the editor so that closing the plugin window
         does not throw the history away. */
     UndoHistory undoHistory { *this };
+
+    /** Saving, loading and browsing patches. Declared after apvts for the same reason
+        undoHistory is -- it walks the parameter list at construction -- and lives on the
+        processor rather than the editor so that the loaded preset's name, and whether the
+        patch has been edited away from it, survive the window being closed. */
+    PresetManager presetManager { *this, apvts };
 
     /** Mirrors every event this instance generates out to a system MIDI port, completely
         outside Ableton's own MIDI routing -- see ExternalMidiOutput's own header for why.
@@ -106,6 +113,7 @@ private:
     std::atomic<float>* pSwing        = nullptr;
     std::atomic<float>* pVoiceCount   = nullptr;
     std::atomic<float>* pPolyMode     = nullptr;
+    std::atomic<float>* pMpeEnabled   = nullptr;
     std::atomic<float>* pNoteLaneCount = nullptr;
     std::atomic<float>* pCcLaneCount   = nullptr;
 

@@ -23,7 +23,7 @@ they are two separate sequencers sharing one clock, one transport and one plugin
 
 |  | Notes stack | CC stack |
 |---|---|---|
-| What the fold drives | Pitch, over an MPE zone | The Mix CC |
+| What the fold drives | Pitch, over an MPE zone (or one channel) | The Mix CC |
 | Lanes | 1–4, own count | 1–4, own count |
 | Per-step | Value, Velocity, Chance, Gate | Value, Chance |
 | Per-lane shaping | Direction | — (always Forward) |
@@ -130,6 +130,37 @@ a single step, while two clicks on two different steps are two. Host automation 
 gestures and so never fills the history. The history lives on the processor rather than the
 editor, and therefore survives closing the plugin window; loading a session clears it.
 
+### Presets
+
+The pill beside the history arrows holds the loaded preset. Click the name to open the
+browser, or step through the list with the chevrons either side of it — that pair is meant for
+auditioning, so you can spin through a folder of patches without going back to the menu each
+time.
+
+| | |
+|---|---|
+| **Save** | Overwrites the loaded preset. With nothing loaded it asks for a name instead, so it can never overwrite something you didn't mean to |
+| **Init** | Every parameter back to its default. One undo step, like any other edit |
+| **Save as / Rename / Delete** | In the name menu. Delete asks first — it's the only preset action undo cannot walk back |
+| **Show presets folder** | Opens `Documents\Ravel\Presets` in Explorer |
+
+A dot after the name means the patch has been edited since it was loaded. Reloading the same
+preset from the menu is how you throw that edit away.
+
+Presets live as `.ravelpreset` XML files in `Documents\Ravel\Presets`. Subfolders show up as
+submenus, so you can organise them in Explorer and the plugin follows. A preset is **only the
+patch** — it deliberately leaves the MIDI output device and the window size alone, since those
+describe your machine rather than the sound.
+
+Loading a preset is an ordinary edit: it writes the parameters the same way the UI does, which
+means one **Ctrl+Z** takes the whole thing back, and the host sees it as a real change rather
+than a state swap behind its back. Which preset a patch came from is remembered with the Live
+set, so reopening a session shows its name rather than "Init".
+
+Files are keyed by parameter ID and hold plain values, so presets survive the plugin gaining
+parameters later: an ID a build doesn't recognise is ignored, and a parameter the file doesn't
+mention loads at its default.
+
 ### The fold
 
 Lanes are combined in lane order, starting from zero: each active step adds its own share,
@@ -183,7 +214,7 @@ whichever of the two top-level tabs it belongs to, laid out as a flat row of col
 | Column | Controls |
 |---|---|
 | Pitch | Root, Scale, Range, Quantize |
-| Output | Bend range, Offset |
+| Output | Bend range, Offset, MPE, Channel |
 | Voice | Voices, Poly |
 | Clock | Swing, Free run, Trigger |
 
@@ -269,8 +300,10 @@ semitone, so the ±2 default is plenty.
 
 Either way, pitch goes out as a note plus pitch bend — the nearest semitone carries the note
 number, and the residual — never more than half a semitone — goes out as pitch bend, sent just
-before the note-on so the note starts already in tune. Each note gets its own MPE member
-channel, so the bend is the note's alone (see [MPE](#mpe)). With Quantize on and a 12-EDO scale the residual is always exactly zero,
+before the note-on so the note starts already in tune. With **MPE** on (the default) each
+note gets its own member channel, so the bend is the note's alone; with it off, everything
+goes out on the single **Channel** below it and shares that one wheel (see [MPE](#mpe)).
+With Quantize on and a 12-EDO scale the residual is always exactly zero,
 so no bend is sent at all; a 19-, 23-, 31-, 41- or 53-EDO scale needs one even with Quantize on,
 for the same reason continuous pitch does (see [Scales and tunings](#scales-and-tunings)).
 
@@ -321,12 +354,13 @@ Two details the engine has to get right:
 - **Turning Voices down releases anything outside the new limit**, rather than orphaning it.
   So does flipping the Poly switch, which re-partitions the slots underneath.
 
-Overlapping notes each hold their own microtone, because each one is on its own channel —
-see below.
+With MPE on — the default — overlapping notes each hold their own microtone, because each
+one is on its own channel. With it off they share one channel and one bend register, so the
+most recent bend applies to all of them. See below.
 
 ### MPE
 
-Ravel always speaks MPE, and there is no switch for it. Output is a standard **MPE Lower
+**MPE** (Notes tab → Output) is **on by default**. Output is then a standard **MPE Lower
 Zone**: channel 1 is the zone master, channels 2–16 are the 15 member channels, and every
 simultaneously-sounding note is allocated its own member channel with its own pitch bend.
 The zone is announced with RPN 6 on the master channel before any note goes out, and again
@@ -341,9 +375,11 @@ Fifteen member channels is the ceiling. A sixteenth simultaneous note steals the
 whose note is closest to finishing rather than exceeding the pool.
 
 The receiving instrument has to be in MPE mode for this to sound right; a non-MPE instrument
-listening on one channel will hear only the notes that land there. There is no single-channel
-fallback — **Note channel** used to select one and has been removed along with the switch,
-since the zone master is fixed at channel 1.
+listening on one channel will hear only the notes that land there. **Channel**, directly under
+the switch, is the single-channel fallback for those instruments: it is greyed out while MPE
+is on, since the zone fixes its own channels, and with MPE off it selects the one channel
+every note and every pitch bend goes out on. That costs poly microtonality — one channel, one
+wheel — which is why the default is the zone.
 
 Getting that zone into an instrument inside Live takes a virtual MIDI port rather than Live's
 own routing, for reasons that are Live's rather than Ravel's — see
@@ -418,7 +454,7 @@ out of scope for a plugin only running on your own machine.)
 .\build\RavelProcessorTests_artefacts\Release\RavelProcessorTests.exe
 ```
 
-192 checks across two suites, neither needing a plugin host.
+244 checks across two suites, neither needing a plugin host.
 
 `Tests/EngineTests.cpp` (117 checks) drives `SequencerEngine` over a synthetic timeline. The
 engine takes PPQ positions as plain arguments rather than reading a playhead itself, which is
@@ -430,7 +466,7 @@ path — including that note number plus pitch bend reconstructs the intended fr
 that non-12 EDO scales land where the tuning says, and that the bend range is actually
 transmitted.
 
-`Tests/ProcessorTests.cpp` (75 checks) drives the real `RavelAudioProcessor::processBlock`
+`Tests/ProcessorTests.cpp` (127 checks) drives the real `RavelAudioProcessor::processBlock`
 through a mock playhead. This covers the layer where the plugin could compile, load and still
 emit nothing: playhead handling, the free-run fallback, the parameter snapshot, state
 round-trip, every pattern action, lane add/remove and its undo behaviour, and the MIDI
@@ -465,8 +501,8 @@ Quantize off, or anything polyphonic that leans on per-note bend, use the route 
 
 ### MPE into Live: the virtual port route
 
-Ravel's output is always an MPE Lower Zone — one member channel per sounding note, each with
-its own pitch bend (see [MPE](#mpe)). Live discards that on the way in, twice over:
+With MPE on, Ravel's output is an MPE Lower Zone — one member channel per sounding note, each
+with its own pitch bend (see [MPE](#mpe)). Live discards that on the way in, twice over:
 
 - **Track-to-track routing collapses channels.** `MIDI From → 1-Ravel` hands the receiving
   track the notes with their channel stripped, so fifteen member channels arrive as one. Every
