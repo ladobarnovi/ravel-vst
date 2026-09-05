@@ -113,6 +113,7 @@ private:
     std::atomic<float>* pSwing        = nullptr;
     std::atomic<float>* pVoiceCount   = nullptr;
     std::atomic<float>* pPolyMode     = nullptr;
+    std::atomic<float>* pMpeEnabled   = nullptr;
     std::atomic<float>* pNoteLaneCount = nullptr;
     std::atomic<float>* pCcLaneCount   = nullptr;
 

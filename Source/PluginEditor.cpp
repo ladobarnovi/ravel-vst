@@ -285,6 +285,7 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
     quantizeParam    = state.getRawParameterValue (params::quantizeId);
     scaleParam       = state.getRawParameterValue (params::scaleId);
     polyModeParam    = state.getRawParameterValue (params::polyModeId);
+    mpeEnabledParam  = state.getRawParameterValue (params::mpeEnabledId);
     noteLaneCountParam = state.getRawParameterValue (params::noteLaneCountId);
     ccLaneCountParam   = state.getRawParameterValue (params::ccLaneCountId);
 
@@ -575,6 +576,15 @@ void RavelAudioProcessorEditor::buildWorkspaces()
           ->setTooltip ("Transposes every note by whole octaves, after Root, Range and the "
                         "scale have resolved the pitch -- the pattern keeps its shape and "
                         "its scale degrees, it just moves. Notes clamp to the MIDI range");
+    output.add (params::mpeEnabledId, "MPE")
+          ->setTooltip ("Gives every simultaneously-sounding note its own MIDI channel -- a "
+                        "standard MPE zone, master channel 1 plus member channels 2-16 -- so "
+                        "overlapping notes bend independently instead of sharing one wheel. "
+                        "Channel is unused while this is on");
+    noteChannelRow = output.add (params::midiChannelId, "Channel");
+    noteChannelRow->setTooltip ("The single channel every note goes out on with MPE off. An "
+                               "MPE zone fixes its own channels, so this does nothing while "
+                               "MPE is on");
 
     auto& voice = notesSettingsPage.addColumn ("Voice");
     voice.add (params::voiceCountId, "Voices");
@@ -1020,6 +1030,20 @@ void RavelAudioProcessorEditor::timerCallback()
             // select. Depth is deliberately left alone: it still shapes the mix that drives
             // the CC output, and additionally becomes note velocity.
             triggerRow->setDimmed (poly != 0);
+        }
+    }
+
+    if (mpeEnabledParam != nullptr)
+    {
+        const int mpe = mpeEnabledParam->load() > 0.5f ? 1 : 0;
+
+        if (mpe != lastMpeEnabled)
+        {
+            lastMpeEnabled = mpe;
+
+            // The zone fixes its own channels -- master 1, members 2-16 -- while MPE is on,
+            // so Channel has nothing left to select.
+            noteChannelRow->setDimmed (mpe != 0);
         }
     }
 }

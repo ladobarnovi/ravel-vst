@@ -857,18 +857,25 @@ int main()
                "Offset is 0 octaves");
 
         // Removed outright, not merely defaulted -- a host or an old session cannot bring
-        // either back by writing it into the state.
+        // it back by writing it into the state.
         check (processor.apvts.getParameter ("velocity") == nullptr,
                "the master velocity parameter no longer exists");
-        check (processor.apvts.getParameter ("mpe_on") == nullptr,
-               "and neither does mpe_on");
+
+        // Continuous microtonal pitch is what a stock instance plays, and that only holds
+        // up under polyphony with a channel per note -- so MPE defaults on, which leaves
+        // the Note Channel it overrides inert at its own default.
+        check (valueOf (params::mpeEnabledId) > 0.5f,
+               "MPE is on");
+        check (std::abs (valueOf (params::midiChannelId) - 1.0f) < 0.5f,
+               "and Note Channel, which it overrides while on, is 1");
     }
 
     //==========================================================================
-    // MPE is not a parameter any more -- buildSnapshot() hardwires it on. EngineTests
-    // exercises the allocator directly; this checks the plugin really is speaking MPE out of
-    // the box, with nothing set, which is the whole point of having removed the switch.
-    section ("A stock instance speaks MPE");
+    // Confirms the mpe_on parameter actually reaches the engine's channel allocation, not
+    // just the Snapshot field -- EngineTests exercises the allocator directly, this exercises
+    // the wiring APVTS -> buildSnapshot() -> SequencerEngine that carries the flag to it, in
+    // both directions, plus that a stock instance speaks MPE with nothing set.
+    section ("MPE routes each note to its own channel; Note Channel takes over with it off");
     {
         const auto twoOverlappingNoteOnChannels = [] (RavelAudioProcessor& processor)
         {
@@ -908,12 +915,12 @@ int main()
             return onChannels;
         };
 
-        RavelAudioProcessor processor;   // untouched: no MPE parameter left to set
-        const auto onChannels = twoOverlappingNoteOnChannels (processor);
+        RavelAudioProcessor mpeOn;   // untouched: mpe_on defaults to on
+        const auto onChannels = twoOverlappingNoteOnChannels (mpeOn);
 
         check (onChannels.size() >= 2, "two overlapping notes fire");
         check (onChannels.size() >= 2 && onChannels[0] != onChannels[1],
-               "and land on different channels with nothing configured -- MPE is on");
+               "and land on different channels with nothing configured -- MPE defaults on");
 
         // A member channel, never the zone master. Getting this wrong would look like MPE
         // in a channel count while actually stacking notes on the master.
@@ -926,10 +933,21 @@ int main()
 
         check (allMembers, "every note-on sits on a member channel, not the master");
 
-        // The switch is gone, not merely defaulted: a host or an old session cannot bring it
-        // back by writing mpe_on into the state.
-        check (processor.apvts.getParameter ("mpe_on") == nullptr,
-               "the mpe_on parameter no longer exists");
+        // The other direction: no zone, every note on the one channel Note Channel names.
+        // Channel 7 rather than the default 1, so a pass means the parameter was actually
+        // read and not that the notes happened to land on the master anyway.
+        RavelAudioProcessor mpeOff;
+        setChoice (mpeOff, params::mpeEnabledId, 0);
+        setChoice (mpeOff, params::midiChannelId, 7);
+
+        const auto offChannels = twoOverlappingNoteOnChannels (mpeOff);
+
+        bool allOnNoteChannel = ! offChannels.empty();
+
+        for (int channel : offChannels)
+            allOnNoteChannel = allOnNoteChannel && channel == 7;
+
+        check (allOnNoteChannel, "with MPE off every note-on goes out on the Note Channel");
     }
 
     //==========================================================================
