@@ -62,6 +62,55 @@ juce_add_plugin(Ravel
     VST3_CATEGORIES             "Instrument" "Tools"
 )
 
+# ---- Per-format bundle identifiers (macOS) -----------------------------------
+# juce_add_plugin() derives a single CFBundleIdentifier ("com.<company>.<target>") on the
+# shared-code target, and juceaide bakes that one string into every format's Info.plist.
+# The .vst3, .component and .app therefore all ship claiming to be the same bundle, which
+# Apple disallows: once a host has loaded two of them into one process,
+# CFBundleGetBundleWithIdentifier() can only ever resolve to whichever registered first.
+#
+# JUCE exposes no per-format BUNDLE_ID option - the plists are generated at configure time
+# from the shared target's properties - so patch them afterwards. juce_add_plugin() above
+# has already written them, and CMake only copies them into the bundle at build time, so
+# rewriting them here lands before the bundle is assembled and before it is signed.
+#
+# Only CFBundleIdentifier moves. The VST3 class ID is derived from PLUGIN_CODE /
+# PLUGIN_MANUFACTURER_CODE and the AU is identified by its type/subtype/manufacturer, so
+# existing sessions still relink to the plugin rather than seeing a new one. The
+# JucePlugin_CFBundleIdentifier compile definition is set on the shared-code target and is
+# deliberately left alone: juce_CoreMidi_mac.mm seeds the virtual MIDI port's unique ID
+# from it, and that ID should stay stable across formats and across this change.
+if(APPLE)
+    foreach(ravel_format VST3 AU Standalone)
+        if(NOT TARGET Ravel_${ravel_format})
+            continue()
+        endif()
+
+        string(TOLOWER "${ravel_format}" ravel_format_suffix)
+        set(ravel_bundle_id "com.Ladob.Ravel.${ravel_format_suffix}")
+
+        get_target_property(ravel_plist Ravel_${ravel_format} MACOSX_BUNDLE_INFO_PLIST)
+
+        if(ravel_plist AND EXISTS "${ravel_plist}")
+            file(READ "${ravel_plist}" ravel_plist_contents)
+            string(REGEX REPLACE
+                "(<key>CFBundleIdentifier</key>[ \t\r\n]*<string>)[^<]*(</string>)"
+                "\\1${ravel_bundle_id}\\2"
+                ravel_plist_contents "${ravel_plist_contents}")
+            file(WRITE "${ravel_plist}" "${ravel_plist_contents}")
+        else()
+            message(WARNING "No generated Info.plist for Ravel_${ravel_format}; "
+                            "its CFBundleIdentifier still collides with the other formats.")
+        endif()
+
+        # The Xcode generator takes the code-signing identifier from PRODUCT_BUNDLE_IDENTIFIER
+        # rather than reading the plist back, so without this the signature would still carry
+        # the old shared ID while the plist carried the new one.
+        set_target_properties(Ravel_${ravel_format} PROPERTIES
+            XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${ravel_bundle_id}")
+    endforeach()
+endif()
+
 target_sources(Ravel PRIVATE
     Source/Parameters.cpp
     Source/SequencerEngine.cpp
