@@ -67,11 +67,11 @@ private:
             // edge, and the margin is now only breathing room in the same colour -- what
             // sits above the surface says so by being raised (a lane, this pill), not by
             // having a darker frame drawn around it.
-            if (! externalMidiArea.isEmpty())
-            {
-                g.setColour (theme::raised);
-                g.fillRoundedRectangle (externalMidiArea.toFloat(), 5.0f);
-            }
+            g.setColour (theme::raised);
+
+            for (const auto& pill : { presetArea, externalMidiArea })
+                if (! pill.isEmpty())
+                    g.fillRoundedRectangle (pill.toFloat(), 5.0f);
         }
 
         // resized() can't reach the outer editor's members directly, so it forwards to
@@ -79,7 +79,7 @@ private:
         void resized() override { if (onResized) onResized(); }
 
         std::function<void()> onResized;
-        juce::Rectangle<int> externalMidiArea;
+        juce::Rectangle<int> externalMidiArea, presetArea;
     };
 
     ContentComponent content;
@@ -104,6 +104,57 @@ private:
 
     // Last states actually applied. setEnabled repaints, and this is polled at 30Hz.
     int appliedCanUndo = -1, appliedCanRedo = -1;
+
+    //==========================================================================
+    // The preset bar: the header's other pill, grouped with the title and the history arrows
+    // rather than opposite them. The header's one axis is patch on the left, machine on the
+    // right -- the MIDI output pill routes to whatever this particular computer has plugged
+    // in, while loading a preset replaces the patch, which is the same kind of act as an
+    // undo. So this belongs on the left, beside the arrows it is a coarser version of.
+
+    /** Shows the loaded preset's name, and opens the browser. A TextButton rather than the
+        ComboBox it is drawn to look like: the menu mixes presets with actions, and a
+        ComboBox owns its own selection -- it would set its displayed text to "Save as..."
+        when that was picked. Here the name is the PresetManager's to decide. */
+    juce::TextButton presetNameButton;
+
+    // Chevrons, not the curved arrows the history pair uses, and bare rather than chipped:
+    // four arrow-shaped controls in one header need telling apart at a glance, and the pill
+    // behind these is what groups them with the name they step.
+    juce::TextButton presetPrevButton { "Previous preset" }, presetNextButton { "Next preset" };
+
+    /** Overwrites the loaded preset, or asks for a name when there isn't one. Visible rather
+        than buried in the menu because it is the second thing anyone does with presets --
+        and safe to leave visible precisely because of that fallback: with nothing loaded it
+        cannot overwrite anything. */
+    juce::TextButton presetSaveButton { "Save" };
+
+    void showPresetMenu();
+    void handlePresetMenuResult (int menuItemId);
+
+    /** Adds one level of the browser to the menu, recursing into folders as submenus, and
+        records which file each generated item id refers to. */
+    void addPresetEntriesToMenu (juce::PopupMenu& menu,
+                                 const std::vector<PresetManager::Entry>& level,
+                                 int& nextItemId);
+
+    /** Pulls the chip's name, placeholder and dirty marker back from the PresetManager. */
+    void refreshPresetChip();
+
+    /** A one-field name prompt. Async -- a plugin editor must never run a modal loop -- so
+        the window is held here and the caller's continuation runs when it closes. */
+    void promptForName (const juce::String& title, const juce::String& initialText,
+                        std::function<void (const juce::String&)> onAccept);
+
+    std::unique_ptr<juce::AlertWindow> nameWindow;
+
+    // Filled while the menu is being built; indexed by (item id - firstPresetItemId).
+    std::vector<juce::File> presetMenuFiles;
+
+    // Last dirty state actually stamped on the chip. Polled, because a parameter moving is
+    // what makes the patch dirty and that can happen without anything coming past here --
+    // including from the audio thread, when the host is driving automation.
+    int appliedPresetDirty = -1;
 
     // One clipboard per pool: pasting a Note lane's pattern onto a CC lane (or the reverse)
     // is a cross-domain operation that doesn't mean anything -- a CC lane never reads

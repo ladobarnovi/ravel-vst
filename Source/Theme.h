@@ -68,7 +68,12 @@ namespace theme
         stepTrig,       ///< Flat strip under a step bar: this step's on/off toggle.
         undoArrow,      ///< Curved arrow drawn in place of a TextButton's text.
         redoArrow,      ///< The same arrow, mirrored.
-        actionButton    ///< Pressable chip: filled and outlined at rest, not only on hover.
+        actionButton,   ///< Pressable chip: filled and outlined at rest, not only on hover.
+        presetChip,     ///< selectChip's look on a TextButton rather than a ComboBox -- a
+                        ///< caption beside a boxed, arrowed value, where the value is text
+                        ///< this button is told to show rather than a choice it owns.
+        stepperPrev,    ///< Bare chevron, no chip behind it: step to the previous entry.
+        stepperNext     ///< The same chevron, mirrored.
     };
 
     const juce::Identifier roleProperty { "ravelRole" };
@@ -89,6 +94,43 @@ namespace theme
     inline void setCaption (juce::Component& component, const juce::String& caption)
     {
         component.setName (caption);
+    }
+
+    /** Marks a presetChip's value as no longer matching what it names -- the patch has been
+        edited since the preset was loaded. Drawn as a dim dot after the name.
+
+        A stamped property rather than a widget subclass or a second colour ID, for the same
+        reason the role itself is one: the chip stays a stock TextButton, and the LookAndFeel
+        is the only thing that has to know this exists.
+    */
+    const juce::Identifier dirtyProperty { "ravelDirty" };
+
+    inline void setShowingDirtyMarker (juce::Component& component, bool shouldShow)
+    {
+        component.getProperties().set (dirtyProperty, shouldShow);
+        component.repaint();
+    }
+
+    inline bool isShowingDirtyMarker (const juce::Component& component)
+    {
+        return (bool) component.getProperties().getWithDefault (dirtyProperty, false);
+    }
+
+    /** Marks a presetChip's value as standing in for the absence of one -- "Init", when no
+        preset is loaded -- so it is drawn dim, the way a placeholder is, rather than as a
+        preset that happens to be called that.
+    */
+    const juce::Identifier placeholderProperty { "ravelPlaceholder" };
+
+    inline void setShowingPlaceholder (juce::Component& component, bool shouldShow)
+    {
+        component.getProperties().set (placeholderProperty, shouldShow);
+        component.repaint();
+    }
+
+    inline bool isShowingPlaceholder (const juce::Component& component)
+    {
+        return (bool) component.getProperties().getWithDefault (placeholderProperty, false);
     }
 
     //==========================================================================
@@ -242,6 +284,62 @@ namespace theme
 
         g.fillPath (arrowHead);
     }
+
+    /** Reserved on the right of a chip's boxed area for its chevron, so it never crowds the
+        value text. */
+    inline constexpr int chipArrowWidth = 18;
+
+    /** The boxed, arrowed portion of a chip: everything after its caption.
+
+        Shared three ways -- drawing the box, positioning the text inside it, and anchoring
+        the menu a presetChip opens -- so the caption's own width, which depends on its text,
+        can never leave them disagreeing about where the box starts. A dropdown that opened
+        under the caption rather than under the field it fills is the visible symptom.
+
+        Takes a Component rather than a ComboBox because a presetChip is a TextButton wearing
+        the same look; both hold their caption in the component name (see setCaption).
+    */
+    inline juce::Rectangle<int> chipBoxArea (const juce::Component& component)
+    {
+        const auto captionWidth = (int) std::ceil (
+            juce::GlyphArrangement::getStringWidth (rowFont(), component.getName()));
+
+        return component.getLocalBounds().withTrimmedLeft (captionWidth + 8);
+    }
+
+    /** A stepper's glyph: a bare chevron, stroked rather than filled.
+
+        Deliberately a different shape from drawHistoryArrow's curved arrow even though both
+        pairs sit in the same header. The two do different things -- history walks the edit
+        stack, a stepper walks the preset list -- and telling them apart at 22px is what the
+        chevron's straight strokes buy over a second pair of curves.
+
+        Drawn rather than typed for the same reason the history arrows are: U+2039 and
+        U+203A are not in every font Windows might hand back for the default sans-serif.
+    */
+    inline void drawChevron (juce::Graphics& g, juce::Rectangle<float> bounds,
+                             bool pointingLeft, juce::Colour colour)
+    {
+        // Sized against the row's text rather than against the button: a chevron drawn to
+        // fill its own click target comes out taller than the name it sits beside and reads
+        // as the louder of the two, when it is the name that matters.
+        const auto centre = bounds.getCentre();
+        const float extent = juce::jmin (bounds.getWidth(), bounds.getHeight());
+        const float halfWidth  = extent * 0.11f;
+        const float halfHeight = extent * 0.18f;
+
+        const float tipX  = centre.x + (pointingLeft ? -halfWidth : halfWidth);
+        const float backX = centre.x + (pointingLeft ?  halfWidth : -halfWidth);
+
+        juce::Path chevron;
+        chevron.startNewSubPath (backX, centre.y - halfHeight);
+        chevron.lineTo (tipX, centre.y);
+        chevron.lineTo (backX, centre.y + halfHeight);
+
+        g.setColour (colour);
+        g.strokePath (chevron, juce::PathStrokeType (1.3f, juce::PathStrokeType::curved,
+                                                     juce::PathStrokeType::rounded));
+    }
 }
 
 //==============================================================================
@@ -300,6 +398,29 @@ public:
     {
         const auto role = theme::roleOf (button);
 
+        if (role == theme::Role::presetChip)
+        {
+            // Toggle state carries "my menu is open" -- the chip has no other on/off meaning,
+            // and an async PopupMenu leaves the button itself unpressed the whole time it is
+            // showing, so shouldDrawButtonAsDown never covers it.
+            drawPresetChipText (g, button, shouldDrawButtonAsHighlighted || button.getToggleState());
+            return;
+        }
+
+        if (role == theme::Role::stepperPrev || role == theme::Role::stepperNext)
+        {
+            // Dimmer at rest than the history arrows, which sit bare on the window surface:
+            // a stepper sits inside a raised pill beside a boxed value, and matching their
+            // weight there would have it competing with the value it steps.
+            const auto colour = ! button.isEnabled()          ? theme::textDim.withAlpha (0.45f)
+                              : shouldDrawButtonAsHighlighted ? theme::text
+                                                              : theme::textDim;
+
+            theme::drawChevron (g, button.getLocalBounds().toFloat(),
+                                role == theme::Role::stepperPrev, colour);
+            return;
+        }
+
         if (role != theme::Role::undoArrow && role != theme::Role::redoArrow)
         {
             juce::LookAndFeel_V4::drawButtonText (g, button, shouldDrawButtonAsHighlighted,
@@ -326,7 +447,21 @@ public:
         const auto bounds = button.getLocalBounds().toFloat();
         constexpr float corner = 3.0f;
 
-        if (theme::roleOf (button) == theme::Role::actionButton)
+        const auto buttonRole = theme::roleOf (button);
+
+        if (buttonRole == theme::Role::presetChip)
+        {
+            drawChipFrame (g, button, shouldDrawButtonAsHighlighted || shouldDrawButtonAsDown
+                                        || button.getToggleState());
+            return;
+        }
+
+        // A bare glyph on whatever it sits on: no fill, no outline, nothing to draw here.
+        // See the Role's own comment for why these are not action chips.
+        if (buttonRole == theme::Role::stepperPrev || buttonRole == theme::Role::stepperNext)
+            return;
+
+        if (buttonRole == theme::Role::actionButton)
         {
             // Down is darker and hover is lighter, rather than both moving the same way:
             // on a dark panel a chip that sinks under the finger is the half of the
@@ -427,8 +562,8 @@ public:
 
         if (role == theme::Role::selectChip)
         {
-            auto textArea = selectChipBoxArea (box).reduced (7, 0);
-            textArea.removeFromRight (selectChipArrowWidth);
+            auto textArea = theme::chipBoxArea (box).reduced (7, 0);
+            textArea.removeFromRight (theme::chipArrowWidth);
 
             label.setBounds (textArea);
             label.setFont (theme::rowFont());
@@ -554,39 +689,23 @@ private:
         return layout;
     }
 
-    // Reserved on the right of the boxed area for the chevron, so it never crowds the value
-    // text -- shared between drawSelectChip and positionComboBoxText so the two agree on
-    // exactly where that text stops.
-    static constexpr int selectChipArrowWidth = 18;
-
-    /** The boxed, arrowed portion of a selectChip ComboBox: everything after its caption.
-        Shared between drawing the box and positioning the label inside it, so the caption's
-        own width -- which depends on its text -- can never leave the two disagreeing about
-        where the box starts.
-    */
-    static juce::Rectangle<int> selectChipBoxArea (juce::ComboBox& box)
-    {
-        const auto captionWidth = (int) std::ceil (
-            juce::GlyphArrangement::getStringWidth (theme::rowFont(), box.getName()));
-
-        return box.getLocalBounds().withTrimmedLeft (captionWidth + 8);
-    }
-
-    /** A caption beside a visibly boxed, arrowed value -- what marks a ComboBox as a dropdown
+    /** A caption beside a visibly boxed, arrowed value -- what marks a control as a dropdown
         on its own, the way valueRow's bare caption/value pair only manages inside a grid of
         its peers (see the Role's own comment). Sunk a shade darker than whatever it sits on,
         the way a text field reads as a control cut into its surroundings rather than painted
         on top of them.
-    */
-    void drawSelectChip (juce::Graphics& g, juce::ComboBox& box)
-    {
-        const bool highlighted = box.isMouseOver (true) || box.isPopupActive();
 
+        Only the frame: what goes inside the box is the caller's, because a ComboBox has its
+        own Label there and a presetChip draws its own two-tone text.
+    */
+    void drawChipFrame (juce::Graphics& g, const juce::Component& component, bool highlighted)
+    {
         g.setFont (theme::rowFont());
         g.setColour (theme::textDim);
-        g.drawText (box.getName(), box.getLocalBounds(), juce::Justification::centredLeft, false);
+        g.drawText (component.getName(), component.getLocalBounds(),
+                    juce::Justification::centredLeft, false);
 
-        auto boxArea = selectChipBoxArea (box).toFloat();
+        auto boxArea = theme::chipBoxArea (component).toFloat();
         constexpr float corner = 4.0f;
 
         g.setColour (theme::well);
@@ -600,7 +719,7 @@ private:
         constexpr float arrowHalfWidth = 4.0f;
         constexpr float arrowHeight    = 3.5f;
 
-        const auto arrowCentre = boxArea.removeFromRight ((float) selectChipArrowWidth).getCentre();
+        const auto arrowCentre = boxArea.removeFromRight ((float) theme::chipArrowWidth).getCentre();
 
         juce::Path arrow;
         arrow.addTriangle (arrowCentre.x - arrowHalfWidth, arrowCentre.y - arrowHeight * 0.5f,
@@ -609,6 +728,51 @@ private:
 
         g.setColour (highlighted ? theme::text.withAlpha (0.85f) : theme::textDim);
         g.fillPath (arrow);
+    }
+
+    void drawSelectChip (juce::Graphics& g, juce::ComboBox& box)
+    {
+        drawChipFrame (g, box, box.isMouseOver (true) || box.isPopupActive());
+    }
+
+    /** The preset chip's own contents: the loaded preset's name, plus a dim dot when the
+        patch has been edited away from it.
+
+        Two draws rather than one string with the dot appended, so the marker can carry
+        theme::textDim while the name it modifies keeps theme::text. A same-coloured dot
+        would read as part of the name.
+
+        Deliberately not the lane accent: colour marks lane identity and where the sequencer
+        is, and nothing else (see theme::laneAccent).
+    */
+    void drawPresetChipText (juce::Graphics& g, juce::TextButton& button, bool highlighted)
+    {
+        auto textArea = theme::chipBoxArea (button).reduced (7, 0);
+        textArea.removeFromRight (theme::chipArrowWidth);
+
+        g.setFont (theme::rowFont());
+
+        const auto name = button.getButtonText();
+
+        // Dimmed whole when nothing is loaded, so "Init" reads as the absence of a preset
+        // rather than as one that happens to be called that.
+        const bool placeholder = theme::isShowingPlaceholder (button);
+
+        g.setColour (placeholder ? theme::textDim
+                                 : theme::text.withAlpha (highlighted ? 1.0f : 0.9f));
+        g.drawText (name, textArea, juce::Justification::centredLeft, true);
+
+        if (! theme::isShowingDirtyMarker (button))
+            return;
+
+        const auto nameWidth = (int) std::ceil (
+            juce::GlyphArrangement::getStringWidth (theme::rowFont(), name));
+
+        auto dotArea = textArea.withTrimmedLeft (juce::jmin (nameWidth + 5, textArea.getWidth()));
+
+        g.setColour (theme::textDim);
+        g.drawText (juce::String::fromUTF8 ("\xe2\x80\xa2"), dotArea,
+                    juce::Justification::centredLeft, false);
     }
 
     void drawSliderAsValueRow (juce::Graphics& g, juce::Rectangle<int> bounds, juce::Slider& slider)

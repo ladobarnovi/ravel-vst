@@ -130,6 +130,37 @@ a single step, while two clicks on two different steps are two. Host automation 
 gestures and so never fills the history. The history lives on the processor rather than the
 editor, and therefore survives closing the plugin window; loading a session clears it.
 
+### Presets
+
+The pill beside the history arrows holds the loaded preset. Click the name to open the
+browser, or step through the list with the chevrons either side of it — that pair is meant for
+auditioning, so you can spin through a folder of patches without going back to the menu each
+time.
+
+| | |
+|---|---|
+| **Save** | Overwrites the loaded preset. With nothing loaded it asks for a name instead, so it can never overwrite something you didn't mean to |
+| **Init** | Every parameter back to its default. One undo step, like any other edit |
+| **Save as / Rename / Delete** | In the name menu. Delete asks first — it's the only preset action undo cannot walk back |
+| **Show presets folder** | Opens `Documents\Ravel\Presets` in Explorer |
+
+A dot after the name means the patch has been edited since it was loaded. Reloading the same
+preset from the menu is how you throw that edit away.
+
+Presets live as `.ravelpreset` XML files in `Documents\Ravel\Presets`. Subfolders show up as
+submenus, so you can organise them in Explorer and the plugin follows. A preset is **only the
+patch** — it deliberately leaves the MIDI output device and the window size alone, since those
+describe your machine rather than the sound.
+
+Loading a preset is an ordinary edit: it writes the parameters the same way the UI does, which
+means one **Ctrl+Z** takes the whole thing back, and the host sees it as a real change rather
+than a state swap behind its back. Which preset a patch came from is remembered with the Live
+set, so reopening a session shows its name rather than "Init".
+
+Files are keyed by parameter ID and hold plain values, so presets survive the plugin gaining
+parameters later: an ID a build doesn't recognise is ignored, and a parameter the file doesn't
+mention loads at its default.
+
 ### The fold
 
 Lanes are combined in lane order, starting from zero: each active step adds its own share,

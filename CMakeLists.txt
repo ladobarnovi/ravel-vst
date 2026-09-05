@@ -113,6 +113,7 @@ endif()
 
 target_sources(Ravel PRIVATE
     Source/Parameters.cpp
+    Source/PresetManager.cpp
     Source/SequencerEngine.cpp
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
@@ -180,6 +181,7 @@ if(RAVEL_BUILD_TESTS)
         Source/LaneComponent.cpp
         Source/Controls.cpp
         Source/Parameters.cpp
+        Source/PresetManager.cpp
         Source/SequencerEngine.cpp
         Source/UndoHistory.cpp
         Source/ExternalMidiOutput.cpp
@@ -212,7 +214,7 @@ if(RAVEL_SNAPSHOT_SOURCE)
     target_sources(RavelSnapshot PRIVATE ${RAVEL_SNAPSHOT_SOURCE}
         Source/PluginProcessor.cpp Source/PluginEditor.cpp Source/LaneComponent.cpp
         Source/Controls.cpp Source/Parameters.cpp Source/SequencerEngine.cpp
-        Source/UndoHistory.cpp Source/ExternalMidiOutput.cpp)
+        Source/PresetManager.cpp Source/UndoHistory.cpp Source/ExternalMidiOutput.cpp)
     target_include_directories(RavelSnapshot PRIVATE Source)
     target_compile_definitions(RavelSnapshot PRIVATE
         JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Ravel"

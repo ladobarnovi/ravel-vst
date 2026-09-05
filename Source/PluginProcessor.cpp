@@ -244,6 +244,10 @@ juce::AudioProcessorEditor* RavelAudioProcessor::createEditor()
 
 void RavelAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
+    // Stamps which preset this instance is sitting on into the tree before it is copied out,
+    // so reopening the session shows the patch's name rather than "Init".
+    presetManager.writeSessionState();
+
     if (const auto xml = apvts.copyState().createXml())
         copyXmlToBinary (*xml, destData);
 }
@@ -263,6 +267,10 @@ void RavelAudioProcessor::setStateInformation (const void* data, int sizeInBytes
             // Whatever this instance held before the host handed it a session is not a state
             // the user chose, so it is not one Ctrl+Z should be able to walk back into.
             undoHistory.clear();
+
+            // Which preset the session was sitting on. Moves no parameters -- replaceState
+            // above has already restored the patch -- it only reattaches the name to it.
+            presetManager.readSessionState();
 
             // Reconnects to whatever external MIDI port this instance was pointed at when the
             // session was saved. A missing or now-absent identifier (a fresh instance, or a

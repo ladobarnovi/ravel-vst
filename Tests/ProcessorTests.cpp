@@ -933,6 +933,300 @@ int main()
     }
 
     //==========================================================================
+    // Presets. Redirected away from Documents/Ravel/Presets first, so running the tests can
+    // neither read nor delete anything the user has actually saved.
+    const auto presetRoot = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                              .getChildFile ("RavelPresetTests");
+
+    presetRoot.deleteRecursively();
+    PresetManager::setPresetDirectory (presetRoot);
+
+    section ("A preset round-trips every parameter");
+    {
+        RavelAudioProcessor processor;
+
+        const auto setPlain = [&processor] (const juce::String& id, float plain)
+        {
+            if (auto* p = processor.apvts.getParameter (id))
+            {
+                p->beginChangeGesture();
+                p->setValueNotifyingHost (p->convertTo0to1 (plain));
+                p->endChangeGesture();
+            }
+        };
+
+        const auto plain = [&processor] (const juce::String& id)
+        {
+            return processor.apvts.getRawParameterValue (id)->load();
+        };
+
+        // Read off the parameter rather than written in by hand, so changing a default in
+        // Parameters.cpp cannot leave this asserting against the old one. A note step's is
+        // 0.25, not zero.
+        const auto defaultPlain = [&processor] (const juce::String& id)
+        {
+            auto* p = processor.apvts.getParameter (id);
+            return p != nullptr ? p->convertFrom0to1 (p->getDefaultValue()) : 0.0f;
+        };
+
+        // One of each kind the layout produces: a float, a stepped choice, a bool, an int.
+        setPlain (params::stepValueId (0, 3), 0.42f);
+        setPlain (params::laneDivId (1), (float) params::divIndex_1_8);
+        setPlain (params::quantizeId, 1.0f);
+        setPlain (params::rangeOctavesId, 3.0f);
+        setPlain (params::stepValueId (0, 3, params::LaneKind::cc), 0.77f);
+
+        check (processor.presetManager.saveAs ("Round trip"), "saveAs writes a preset");
+        check (processor.presetManager.getDisplayName() == "Round trip",
+               "and the saved name becomes the current one");
+
+        // Everything back to defaults, so a successful reload cannot be the values simply
+        // never having moved.
+        processor.presetManager.loadInit();
+
+        check (std::abs (plain (params::stepValueId (0, 3))
+                           - defaultPlain (params::stepValueId (0, 3))) < 1.0e-6f,
+               "Init puts the parameters back to their defaults");
+        check (processor.presetManager.getDisplayName() == "Init",
+               "and detaches the chip from any preset");
+
+        const auto file = presetRoot.getChildFile ("Round trip.ravelpreset");
+
+        check (processor.presetManager.load (file), "the preset loads back");
+        check (std::abs (plain (params::stepValueId (0, 3)) - 0.42f) < 1.0e-4f, "a float step value survives");
+        check ((int) plain (params::laneDivId (1)) == params::divIndex_1_8, "a choice survives");
+        check (plain (params::quantizeId) > 0.5f, "a toggle survives");
+        check ((int) plain (params::rangeOctavesId) == 3, "an integer survives");
+        check (std::abs (plain (params::stepValueId (0, 3, params::LaneKind::cc)) - 0.77f) < 1.0e-4f,
+               "and so does a CC lane's own step");
+    }
+
+    //==========================================================================
+    section ("A preset is the patch, not the session");
+    {
+        RavelAudioProcessor processor;
+
+        // The three things that ride in the state tree without being parameters.
+        processor.apvts.state.setProperty ("externalMidiDevice", "some-loopMIDI-port", nullptr);
+        processor.apvts.state.setProperty ("editorWidth", 1400, nullptr);
+        processor.apvts.state.setProperty ("editorHeight", 500, nullptr);
+
+        check (processor.presetManager.saveAs ("Environment"), "the preset saves");
+
+        const auto xml = juce::XmlDocument::parse (presetRoot.getChildFile ("Environment.ravelpreset"));
+
+        check (xml != nullptr, "and parses back as XML");
+        check (xml != nullptr && xml->hasTagName ("RAVELPRESET"),
+               "under its own tag, not the session's");
+        check (xml != nullptr && ! xml->hasAttribute ("externalMidiDevice"),
+               "the external MIDI device is not in it");
+        check (xml != nullptr && ! xml->hasAttribute ("editorWidth")
+                              && ! xml->hasAttribute ("editorHeight"),
+               "nor is the window size");
+        check (xml != nullptr && ! xml->hasAttribute ("currentPreset"),
+               "nor which preset the session was sitting on");
+        check (xml != nullptr && xml->getIntAttribute ("schemaVersion") == 1,
+               "and it carries a schema version");
+
+        // A session file is not a preset, and must not load as one.
+        const auto sessionFile = presetRoot.getChildFile ("NotAPreset.ravelpreset");
+
+        if (const auto sessionXml = processor.apvts.copyState().createXml())
+            sessionXml->writeTo (sessionFile);
+
+        check (! processor.presetManager.load (sessionFile),
+               "a file that is not a preset is refused rather than half-applied");
+    }
+
+    //==========================================================================
+    section ("Presets outlive the build that wrote them");
+    {
+        RavelAudioProcessor processor;
+
+        const auto plain = [&processor] (const juce::String& id)
+        {
+            return processor.apvts.getRawParameterValue (id)->load();
+        };
+
+        // Hand-written rather than saved: this is the shape of a preset from a build whose
+        // parameter list was not this one -- it is missing most of them, and carries one this
+        // build has never heard of.
+        const auto file = presetRoot.getChildFile ("Partial.ravelpreset");
+
+        file.replaceWithText (R"(<?xml version="1.0" encoding="UTF-8"?>
+<RAVELPRESET schemaVersion="1">
+  <PARAM id=")" + juce::String (params::stepValueId (0, 0)) + R"(" value="0.6"/>
+  <PARAM id="a_parameter_this_build_does_not_have" value="123"/>
+</RAVELPRESET>)");
+
+        // Move something the file says nothing about, so "went to its default" is
+        // distinguishable from "was never touched".
+        if (auto* p = processor.apvts.getParameter (params::stepValueId (0, 1)))
+        {
+            p->beginChangeGesture();
+            p->setValueNotifyingHost (p->convertTo0to1 (0.9f));
+            p->endChangeGesture();
+        }
+
+        auto* unlisted = processor.apvts.getParameter (params::stepValueId (0, 1));
+        const float unlistedDefault = unlisted->convertFrom0to1 (unlisted->getDefaultValue());
+
+        check (processor.presetManager.load (file), "a preset with unknown parameters still loads");
+        check (std::abs (plain (params::stepValueId (0, 0)) - 0.6f) < 1.0e-4f,
+               "the parameters it does name are applied");
+        check (std::abs (plain (params::stepValueId (0, 1)) - unlistedDefault) < 1.0e-6f,
+               "and the ones it does not go to their defaults rather than being left as they were");
+    }
+
+    //==========================================================================
+    section ("Loading a preset is one undo step");
+    {
+        RavelAudioProcessor processor;
+
+        const auto plain = [&processor] ()
+        {
+            return processor.apvts.getRawParameterValue (params::stepValueId (0, 0))->load();
+        };
+
+        juce::Random random (0x9e11);
+        params::randomiseLaneValues (processor.apvts, 0, random);
+        processor.undoHistory.closeCurrentEdit();
+
+        check (processor.presetManager.saveAs ("Undo"), "a preset saves");
+
+        const auto saved = plain();
+
+        params::clearLaneValues (processor.apvts, 0);
+        processor.undoHistory.closeCurrentEdit();
+
+        const int depthBeforeLoad = processor.undoHistory.getUndoDepth();
+
+        processor.presetManager.load (presetRoot.getChildFile ("Undo.ravelpreset"));
+
+        // The whole reason a load writes parameters instead of calling replaceState: sixty
+        // or more values move, and Ctrl+Z has to walk back over all of them at once.
+        check (processor.undoHistory.getUndoDepth() == depthBeforeLoad + 1,
+               "loading a preset records exactly one step, not one per parameter");
+        check (std::abs (plain() - saved) < 1.0e-4f, "and the patch it names is what is now loaded");
+
+        processor.undoHistory.closeCurrentEdit();
+
+        check (processor.undoHistory.undo(), "undo moves");
+        check (std::abs (plain()) < 1.0e-6f, "and one press puts the whole patch back");
+    }
+
+    //==========================================================================
+    section ("The dirty marker tracks the patch against its preset");
+    {
+        RavelAudioProcessor processor;
+
+        const auto nudge = [&processor] (float plain)
+        {
+            if (auto* p = processor.apvts.getParameter (params::stepValueId (0, 0)))
+            {
+                p->beginChangeGesture();
+                p->setValueNotifyingHost (p->convertTo0to1 (plain));
+                p->endChangeGesture();
+            }
+        };
+
+        nudge (0.3f);
+
+        check (processor.presetManager.saveAs ("Dirty"), "a preset saves");
+        check (! processor.presetManager.isDirty(), "saving leaves the patch clean");
+
+        nudge (0.8f);
+        check (processor.presetManager.isDirty(), "an edit marks it dirty");
+
+        processor.presetManager.load (presetRoot.getChildFile ("Dirty.ravelpreset"));
+        check (! processor.presetManager.isDirty(), "reloading clears it again");
+
+        // The load moved a parameter itself, which must not be mistaken for the user editing
+        // away from the preset that was being loaded.
+        check (processor.presetManager.hasCurrent(), "and the preset is still the current one");
+
+        check (processor.presetManager.saveToCurrent(), "Save overwrites the loaded preset");
+        check (processor.presetManager.hasCurrent(), "which stays the current one");
+    }
+
+    //==========================================================================
+    section ("Which preset a session was on survives being reopened");
+    {
+        juce::MemoryBlock state;
+        juce::String savedName;
+
+        {
+            RavelAudioProcessor processor;
+            processor.presetManager.saveAs ("Session");
+            savedName = processor.presetManager.getDisplayName();
+            processor.getStateInformation (state);
+        }
+
+        RavelAudioProcessor reopened;
+        check (reopened.presetManager.getDisplayName() == "Init",
+               "a fresh instance starts unattached");
+
+        reopened.setStateInformation (state.getData(), (int) state.getSize());
+
+        check (reopened.presetManager.getDisplayName() == savedName,
+               "and a restored session comes back showing the preset it was on");
+        check (! reopened.presetManager.isDirty(), "clean, because it was clean when saved");
+    }
+
+    //==========================================================================
+    section ("Stepping through the browser");
+    {
+        RavelAudioProcessor processor;
+
+        // "Session" and the rest from the sections above are in the folder too; these two
+        // bracket them alphabetically, which is the order the browser lists them in.
+        processor.presetManager.saveAs ("Aaa first");
+        processor.presetManager.loadInit();
+        processor.presetManager.saveAs ("Zzz last");
+
+        processor.presetManager.refresh();
+
+        check (processor.presetManager.loadRelative (-1), "stepping back from the last one moves");
+        check (processor.presetManager.getDisplayName() != "Zzz last", "onto a different preset");
+
+        processor.presetManager.load (presetRoot.getChildFile ("Aaa first.ravelpreset"));
+        check (! processor.presetManager.loadRelative (-1),
+               "and stepping back off the first one stops rather than wrapping");
+
+        processor.presetManager.load (presetRoot.getChildFile ("Zzz last.ravelpreset"));
+        check (! processor.presetManager.loadRelative (1),
+               "as does stepping forward off the last");
+    }
+
+    //==========================================================================
+    section ("Renaming and deleting");
+    {
+        RavelAudioProcessor processor;
+
+        processor.presetManager.saveAs ("Before rename");
+
+        check (processor.presetManager.renameCurrent ("After rename"), "rename moves the file");
+        check (presetRoot.getChildFile ("After rename.ravelpreset").existsAsFile(),
+               "the new name is on disk");
+        check (! presetRoot.getChildFile ("Before rename.ravelpreset").existsAsFile(),
+               "and the old one is gone");
+        check (processor.presetManager.getDisplayName() == "After rename", "the chip follows it");
+
+        check (processor.presetManager.deleteCurrent(), "delete removes it");
+        check (! presetRoot.getChildFile ("After rename.ravelpreset").existsAsFile(),
+               "the file is gone");
+        check (! processor.presetManager.hasCurrent(), "and nothing is loaded any more");
+        check (processor.presetManager.isDirty(),
+               "the patch is marked dirty -- there is no longer a file matching what is on screen");
+
+        check (! processor.presetManager.saveToCurrent(),
+               "Save has nothing to overwrite, which is what makes the editor ask for a name");
+    }
+
+    presetRoot.deleteRecursively();
+    PresetManager::setPresetDirectory ({});
+
+    //==========================================================================
     std::printf ("\n%d checks, %d failed\n", checksRun, checksFailed);
 
     return checksFailed == 0 ? 0 : 1;
