@@ -38,6 +38,19 @@ public:
 private:
     void run() override;
 
+    /** All Sound Off and All Notes Off on all sixteen channels.
+
+        Sent to a port we are about to stop using. Ravel closes its own notes by emitting
+        note-offs, and those reach this port the same way the note-ons did -- but a port being
+        swapped away from, or closed with the plugin, will never be handed the ones that have
+        not happened yet. Whatever it was sounding would hang there until the instrument was
+        reset by hand, and the host's own copy of the stream gives no clue why.
+
+        Both messages because instruments differ over which they honour, and neither is
+        expensive: this runs on the message thread, once, when a port is being let go.
+    */
+    static void silence (juce::MidiOutput* target);
+
     struct QueuedEvent
     {
         uint8_t data[3] {};

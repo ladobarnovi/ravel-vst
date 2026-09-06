@@ -9,7 +9,32 @@ ExternalMidiOutput::ExternalMidiOutput()
 
 ExternalMidiOutput::~ExternalMidiOutput()
 {
+    // Nothing new gets queued from here on, so the drain below is finite.
+    deviceOpen.store (false, std::memory_order_release);
+
+    // run() waits on wakeUp, not on the Thread's own event, so signalThreadShouldExit() alone
+    // would leave it sitting out the full 50 ms poll timeout before noticing -- once per
+    // instance, every time a session closes.
+    signalThreadShouldExit();
+    wakeUp.signal();
+
     stopThread (1000);
+
+    const juce::ScopedLock sl (deviceLock);
+    silence (device.get());
+}
+
+//==============================================================================
+void ExternalMidiOutput::silence (juce::MidiOutput* target)
+{
+    if (target == nullptr)
+        return;
+
+    for (int channel = 1; channel <= 16; ++channel)
+    {
+        target->sendMessageNow (juce::MidiMessage::allSoundOff (channel));
+        target->sendMessageNow (juce::MidiMessage::allNotesOff (channel));
+    }
 }
 
 //==============================================================================
@@ -24,8 +49,20 @@ void ExternalMidiOutput::setDevice (const juce::String& deviceIdentifier)
 
     const bool opened = newDevice != nullptr;
 
+    // Cleared first, so the audio thread stops queuing for the outgoing port before it is
+    // silenced -- otherwise a note-on could be pushed between the silence and the swap and
+    // arrive on a port nothing will ever close.
+    deviceOpen.store (false, std::memory_order_release);
+
     {
+        // Held across both the silence and the swap. That is thirty-two driver calls with the
+        // drain thread locked out, which is exactly the stall the per-message locking in run()
+        // exists to avoid -- but this runs only when the user picks a different port, and
+        // leaving a note hanging on the one they just left is the worse outcome.
         const juce::ScopedLock sl (deviceLock);
+
+        silence (device.get());
+
         device = std::move (newDevice);
         currentIdentifier = opened ? deviceIdentifier : juce::String();
     }
@@ -78,17 +115,25 @@ void ExternalMidiOutput::run()
         // net against a signal landing in the instant before wait() is called.
         wakeUp.wait (50);
 
+        // Checked here as well as at the top: the wait above is what the destructor signals,
+        // and draining a queue nobody is listening to only delays the close.
+        if (threadShouldExit())
+            break;
+
         const auto scope = fifo.read (fifo.getNumReady());
 
         auto sendRange = [this] (int start, int count)
         {
-            const juce::ScopedLock sl (deviceLock);
-
-            if (device == nullptr)
-                return;
-
             for (int i = 0; i < count; ++i)
             {
+                // Taken per message rather than once around the whole range. setDevice() has
+                // to wait for this lock, and holding it across a run of driver calls made
+                // changing the port stall the UI for as long as the queue was deep.
+                const juce::ScopedLock sl (deviceLock);
+
+                if (device == nullptr)
+                    return;
+
                 const auto& event = queue[(size_t) (start + i)];
                 device->sendMessageNow (juce::MidiMessage (event.data, (int) event.length));
             }

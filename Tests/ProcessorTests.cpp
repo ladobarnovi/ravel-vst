@@ -9,6 +9,7 @@
 
 #include "PluginProcessor.h"
 
+#include <chrono>
 #include <cstdio>
 #include <vector>
 
@@ -1290,6 +1291,42 @@ int main()
     PresetManager::setPresetDirectory ({});
 
     //==========================================================================
+    //==========================================================================
+    section ("Closing the external MIDI output does not wait out its poll interval");
+    {
+        // The drain thread sleeps on its own WaitableEvent with a 50 ms timeout as a safety
+        // net. juce::Thread::stopThread() signals the Thread's own event, not that one, so
+        // until the destructor started signalling it by hand every instance sat out the
+        // remainder of that timeout on the way down -- invisible on one, a stall on a set of
+        // them closing together.
+        //
+        // The pause before each teardown is the whole point: destroy the object immediately
+        // and the thread has not reached the wait yet, so it exits promptly either way and the
+        // check passes whether the bug is present or not. Several rounds because the time left
+        // on a 50 ms wait is uniform in [0, 50) -- one round could get lucky, three cannot.
+        constexpr int rounds = 3;
+
+        std::int64_t teardownMs = 0;
+
+        for (int i = 0; i < rounds; ++i)
+        {
+            // Held by pointer so the destructor runs where it can be timed, rather than at the
+            // end of a scope after the clock has been read.
+            auto output = std::make_unique<ExternalMidiOutput>();
+
+            // Long enough that the thread is certainly parked in wakeUp.wait().
+            juce::Thread::sleep (60);
+
+            const auto start = std::chrono::steady_clock::now();
+            output.reset();
+            teardownMs += std::chrono::duration_cast<std::chrono::milliseconds> (
+                              std::chrono::steady_clock::now() - start).count();
+        }
+
+        check (teardownMs < 20,
+               "it is signalled awake rather than left to time out");
+    }
+
     std::printf ("\n%d checks, %d failed\n", checksRun, checksFailed);
 
     return checksFailed == 0 ? 0 : 1;
