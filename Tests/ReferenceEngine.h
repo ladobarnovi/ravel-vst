@@ -172,6 +172,13 @@ public:
     //==========================================================================
     // Read by the editor's timer. Plain relaxed atomics: a torn read just means
     // one stale repaint frame.
+    // Applied to the reference too -- see the note at the top of this file. B9 is a bug fix,
+    // not part of the per-boundary rewrite, so both sides carry it and the harness stays
+    // pointed at the thing it exists to check.
+    void publishUiSteps (bool running) noexcept;
+
+    static constexpr int noStep = -1;
+
     int getCurrentStep (int lane, params::LaneKind kind = params::LaneKind::note) const noexcept
     {
         return (kind == params::LaneKind::cc ? ccUiStep[lane] : noteUiStep[lane])

@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cstdint>
 #include <limits>
+#include <utility>
 
 /**
     The sequencer core.
@@ -153,6 +154,19 @@ public:
     //==========================================================================
     // Read by the editor's timer. Plain relaxed atomics: a torn read just means
     // one stale repaint frame.
+    /** Hands the editor's timer the step each lane is sitting on, or -1 on every lane while
+        nothing is playing.
+
+        Called on the way out of every path through process(), the stopped one included --
+        which used to return before reaching the store, leaving the playhead marker parked on
+        whatever step the transport happened to halt on as though the sequencer were still
+        running there.
+    */
+    void publishUiSteps (bool running) noexcept;
+
+    /** -1 means this lane is not playing a step right now. */
+    static constexpr int noStep = -1;
+
     int getCurrentStep (int lane, params::LaneKind kind = params::LaneKind::note) const noexcept
     {
         return (kind == params::LaneKind::cc ? ccUiStep[lane] : noteUiStep[lane])
@@ -178,6 +192,24 @@ private:
         adjacent candidates -- which is sufficient because offsets are bounded to half a step.
     */
     static std::int64_t resolveGlobalIndex (double ppq, double stepPpq, float swing) noexcept;
+
+    /** The first sample offset after `from` at which resolveGlobalIndex() stops returning
+        `currentIndex`, or numSamples if it does not change again inside this block.
+
+        This is what lets the sample loop stop asking. A lane's step, its value and whether it
+        fires are all functions of the global index, so they are constant between boundaries --
+        and at 1/16 and 120 bpm a boundary is 6000 samples apart. Resolving the index once per
+        boundary instead of once per sample is the same answer, arrived at a few thousand times
+        less often.
+
+        Exact, not approximate: it inverts the same inequality resolveGlobalIndex() tests, then
+        confirms the result against resolveGlobalIndex() itself, so a lane can never step on a
+        different sample than it used to.
+    */
+    static int nextBoundarySample (std::int64_t currentIndex,
+                                   double ppqAtBlockStart, double ppqPerSample,
+                                   double stepPpq, float swing,
+                                   int from, int numSamples) noexcept;
 
     /** Pitch bend sensitivity (RPN 0) for the note channel. Written out as raw RPN controller
         messages rather than via a JUCE helper, because those return a MidiBuffer by value and
@@ -224,8 +256,29 @@ private:
 
     bool anyVoiceActive() const noexcept;
 
-    /** Counts down each sounding voice and emits note-off as they expire. */
-    void advanceVoices (juce::MidiBuffer& out, int sampleOffset);
+    /** Counts `samples` off every sounding voice and emits note-off for those that run out.
+
+        Takes a span rather than always stepping by one because the sample loop no longer
+        calls it on every sample. Walking all 32 slots 48000 times a second, almost always to
+        find that none of them had expired, was pure overhead: the loop now counts down to the
+        soonest expiry and only comes here when it actually arrives. Passing 1 reproduces the
+        per-sample behaviour exactly.
+    */
+    void advanceVoices (juce::MidiBuffer& out, int sampleOffset, int samples);
+
+    /** The fewest samples any sounding voice has left, or int max when none is sounding --
+        which the caller reads as "no note-off is due inside this block". */
+    int soonestVoiceExpiry() const noexcept;
+
+    /** Applies deferred countdown to every sounding voice without retiring any.
+
+        Called before a note is started and once at the end of a block, so the slots are back
+        on the caller's own clock: a fresh voice's gate is counted from the sample it starts
+        on, and the allocator picks which voice to steal by how much gate each has left. Only
+        ever called while the deferred span is shorter than the soonest expiry, so nothing it
+        touches can already have run out.
+    */
+    void settleVoices (int samples) noexcept;
 
     /** The single place a voice actually goes off: note-off, freeing the slot, and -- if the
         slot was sounding on an MPE member channel -- freeing that channel back to the pool

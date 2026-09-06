@@ -410,6 +410,19 @@ int main()
 
         check (wasHeld, "a note is sounding before the stop");
         check (released, "stopping the transport sends note-off (no stuck note)");
+
+        // The editor draws a playhead ring on whichever step getCurrentStep names. A stopped
+        // transport used to return from process() before it got as far as writing these, so
+        // the ring stayed parked on whatever step the transport happened to halt on -- the
+        // one visible thing in the window still claiming to be running.
+        bool everyLaneIdle = true;
+
+        for (int lane = 0; lane < params::numLanes; ++lane)
+            everyLaneIdle = everyLaneIdle
+                         && engine.getCurrentStep (lane, params::LaneKind::note) == SequencerEngine::noStep
+                         && engine.getCurrentStep (lane, params::LaneKind::cc)   == SequencerEngine::noStep;
+
+        check (everyLaneIdle, "and clears the playhead instead of leaving it parked on a step");
     }
 
     //==========================================================================

@@ -127,6 +127,20 @@ void ReferenceEngine::reset()
         ccLaneSlewedValue[lane] = 0.0f;
         ccLaneLastCcValue[lane] = -1;
     }
+
+    publishUiSteps (false);
+}
+
+//==============================================================================
+void ReferenceEngine::publishUiSteps (bool running) noexcept
+{
+    for (int lane = 0; lane < params::numLanes; ++lane)
+    {
+        noteUiStep[lane].store (running ? noteLaneStates[lane].step : noStep,
+                                std::memory_order_relaxed);
+        ccUiStep[lane].store   (running ? ccLaneStates[lane].step   : noStep,
+                                std::memory_order_relaxed);
+    }
 }
 
 //==============================================================================
@@ -454,6 +468,7 @@ void ReferenceEngine::process (const Snapshot& s,
     if (! transportRunning || ppqPerSample <= 0.0)
     {
         releaseAllVoices (out, 0);
+        publishUiSteps (false);
         return;
     }
 
@@ -819,9 +834,5 @@ void ReferenceEngine::process (const Snapshot& s,
         }
     }
 
-    for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
-    {
-        noteUiStep[laneIndex].store (noteLaneStates[laneIndex].step, std::memory_order_relaxed);
-        ccUiStep[laneIndex].store (ccLaneStates[laneIndex].step, std::memory_order_relaxed);
-    }
+    publishUiSteps (true);
 }
