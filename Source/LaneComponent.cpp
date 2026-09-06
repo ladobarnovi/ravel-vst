@@ -70,7 +70,10 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
         // On drag only. The hover half of it went with the slider's mouse handling, since a
         // component that is never under the mouse is never hovered; the slot's own tooltip
         // carries the value instead. See getTooltip.
-        slider.setPopupDisplayEnabled (true, false, getParentComponent());
+        //
+        // Which component the bubble hangs off is settled in parentHierarchyChanged(), not
+        // here: a slot has no parent yet while it is being constructed.
+        slider.setPopupDisplayEnabled (true, false, nullptr);
         slider.setDoubleClickReturnValue (true, setups[i].resetTo);
 
         // The slot takes the mouse for all four bars and passes each event on to whichever
@@ -96,7 +99,15 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
 
     // ButtonAttachment listens through addListener rather than through either callback,
     // so onStateChange is free for the lane's own use.
-    onButton.onStateChange = [this] { applyTrigState(); };
+    //
+    // Guarded on the toggle actually having moved: onStateChange fires for every state the
+    // button passes through, mouse-over and mouse-down included, so an unguarded hover ran the
+    // whole colour pass and two repaints to arrive back at the colours already on screen.
+    onButton.onStateChange = [this]
+    {
+        if (onButton.getToggleState() != (appliedTrigOn == 1))
+            applyTrigState();
+    };
 
     setLayer (StepLayer::value);
     applyTrigState();
@@ -145,9 +156,26 @@ void StepSlot::setWithinLength (bool isWithinLength)
     repaint();
 }
 
+void StepSlot::parentHierarchyChanged()
+{
+    // The value bubble is parented to the editor rather than left to JUCE's default, which is
+    // the desktop: a desktop-level window from inside a plugin editor can surface behind the
+    // host, or on whichever monitor the host is not on. The editor rather than this slot's own
+    // parent, so the bubble is not clipped to the lane strip it came from.
+    auto* host = findParentComponentOfClass<juce::AudioProcessorEditor>();
+
+    if (host == nullptr)
+        return;
+
+    for (auto layer : { StepLayer::value, StepLayer::velocity, StepLayer::chance, StepLayer::gate })
+        sliderFor (layer).setPopupDisplayEnabled (true, false, host);
+}
+
 void StepSlot::applyTrigState()
 {
     const bool on = onButton.getToggleState();
+
+    appliedTrigOn = on ? 1 : 0;
 
     // Either reason for the step never firing -- a muted lane, or a step the lane's Length
     // leaves out of the cycle -- lands on the same faint treatment.

@@ -1,9 +1,11 @@
 #pragma once
 
 #include "Controls.h"
+#include "ExternalMidiSelector.h"
+#include "PresetBar.h"
 #include "LaneComponent.h"
 #include "PluginProcessor.h"
-#include "Theme.h"
+#include "RavelLookAndFeel.h"
 
 //==============================================================================
 class RavelAudioProcessorEditor final : public juce::AudioProcessorEditor,
@@ -59,27 +61,16 @@ private:
         rather than every constant in every child's resized() needing to know about zoom. */
     struct ContentComponent final : public juce::Component
     {
-        void paint (juce::Graphics& g) override
-        {
-            // No panel rectangle here. The workspace used to be a rounded card floating on a
-            // darker ground, which meant a margin's worth of that ground showed as a dark
-            // border framing the whole window. The window is one surface instead, edge to
-            // edge, and the margin is now only breathing room in the same colour -- what
-            // sits above the surface says so by being raised (a lane, this pill), not by
-            // having a darker frame drawn around it.
-            g.setColour (theme::raised);
-
-            for (const auto& pill : { presetArea, externalMidiArea })
-                if (! pill.isEmpty())
-                    g.fillRoundedRectangle (pill.toFloat(), 5.0f);
-        }
+        // No paint() at all. The window is one surface, edge to edge -- the editor fills it --
+        // and what sits above that surface says so by being raised rather than by having a
+        // darker frame drawn around it. This used to draw the two header pills on their
+        // owners' behalf; each of them now draws its own, which is why nothing is left here.
 
         // resized() can't reach the outer editor's members directly, so it forwards to
         // layoutContent() instead of duplicating the layout here.
         void resized() override { if (onResized) onResized(); }
 
         std::function<void()> onResized;
-        juce::Rectangle<int> externalMidiArea, presetArea;
     };
 
     ContentComponent content;
@@ -90,6 +81,22 @@ private:
     juce::ComponentBoundsConstrainer sizeConstrainer;
 
     int nativeContentHeight = 0;
+
+    /** The window size rides in the state tree so it can be restored, but resized() is called
+        for every frame of a drag -- and every write is a ValueTree property change with
+        listeners hanging off it, and one the host can notice and mark the project edited for.
+        So the size is recorded here instead and written once the drag has stopped moving; see
+        the tick counter in timerCallback().
+    */
+    void storeEditorSize();
+
+    bool editorSizeDirty = false;
+    int  editorSizeSettleTicks = 0;
+
+    /** Ticks of the 30 Hz timer a resize has to stand still for before it is written. Half a
+        second: long enough that a drag writes once at the end rather than throughout, short
+        enough that letting go and immediately closing the window still records it. */
+    static constexpr int editorSizeSettleDelay = 15;
 
     juce::Label titleLabel;
 
@@ -105,56 +112,10 @@ private:
     // Last states actually applied. setEnabled repaints, and this is polled at 30Hz.
     int appliedCanUndo = -1, appliedCanRedo = -1;
 
-    //==========================================================================
-    // The preset bar: the header's other pill, grouped with the title and the history arrows
-    // rather than opposite them. The header's one axis is patch on the left, machine on the
-    // right -- the MIDI output pill routes to whatever this particular computer has plugged
-    // in, while loading a preset replaces the patch, which is the same kind of act as an
-    // undo. So this belongs on the left, beside the arrows it is a coarser version of.
-
-    /** Shows the loaded preset's name, and opens the browser. A TextButton rather than the
-        ComboBox it is drawn to look like: the menu mixes presets with actions, and a
-        ComboBox owns its own selection -- it would set its displayed text to "Save as..."
-        when that was picked. Here the name is the PresetManager's to decide. */
-    juce::TextButton presetNameButton;
-
-    // Chevrons, not the curved arrows the history pair uses, and bare rather than chipped:
-    // four arrow-shaped controls in one header need telling apart at a glance, and the pill
-    // behind these is what groups them with the name they step.
-    juce::TextButton presetPrevButton { "Previous preset" }, presetNextButton { "Next preset" };
-
-    /** Overwrites the loaded preset, or asks for a name when there isn't one. Visible rather
-        than buried in the menu because it is the second thing anyone does with presets --
-        and safe to leave visible precisely because of that fallback: with nothing loaded it
-        cannot overwrite anything. */
-    juce::TextButton presetSaveButton { "Save" };
-
-    void showPresetMenu();
-    void handlePresetMenuResult (int menuItemId);
-
-    /** Adds one level of the browser to the menu, recursing into folders as submenus, and
-        records which file each generated item id refers to. */
-    void addPresetEntriesToMenu (juce::PopupMenu& menu,
-                                 const std::vector<PresetManager::Entry>& level,
-                                 int& nextItemId);
-
-    /** Pulls the chip's name, placeholder and dirty marker back from the PresetManager. */
-    void refreshPresetChip();
-
-    /** A one-field name prompt. Async -- a plugin editor must never run a modal loop -- so
-        the window is held here and the caller's continuation runs when it closes. */
-    void promptForName (const juce::String& title, const juce::String& initialText,
-                        std::function<void (const juce::String&)> onAccept);
-
-    std::unique_ptr<juce::AlertWindow> nameWindow;
-
-    // Filled while the menu is being built; indexed by (item id - firstPresetItemId).
-    std::vector<juce::File> presetMenuFiles;
-
-    // Last dirty state actually stamped on the chip. Polled, because a parameter moving is
-    // what makes the patch dirty and that can happen without anything coming past here --
-    // including from the audio thread, when the host is driving automation.
-    int appliedPresetDirty = -1;
+    /** The header's preset pill. Its own component: which patch is loaded, how a browser
+        menu is numbered and how a modal name prompt is kept alive were none of the editor's
+        business. Polled from timerCallback() rather than running a timer of its own. */
+    PresetBar presetBar { processorRef };
 
     // One clipboard per pool: pasting a Note lane's pattern onto a CC lane (or the reverse)
     // is a cross-domain operation that doesn't mean anything -- a CC lane never reads
@@ -249,24 +210,10 @@ private:
     std::atomic<float>* mpeEnabledParam = nullptr;
     int lastMpeEnabled = -1;
 
-    // Global, not per-workspace -- routes both Note and CC output alike, so it sits in its own
-    // pill in the header, opposite the logo, rather than in either tab's settings page. Styled
-    // as a valueRow ComboBox (see theme::Role) even though it has no APVTS parameter behind
-    // it: there is nothing here for a host to automate or recall through undo, only an
-    // environment choice that differs machine to machine -- see ExternalMidiOutput's own
-    // header.
-    juce::ComboBox externalMidiBox;
-    juce::TextButton externalMidiRescanButton { "Rescan" };
-
-    // Parallel to the ComboBox's items from id 2 up (id 1 is the fixed "Host MIDI only"
-    // entry): externalMidiDeviceIds[id - 2] is that item's device identifier.
-    juce::StringArray externalMidiDeviceIds;
-
-    /** Re-enumerates system MIDI outputs and rebuilds the ComboBox's item list, keeping
-        whichever device is currently open selected if it's still in the list. Called once at
-        startup and again on demand from the Rescan button -- a port created in loopMIDI after
-        the plugin window opened otherwise never appears without reopening the editor. */
-    void populateExternalMidiDevices();
+    /** The header's MIDI-output pill. Its own component now: enumerating ports, remembering
+        which one is open and laying out its own two controls were three things the editor had
+        no reason to know about. */
+    ExternalMidiSelector externalMidiSelector { processorRef };
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (RavelAudioProcessorEditor)
 };

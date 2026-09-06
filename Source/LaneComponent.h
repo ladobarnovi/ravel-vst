@@ -80,6 +80,10 @@ public:
     void paintOverChildren (juce::Graphics&) override;
     void resized() override;
 
+    /** Where the value bubble a drag pops up gets parented. Not answerable at construction --
+        see the definition. */
+    void parentHierarchyChanged() override;
+
     void mouseDown        (const juce::MouseEvent&) override;
     void mouseDrag        (const juce::MouseEvent&) override;
     void mouseUp          (const juce::MouseEvent&) override;
@@ -136,6 +140,10 @@ private:
     juce::Colour accent;
     bool playing = false;
     bool laneActive = true;
+
+    // The toggle state the colours on screen were last built for. Tri-state so the first pass
+    // always runs; see the onStateChange guard in the constructor.
+    int  appliedTrigOn = -1;
     bool withinLength = true;
     StepLayer currentLayer = StepLayer::value;
 

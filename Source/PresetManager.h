@@ -202,5 +202,6 @@ private:
     // Atomic because parameterValueChanged is reached from the audio thread too.
     std::atomic<bool> applying { false };
 
+    JUCE_DECLARE_WEAK_REFERENCEABLE (PresetManager)
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PresetManager)
 };
