@@ -208,6 +208,14 @@ void TabStrip::addTab (const juce::String& name, juce::Component& page)
     tabs.push_back ({ name, &page, {} });
 
     page.setVisible (tabs.size() == 1);
+
+    layOutTabs();
+}
+
+void TabStrip::resized()
+{
+    // Height feeds each tab's bounds, so a resize is the other thing that can move them.
+    layOutTabs();
 }
 
 void TabStrip::setSelectedIndex (int index)
@@ -237,10 +245,8 @@ void TabStrip::layOutTabs()
     }
 }
 
-int TabStrip::indexAt (juce::Point<int> position)
+int TabStrip::indexAt (juce::Point<int> position) const
 {
-    layOutTabs();
-
     for (int i = 0; i < (int) tabs.size(); ++i)
         if (tabs[(size_t) i].bounds.contains (position))
             return i;
@@ -250,8 +256,6 @@ int TabStrip::indexAt (juce::Point<int> position)
 
 void TabStrip::paint (juce::Graphics& g)
 {
-    layOutTabs();
-
     g.setFont (theme::headingFont());
 
     for (int i = 0; i < (int) tabs.size(); ++i)

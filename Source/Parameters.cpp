@@ -163,7 +163,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
 
             layout.add (std::make_unique<juce::AudioParameterChoice> (
                 juce::ParameterID { laneDivId (lane, kind), versionHint },
-                laneName + "Division", divisionNames, defaultDivision[lane]));
+                laneName + "Division", divisionNameList(), defaultDivision[lane]));
 
             layout.add (std::make_unique<juce::AudioParameterFloat> (
                 juce::ParameterID { laneDepthId (lane, kind), versionHint },
@@ -176,7 +176,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
             // Reverse, Ping-Pong or Random -- so both kinds get this parameter.
             layout.add (std::make_unique<juce::AudioParameterChoice> (
                 juce::ParameterID { laneDirId (lane, kind), versionHint },
-                laneName + "Direction", directionNames, 0));
+                laneName + "Direction", directionNameList(), 0));
 
             if (! isCc)
                 continue;
@@ -216,7 +216,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         juce::ParameterID { ccLaneCountId, versionHint }, "CC Lanes", 1, numLanes, 1));
 
     layout.add (std::make_unique<juce::AudioParameterChoice> (
-        juce::ParameterID { noteTriggerSrcId, versionHint }, "Trigger", triggerNames, 0));
+        juce::ParameterID { noteTriggerSrcId, versionHint }, "Trigger", triggerNameList(), 0));
 
     // On: pitch snaps to degrees of the selected scale. Off: continuous microtonal pitch,
     // carried as the nearest note plus a pitch bend. Defaults to off -- continuous pitch is
@@ -247,13 +247,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         juce::AudioParameterIntAttributes().withStringFromValueFunction (
             [] (int v, int) { return juce::String (v) + " oct"; })));
 
-    // The two lists are indexed by the same parameter value, so they have to stay in step.
-    jassert (scaleNames.size() == numScales);
-
     // Index 0, Chromatic: the scale that colours the output least, so what a stock instance
     // plays is the pattern itself rather than a mode imposed on it.
     layout.add (std::make_unique<juce::AudioParameterChoice> (
-        juce::ParameterID { scaleId, versionHint }, "Scale", scaleNames, 0));
+        juce::ParameterID { scaleId, versionHint }, "Scale", scaleNameList(), 0));
 
     layout.add (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { midiChannelId, versionHint }, "Note Channel", 1, 16, 1));

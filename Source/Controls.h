@@ -142,11 +142,19 @@ private:
         juce::Rectangle<int> bounds;
     };
 
-    /** Recomputes tab bounds from the current names. Called on paint and on hit-testing
-        so the strip needs no resized() pass of its own. */
+    /** Recomputes tab bounds from the current names.
+
+        Each tab's width comes from measuring its label, which is a glyph-layout pass -- and
+        this used to run from paint() and again from every mouseMove(), so hovering the strip
+        re-measured every tab in it several times a second to arrive at the same numbers. The
+        names only change when a tab is added, so the measurement is cached and this is called
+        when something that could move it actually does.
+    */
     void layOutTabs();
 
-    int indexAt (juce::Point<int> position);
+    void resized() override;
+
+    int indexAt (juce::Point<int> position) const;
 
     std::vector<Tab> tabs;
     int selected = 0;

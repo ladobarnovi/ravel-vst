@@ -39,6 +39,18 @@ namespace
 
     constexpr std::uint64_t probabilitySalt = 31;
 
+    /** ppq / stepPpq lands a hair under an integer whenever the numbers are not exactly
+        representable in binary -- ppqPerSample is 1/24000 at 120bpm/48kHz -- which pushed
+        boundaries a sample late and made step lengths alternate between 5999 and 6001
+        samples.
+
+        Shared by resolveGlobalIndex() and by the boundary prediction that decides when to
+        call it. Those two have to agree to the last bit about where a boundary sits: the
+        prediction is only worth having because it is exact, and a second copy of this number
+        is how it would quietly stop being.
+    */
+    constexpr double boundaryEpsilon = 1.0e-7;
+
     /** One RPN as three controller messages, matching the byte order JUCE's
         MidiRPNGenerator produces: parameter LSB, parameter MSB, then data entry MSB.
         Data entry LSB is only required for 14-bit values, which none of these are.
@@ -111,6 +123,20 @@ void SequencerEngine::reset()
         ccLaneSlewedValue[lane] = 0.0f;
         ccLaneLastCcValue[lane] = -1;
     }
+
+    publishUiSteps (false);
+}
+
+//==============================================================================
+void SequencerEngine::publishUiSteps (bool running) noexcept
+{
+    for (int lane = 0; lane < params::numLanes; ++lane)
+    {
+        noteUiStep[lane].store (running ? noteLaneStates[lane].step : noStep,
+                                std::memory_order_relaxed);
+        ccUiStep[lane].store   (running ? ccLaneStates[lane].step   : noStep,
+                                std::memory_order_relaxed);
+    }
 }
 
 //==============================================================================
@@ -160,10 +186,6 @@ float SequencerEngine::timingOffsetFor (std::int64_t globalIndex, float swing) n
 std::int64_t SequencerEngine::resolveGlobalIndex (double ppq, double stepPpq,
                                                  float swing) noexcept
 {
-    // See the note on boundaryEpsilon below: ppq / stepPpq lands a hair under an integer
-    // when the numbers aren't exactly representable in binary.
-    constexpr double boundaryEpsilon = 1.0e-7;
-
     const auto rawIndex = (std::int64_t) std::floor (ppq / stepPpq + boundaryEpsilon);
 
     if (swing == 0.0f)
@@ -183,6 +205,44 @@ std::int64_t SequencerEngine::resolveGlobalIndex (double ppq, double stepPpq,
     }
 
     return rawIndex - 1;
+}
+
+int SequencerEngine::nextBoundarySample (std::int64_t currentIndex,
+                                        double ppqAtBlockStart, double ppqPerSample,
+                                        double stepPpq, float swing,
+                                        int from, int numSamples) noexcept
+{
+    const double tolerance = stepPpq * boundaryEpsilon;
+
+    // resolveGlobalIndex() leaves currentIndex behind as soon as ppq + tolerance reaches the
+    // next shifted boundary, and ppq is affine in the sample number -- so inverting that one
+    // inequality names the crossing sample outright, rather than testing it six thousand
+    // times to find it.
+    const double boundary = ((double) (currentIndex + 1)
+                              + (double) timingOffsetFor (currentIndex + 1, swing)) * stepPpq;
+
+    const double crossing = std::ceil ((boundary - tolerance - ppqAtBlockStart) / ppqPerSample);
+
+    // Clamped as a double before the cast: a boundary far outside this block would otherwise
+    // overflow the conversion rather than simply land past its end.
+    int n = (int) juce::jlimit ((double) (from + 1), (double) numSamples, crossing);
+
+    const auto indexAt = [&] (int sample)
+    {
+        return resolveGlobalIndex (ppqAtBlockStart + ppqPerSample * (double) sample, stepPpq, swing);
+    };
+
+    // The division above can land a unit either side of the true crossing when the numbers are
+    // not exactly representable, so the answer is confirmed against the very function the old
+    // per-sample loop called. Both loops correct by a sample or two -- they are a correction,
+    // not a search, and that is what makes this a refactor rather than a reimplementation.
+    while (n > from + 1 && indexAt (n - 1) != currentIndex)
+        --n;
+
+    while (n < numSamples && indexAt (n) == currentIndex)
+        ++n;
+
+    return n;
 }
 
 //==============================================================================
@@ -220,16 +280,39 @@ void SequencerEngine::releaseAllVoices (juce::MidiBuffer& out, int sampleOffset)
         releaseVoice (out, sampleOffset, i);
 }
 
-void SequencerEngine::advanceVoices (juce::MidiBuffer& out, int sampleOffset)
+void SequencerEngine::advanceVoices (juce::MidiBuffer& out, int sampleOffset, int samples)
 {
     for (int i = 0; i < maxVoices; ++i)
     {
         if (voices[i].note < 0)
             continue;
 
-        if (--voices[i].samplesRemaining <= 0)
+        voices[i].samplesRemaining -= samples;
+
+        if (voices[i].samplesRemaining <= 0)
             releaseVoice (out, sampleOffset, i);
     }
+}
+
+int SequencerEngine::soonestVoiceExpiry() const noexcept
+{
+    int soonest = std::numeric_limits<int>::max();
+
+    for (const auto& voice : voices)
+        if (voice.note >= 0)
+            soonest = juce::jmin (soonest, voice.samplesRemaining);
+
+    return soonest;
+}
+
+void SequencerEngine::settleVoices (int samples) noexcept
+{
+    if (samples <= 0)
+        return;
+
+    for (auto& voice : voices)
+        if (voice.note >= 0)
+            voice.samplesRemaining -= samples;
 }
 
 bool SequencerEngine::slotIsOwned (int slot, int voiceLimit, bool polyMode) noexcept
@@ -438,6 +521,7 @@ void SequencerEngine::process (const Snapshot& s,
     if (! transportRunning || ppqPerSample <= 0.0)
     {
         releaseAllVoices (out, 0);
+        publishUiSteps (false);
         return;
     }
 
@@ -555,85 +639,206 @@ void SequencerEngine::process (const Snapshot& s,
                 mc.rangeSent = false;
         }
     }
-
     // One-pole slew coefficient, computed per block rather than per sample. Shared by the
     // Mix CC and every CC lane's own tap -- Slew never touches pitch.
     const float slewCoeff = s.slewMs <= 0.01f
                               ? 1.0f
                               : 1.0f - std::exp (-1.0f / (float) (s.slewMs * 0.001 * currentSampleRate));
 
-    for (int n = 0; n < numSamples; ++n)
+    //==========================================================================
+    /** What a lane is playing, and for how much longer.
+
+        Everything here is a function of the lane's global index, so all of it holds until the
+        lane crosses a step boundary -- 6000 samples at 1/16 and 120 bpm. The loop below
+        refreshes a lane only on the sample its boundary actually falls on, where it used to
+        re-derive all of this, division and floor included, for every lane on every sample.
+    */
+    struct LaneRun
+    {
+        double       stepPpq      = 0.0;
+        int          length       = 1;
+        std::int64_t globalIndex  = 0;
+        int          step         = 0;
+        bool         stepOn       = false;
+        float        value        = 0.0f;
+
+        /** depth * value. Held rather than recomputed because the fold below re-adds every
+            lane's share whenever any one of them moves. */
+        float        contribution = 0.0f;
+
+        /** The sample this stops being true on. Starting at 0 is what makes the loop resolve
+            every lane on its first pass, which is also where a lane that advanced between
+            blocks gets to report it. */
+        int          nextBoundary = 0;
+    };
+
+    LaneRun noteRuns[params::numLanes];
+    LaneRun ccRuns[params::numLanes];
+
+    // Rate and length cannot move inside a block -- they come off the snapshot -- so they are
+    // read once here rather than per sample, as they used to be.
+    for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
+    {
+        noteRuns[laneIndex].stepPpq = params::divisionPpq (s.noteLanes[laneIndex].division);
+        noteRuns[laneIndex].length  = juce::jlimit (1, params::numSteps, s.noteLanes[laneIndex].length);
+
+        ccRuns[laneIndex].stepPpq   = params::divisionPpq (s.ccLanes[laneIndex].division);
+        ccRuns[laneIndex].length    = juce::jlimit (1, params::numSteps, s.ccLanes[laneIndex].length);
+    }
+
+    /** Re-resolves one lane at sample n and reports whether it actually landed on a new step
+        there -- which is what the trigger and the CC latch key off, and what tells a lane that
+        merely started a block mid-step from one that just moved.
+    */
+    const auto refreshLane = [&] (LaneRun& run, const LaneSnapshot& ln, LaneState& state,
+                                  int laneIndex, int n) -> bool
     {
         const double ppq = ppqAtBlockStart + ppqPerSample * (double) n;
 
+        run.globalIndex = resolveGlobalIndex (ppq, run.stepPpq, s.swing);
+
+        const bool advanced = (run.globalIndex != state.lastGlobalIndex);
+
+        run.step = stepIndexFor (run.globalIndex, run.length, ln.direction, laneIndex);
+
+        // A muted lane, or one the instance does not have yet, adds nothing to the fold and
+        // fires nothing -- so none of its per-step data is ever looked at. Bailing out before
+        // reading any of it is what lets buildSnapshot() skip writing it, and that is where the
+        // cost actually sat: eighty atomic loads per note lane per block, for lanes the user
+        // cannot even see. The index above is still resolved, so the lane keeps its place on
+        // the timeline and comes back mid-pattern rather than from the top.
+        if (! ln.active)
+        {
+            run.stepOn       = false;
+            run.value        = 0.0f;
+            run.contribution = 0.0f;
+        }
+        else
+        {
+            run.value = ln.values[(size_t) run.step];
+
+            const float chance = ln.chance[(size_t) run.step];
+
+            // A step that loses its probability roll behaves exactly like a step that is
+            // switched off: transparent for the mix, and it fires nothing. The roll is a pure
+            // function of the timeline position, so it holds steady for the whole step and
+            // repeats identically next time round the loop.
+            run.stepOn = ln.enabled[(size_t) run.step];
+
+            if (run.stepOn && chance < 0.999f)
+                run.stepOn = hashToUnitFloat (run.globalIndex, laneIndex, probabilitySalt) < chance;
+
+            run.contribution = ln.depth * run.value;
+        }
+
+        if (advanced)
+        {
+            state.lastGlobalIndex = run.globalIndex;
+            state.step = run.step;
+        }
+
+        run.nextBoundary = nextBoundarySample (run.globalIndex, ppqAtBlockStart, ppqPerSample,
+                                               run.stepPpq, s.swing, n, numSamples);
+
+        return advanced;
+    };
+
+    // Both folds re-add every lane's share from scratch rather than adjusting a running total
+    // by the difference: the sum has to land on the same float it used to, and floating-point
+    // addition does not associate. Skipping a silent lane rather than adding its zero is part
+    // of that -- it is what the per-sample loop did.
+    const auto foldNoteLanes = [&]
+    {
+        float accumulator = 0.0f;
+
+        for (const auto& run : noteRuns)
+            if (run.stepOn)
+                accumulator += run.contribution;
+
+        return juce::jlimit (0.0f, 1.0f, accumulator);
+    };
+
+    const auto foldCcLanes = [&]
+    {
+        float accumulator = 0.0f;
+
+        for (const auto& run : ccRuns)
+            if (run.stepOn)
+                accumulator += run.contribution;
+
+        return juce::jlimit (0.0f, 1.0f, accumulator + s.ccOffset);
+    };
+
+    float noteMix = 0.0f;
+    float ccMix   = 0.0f;
+
+    // Samples of voice countdown the loop has deferred, and how many it may defer before the
+    // next note-off falls due. Read after the config releases and retireUnownedVoices() above,
+    // so it already accounts for anything those let go of.
+    int pendingVoiceSamples = 0;
+    int voiceCountdown      = soonestVoiceExpiry();
+
+    const auto gateSamplesFor = [&] (double stepPpq, float gatePercent)
+    {
+        return (int) std::lround ((stepPpq / ppqPerSample) * (gatePercent * 0.01));
+    };
+
+    // Fires one note: pitchFor() already resolves whether this mode bends at all, so there is
+    // nothing left to do here but hand its result to the voice allocator.
+    const auto fireNote = [&] (int n, float value, int velocity, int gateSamples, int begin, int end)
+    {
+        const auto pitch = pitchFor (value, s, bendRange);
+        startNote (out, n, pitch, velocity, gateSamples, begin, end,
+                   s.mpeEnabled, noteChannel, bendRange);
+    };
+
+    for (int n = 0; n < numSamples; ++n)
+    {
         //----------------------------------------------------------------------
-        // Note-lane fold.
-        float noteAccumulator = 0.0f;
-        bool  triggered        = false;
-        int   triggerLane      = 0;
-        int   triggerStep      = 0;
-        double triggerStepPpq  = params::divisionPpq[params::divIndex_1_16];
+        // Note-lane fold. Only a lane whose boundary lands on this sample does any work; the
+        // rest are still playing what they were.
+        bool   triggered      = false;
+        int    triggerLane    = 0;
+        int    triggerStep    = 0;
+        double triggerStepPpq = params::divisionPpq (params::divIndex_1_16);
 
         // Poly mode: each lane's own trigger, collected here rather than emitted inside the
-        // lane loop, because advanceVoices() below has to order its expiring note-offs
-        // ahead of any note-on landing on this same sample.
+        // lane loop, because advanceVoices() below has to order its expiring note-offs ahead
+        // of any note-on landing on this same sample.
+        bool   anyLaneTriggered = false;
         bool   laneTriggered[params::numLanes] {};
         float  laneTriggerValue[params::numLanes] {};
         int    laneTriggerStep[params::numLanes] {};
         double laneTriggerStepPpq[params::numLanes] {};
 
+        bool noteLanesMoved = false;
+
         for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
         {
-            const auto& ln    = s.noteLanes[laneIndex];
-            auto&       state = noteLaneStates[laneIndex];
+            auto& run = noteRuns[laneIndex];
 
-            const double stepPpq = params::divisionPpq[(size_t) juce::jlimit (
-                0, (int) params::divisionNames.size() - 1, ln.division)];
-            const int length = juce::jlimit (1, params::numSteps, ln.length);
+            if (n != run.nextBoundary)
+                continue;
 
-            // Note on the epsilon inside resolveGlobalIndex: ppq / stepPpq lands a hair
-            // under an integer whenever the numbers aren't exactly representable in binary
-            // -- ppqPerSample is 1/24000 at 120bpm/48kHz -- which pushed boundaries a
-            // sample late and made step lengths alternate between 5999 and 6001 samples.
-            const auto globalIndex = resolveGlobalIndex (ppq, stepPpq, s.swing);
-            const bool advanced    = (globalIndex != state.lastGlobalIndex);
+            noteLanesMoved = true;
 
-            const int step = stepIndexFor (globalIndex, length, ln.direction, laneIndex);
+            const auto& ln = s.noteLanes[laneIndex];
 
-            const float value  = ln.values[(size_t) step];
-            const float chance = ln.chance[(size_t) step];
-
-            // A step that loses its probability roll behaves exactly like a step that is
-            // switched off: transparent for the mix, and it fires nothing. The roll is a
-            // pure function of the timeline position, so it holds steady for the whole
-            // step and repeats identically next time round the loop.
-            // A muted lane is exactly a lane whose steps are all off, which is what makes it
-            // transparent for the mix and silent for every trigger path at once.
-            bool stepOn = ln.active && ln.enabled[(size_t) step];
-
-            if (stepOn && chance < 0.999f)
-                stepOn = hashToUnitFloat (globalIndex, laneIndex, probabilitySalt) < chance;
-
-            if (advanced)
-            {
-                state.lastGlobalIndex = globalIndex;
-                state.step = step;
-            }
-
-            if (stepOn)
-                noteAccumulator += ln.depth * value;
+            if (! refreshLane (run, ln, noteLaneStates[laneIndex], laneIndex, n) || ! run.stepOn)
+                continue;
 
             if (s.polyMode)
             {
-                // Every lane is its own voice, so Trigger has nothing to select and a lane
-                // at zero Depth is simply silent -- which keeps the stock preset, where only
-                // lane 1 has Depth, sounding as one voice until another is dialled up.
-                if (advanced && stepOn && std::abs (ln.depth) > 1.0e-6f)
+                // Every lane is its own voice, so Trigger has nothing to select and a lane at
+                // zero Depth is simply silent -- which keeps the stock preset, where only lane
+                // 1 has Depth, sounding as one voice until another is dialled up.
+                if (std::abs (ln.depth) > 1.0e-6f)
                 {
+                    anyLaneTriggered              = true;
                     laneTriggered[laneIndex]      = true;
-                    laneTriggerValue[laneIndex]   = value;
-                    laneTriggerStep[laneIndex]    = step;
-                    laneTriggerStepPpq[laneIndex] = stepPpq;
+                    laneTriggerValue[laneIndex]   = run.value;
+                    laneTriggerStep[laneIndex]    = run.step;
+                    laneTriggerStepPpq[laneIndex] = run.stepPpq;
                 }
             }
             else
@@ -642,63 +847,44 @@ void SequencerEngine::process (const Snapshot& s,
                 const bool isTriggerLane = s.noteTriggerSource >= params::numLanes
                                              || laneIndex == s.noteTriggerSource;
 
-                if (advanced && stepOn && isTriggerLane)
+                if (isTriggerLane)
                 {
                     triggered      = true;
                     triggerLane    = laneIndex;
-                    triggerStep    = step;
-                    triggerStepPpq = stepPpq;
+                    triggerStep    = run.step;
+                    triggerStepPpq = run.stepPpq;
                 }
             }
         }
 
-        const float noteMix = juce::jlimit (0.0f, 1.0f, noteAccumulator);
+        if (noteLanesMoved)
+            noteMix = foldNoteLanes();
 
         //----------------------------------------------------------------------
         // CC-lane fold. Same shape as the note-lane fold above -- each active step adds its
         // share of Depth -- but over the CC pool's own lanes, with no Trigger concept: CC
         // output is never "triggered", it continuously reflects the fold.
-        float ccAccumulator = 0.0f;
+        bool ccLanesMoved = false;
 
         for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
         {
-            const auto& ln    = s.ccLanes[laneIndex];
-            auto&       state = ccLaneStates[laneIndex];
+            auto& run = ccRuns[laneIndex];
 
-            const double stepPpq = params::divisionPpq[(size_t) juce::jlimit (
-                0, (int) params::divisionNames.size() - 1, ln.division)];
-            const int length = juce::jlimit (1, params::numSteps, ln.length);
+            if (n != run.nextBoundary)
+                continue;
 
-            const auto globalIndex = resolveGlobalIndex (ppq, stepPpq, s.swing);
-            const bool advanced    = (globalIndex != state.lastGlobalIndex);
+            ccLanesMoved = true;
 
-            const int step = stepIndexFor (globalIndex, length, ln.direction, laneIndex);
-
-            const float value  = ln.values[(size_t) step];
-            const float chance = ln.chance[(size_t) step];
-
-            bool stepOn = ln.active && ln.enabled[(size_t) step];
-
-            if (stepOn && chance < 0.999f)
-                stepOn = hashToUnitFloat (globalIndex, laneIndex, probabilitySalt) < chance;
-
-            if (advanced)
-            {
-                state.lastGlobalIndex = globalIndex;
-                state.step = step;
-
-                // The lane's own tap follows its own step value, independent of Depth --
-                // Depth governs the lane's share of the Mix CC, not its own tap. Inactive
-                // steps latch the previous level instead of dropping to zero.
-                if (stepOn)
-                    ccLaneHeldValue[laneIndex] = value;
-            }
-
-            if (stepOn)
-                ccAccumulator += ln.depth * value;
+            // The lane's own tap follows its own step value, independent of Depth -- Depth
+            // governs the lane's share of the Mix CC, not its own tap. Inactive steps latch
+            // the previous level instead of dropping to zero.
+            if (refreshLane (run, s.ccLanes[laneIndex], ccLaneStates[laneIndex], laneIndex, n)
+                  && run.stepOn)
+                ccLaneHeldValue[laneIndex] = run.value;
         }
 
-        const float ccMix = juce::jlimit (0.0f, 1.0f, ccAccumulator + s.ccOffset);
+        if (ccLanesMoved)
+            ccMix = foldCcLanes();
 
         slewedValue += (ccMix - slewedValue) * slewCoeff;
 
@@ -714,21 +900,19 @@ void SequencerEngine::process (const Snapshot& s,
 
         //----------------------------------------------------------------------
         {
-            advanceVoices (out, n);
+            ++pendingVoiceSamples;
 
-            const auto gateSamplesFor = [&] (double stepPpq, float gatePercent)
+            if (pendingVoiceSamples >= voiceCountdown)
             {
-                return (int) std::lround ((stepPpq / ppqPerSample) * (gatePercent * 0.01));
-            };
+                advanceVoices (out, n, pendingVoiceSamples);
+                pendingVoiceSamples = 0;
+                voiceCountdown      = soonestVoiceExpiry();
+            }
 
-            // Fires one note: pitchFor() already resolves whether this mode bends at all, so
-            // there is nothing left to do here but hand its result to the voice allocator.
-            const auto fireNote = [&] (float value, int velocity, int gateSamples, int begin, int end)
-            {
-                const auto pitch = pitchFor (value, s, bendRange);
-                startNote (out, n, pitch, velocity, gateSamples, begin, end,
-                          s.mpeEnabled, noteChannel, bendRange);
-            };
+            // Expiring note-offs are already out, above, which is the ordering that matters:
+            // a voice being reused at this same sample has to go off before it comes back on.
+            if (s.polyMode ? anyLaneTriggered : triggered)
+                settleVoices (std::exchange (pendingVoiceSamples, 0));
 
             if (s.polyMode)
             {
@@ -746,7 +930,7 @@ void SequencerEngine::process (const Snapshot& s,
 
                     const int begin = laneIndex * voicesPerLane;
 
-                    fireNote (value,
+                    fireNote (n, value,
                               velocityFor (s, laneIndex, step),
                               gateSamplesFor (laneTriggerStepPpq[laneIndex], gateFor (s, laneIndex, step)),
                               begin, begin + voiceLimit);
@@ -757,11 +941,14 @@ void SequencerEngine::process (const Snapshot& s,
                 // The note belongs to whichever step of whichever lane triggered it, so that
                 // step's accent and gate both apply even though the pitch came from the
                 // combined mix.
-                fireNote (noteMix,
+                fireNote (n, noteMix,
                           velocityFor (s, triggerLane, triggerStep),
                           gateSamplesFor (triggerStepPpq, gateFor (s, triggerLane, triggerStep)),
                           0, voiceLimit);
             }
+
+            if (s.polyMode ? anyLaneTriggered : triggered)
+                voiceCountdown = soonestVoiceExpiry();
         }
 
         //----------------------------------------------------------------------
@@ -805,9 +992,7 @@ void SequencerEngine::process (const Snapshot& s,
         }
     }
 
-    for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
-    {
-        noteUiStep[laneIndex].store (noteLaneStates[laneIndex].step, std::memory_order_relaxed);
-        ccUiStep[laneIndex].store (ccLaneStates[laneIndex].step, std::memory_order_relaxed);
-    }
+    settleVoices (pendingVoiceSamples);
+
+    publishUiSteps (true);
 }

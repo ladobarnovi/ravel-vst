@@ -601,14 +601,20 @@ already includes M4L, and its modulation API can target any parameter directly.
 
 | File | Contents |
 |---|---|
-| `Source/Parameters.*` | Parameter IDs, choice lists, scale tables, pattern actions |
+| `Source/ParameterTables.h` | Lane and step counts, clock divisions, the scale table, pitch-bend helpers |
+| `Source/Parameters.*` | Parameter IDs, the APVTS layout, pattern actions |
 | `Source/SequencerEngine.*` | The sequencer core and MIDI generation |
 | `Source/PluginProcessor.*` | Plugin plumbing, playhead handling, state save/load |
-| `Source/PluginEditor.*` | Window layout, header, and the Notes/CC workspaces |
+| `Source/PluginEditor.*` | Window layout, the header, and the Notes/CC workspaces |
+| `Source/PresetBar.*` | The header's preset pill: browser menu, name prompt, edited marker |
+| `Source/ExternalMidiSelector.*` | The header's MIDI-output pill: port list and Rescan |
 | `Source/LaneComponent.*` | One lane: 16 steps plus its controls, in either kind |
 | `Source/Controls.*` | Shared row/column/tab building blocks the editor and lanes are built from |
+| `Source/PresetManager.*` | Saving, loading and browsing patches |
 | `Source/UndoHistory.*` | The edit history behind the arrows and Ctrl+Z |
-| `Source/Theme.h` | Colours and custom widget drawing |
+| `Source/ExternalMidiOutput.*` | Mirrors output to a system MIDI port, off the audio thread |
+| `Source/Theme.h` | Colours, metrics and the small drawing helpers |
+| `Source/RavelLookAndFeel.*` | Draws every custom widget, dispatching on `theme::roleOf()` |
 | `Tests/EngineTests.cpp` | Engine tests, run as a standalone console app |
 | `Tests/ProcessorTests.cpp` | Processor tests, driven through a mock playhead |
 
@@ -618,16 +624,23 @@ stacks from being two copies of the same code with a Note/CC flag sprinkled thro
 
 ### How timing works
 
-Step positions are derived from the host's absolute PPQ position each sample, rather than
-accumulated from a running counter:
+Step positions are derived from the host's absolute PPQ position rather than accumulated from
+a running counter:
 
 ```
 globalIndex = floor(ppqPosition / stepLengthInQuarterNotes)
 step        = f(globalIndex, length, direction)
 ```
 
-That costs a `floor()` per lane per sample, and in exchange loops, transport jumps,
-scrubbing and tempo changes all land on exactly the step the timeline says they should,
-with no drift and no resync logic. It also means **Random** direction is a hash of the
-timeline position rather than a running RNG — so a loop replays the same random pattern
-every time round instead of wandering.
+In exchange for a division and a `floor()`, loops, transport jumps, scrubbing and tempo changes
+all land on exactly the step the timeline says they should, with no drift and no resync logic.
+It also means **Random** direction is a hash of the timeline position rather than a running RNG
+— so a loop replays the same random pattern every time round instead of wandering.
+
+That derivation runs once per step boundary, not once per sample. Everything about a lane —
+which step it is on, that step's value, whether it fires — is a function of `globalIndex`, so
+all of it holds until the index changes; at 1/16 and 120 bpm that is once every 6000 samples.
+The engine inverts the same inequality it would otherwise have tested sample by sample to work
+out which sample the next boundary lands on, then confirms that answer against the resolver
+itself, so the result is exact rather than approximate — a lane steps on the sample it always
+did.

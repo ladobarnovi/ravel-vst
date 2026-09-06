@@ -119,6 +119,9 @@ target_sources(Ravel PRIVATE
     Source/PluginEditor.cpp
     Source/LaneComponent.cpp
     Source/Controls.cpp
+    Source/RavelLookAndFeel.cpp
+    Source/ExternalMidiSelector.cpp
+    Source/PresetBar.cpp
     Source/UndoHistory.cpp
     Source/ExternalMidiOutput.cpp
 )
@@ -162,7 +165,11 @@ if(RAVEL_BUILD_TESTS)
 
     target_link_libraries(RavelTests
         PRIVATE
-            juce::juce_audio_processors
+            # audio_basics, not audio_processors: SequencerEngine now includes only
+            # ParameterTables.h, so the sequencer core builds and tests without the plugin
+            # framework behind it. If this ever needs audio_processors again, something has
+            # leaked back into the engine's header.
+            juce::juce_audio_basics
         PUBLIC
             juce::juce_recommended_config_flags
             juce::juce_recommended_warning_flags
@@ -180,6 +187,12 @@ if(RAVEL_BUILD_TESTS)
         Source/PluginEditor.cpp
         Source/LaneComponent.cpp
         Source/Controls.cpp
+        Source/RavelLookAndFeel.cpp
+        Source/ExternalMidiSelector.cpp
+        Source/PresetBar.cpp
+    Source/PresetBar.cpp
+    Source/ExternalMidiSelector.cpp
+    Source/PresetBar.cpp
         Source/Parameters.cpp
         Source/PresetManager.cpp
         Source/SequencerEngine.cpp
@@ -213,7 +226,7 @@ if(RAVEL_SNAPSHOT_SOURCE)
     juce_add_console_app(RavelSnapshot PRODUCT_NAME "RavelSnapshot")
     target_sources(RavelSnapshot PRIVATE ${RAVEL_SNAPSHOT_SOURCE}
         Source/PluginProcessor.cpp Source/PluginEditor.cpp Source/LaneComponent.cpp
-        Source/Controls.cpp Source/Parameters.cpp Source/SequencerEngine.cpp
+        Source/Controls.cpp Source/RavelLookAndFeel.cpp Source/ExternalMidiSelector.cpp Source/PresetBar.cpp Source/Parameters.cpp Source/SequencerEngine.cpp
         Source/PresetManager.cpp Source/UndoHistory.cpp Source/ExternalMidiOutput.cpp)
     target_include_directories(RavelSnapshot PRIVATE Source)
     target_compile_definitions(RavelSnapshot PRIVATE

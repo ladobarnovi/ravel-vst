@@ -15,19 +15,6 @@ namespace
     constexpr int gap           = 8;
     constexpr int margin        = 12;
 
-    // The External MIDI control's own height, inside its header pill. Same as laneBarHeight
-    // -- it carries a button (Rescan) the same way that bar's Add lane does -- rather than
-    // theme::rowHeight, which is sized for a bare caption-plus-value row with nothing beside
-    // it.
-    constexpr int externalMidiRowHeight = laneBarHeight;
-
-    // Fixed rather than however much of the header the title and history arrows leave over:
-    // a fixed width is what lets the pill sit flush against the header's right edge instead
-    // of stretching to fill it. Wide enough for "MIDI output" as a caption plus "Host MIDI
-    // only" as the longest stock choice, both at theme::rowFont.
-    constexpr int externalMidiComboWidth = 210;
-    constexpr int externalMidiPadding    = 10;
-
     // The window's native (100%-zoom) width: whatever a lane needs to draw 16 steps at
     // lane::stepSlotWidth, plus the margin either side. Derived rather than typed in, so
     // changing the step width moves the window with it instead of leaving a gap between
@@ -40,46 +27,6 @@ namespace
     // Square, and taller than a value row: the arrows are a click target rather than a line
     // of text, and 22px keeps them comfortably hittable inside a 26px header.
     constexpr int historyButton = 22;
-
-    // The preset pill's own metrics, deliberately the MIDI pill's: two pills in one header
-    // that agreed on everything but their internal rhythm would read as a mistake rather
-    // than as a pair.
-    constexpr int presetRowHeight = externalMidiRowHeight;
-    constexpr int presetPadding   = externalMidiPadding;
-
-    // Wider than a chevron strictly needs, because the glyph is scaled off the smaller of
-    // the button's two dimensions -- at 16 it would be drawn to fit a 16px box inside a
-    // 22px row and come out visibly lighter than the value it sits beside.
-    constexpr int presetStepperWidth = 20;
-    constexpr int presetStepperGap   = 4;
-
-    // Caption plus a name field. Wider than the MIDI box's 140 because preset names are the
-    // user's own words rather than a fixed list of stock choices, and a name that elides
-    // after twelve characters makes the chip useless for telling two patches apart.
-    constexpr int presetChipWidth = 240;
-
-    /** The preset pill's total width. Derived rather than typed in, so the layout and the
-        pill that gets painted behind it cannot drift apart. */
-    int presetPillWidth()
-    {
-        return presetPadding * 2 + presetStepperWidth * 2 + presetStepperGap * 2
-                 + presetChipWidth + gap
-                 + theme::actionButtonWidth ("Save", presetRowHeight);
-    }
-
-    // Menu item ids. Presets are numbered from firstPresetFileItem upward as the menu is
-    // built, so an id above it indexes straight into the editor's own list of files.
-    enum PresetMenuItem
-    {
-        presetInitItem = 1,
-        presetSaveItem,
-        presetSaveAsItem,
-        presetRenameItem,
-        presetDeleteItem,
-        presetShowFolderItem,
-
-        firstPresetFileItem = 100
-    };
 
     // How far the user can zoom the window either side of native size. Below 60% the step
     // bars stop being useful click targets; above 150% there's nothing left to reveal.
@@ -153,79 +100,9 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
 
     updateHistoryButtons();
 
-    // Standing alone in its own header pill rather than among a grid of peers the way a
-    // TabPage's value rows do, so it gets the Role that draws itself as an obvious dropdown
-    // -- a boxed, arrowed value -- rather than valueRow's bare caption/value pair, which
-    // leans on that grid to read as a control at all. See theme::Role::selectChip.
-    theme::setRole (externalMidiBox, theme::Role::selectChip);
-    theme::setCaption (externalMidiBox, "MIDI output");
-    externalMidiBox.setTooltip ("Mirrors every note and CC this instance generates straight out "
-                                "a system MIDI port -- a loopMIDI port, most likely -- bypassing "
-                                "Ableton's own MIDI routing entirely. The host still receives "
-                                "the same events as always; this only adds a second destination");
-    externalMidiBox.onChange = [this]
-    {
-        const int id = externalMidiBox.getSelectedId();
-        const juce::String identifier = id >= 2 && id - 2 < externalMidiDeviceIds.size()
-                                            ? externalMidiDeviceIds[id - 2]
-                                            : juce::String();
+    content.addAndMakeVisible (externalMidiSelector);
 
-        processorRef.externalMidiOutput.setDevice (identifier);
-
-        // Plain state-tree property rather than an APVTS parameter -- see the field's own
-        // comment in PluginEditor.h for why -- restored in PluginProcessor::setStateInformation.
-        processorRef.apvts.state.setProperty ("externalMidiDevice", identifier, nullptr);
-    };
-    content.addAndMakeVisible (externalMidiBox);
-
-    theme::styleActionButton (externalMidiRescanButton);
-    externalMidiRescanButton.setTooltip ("Re-scan for MIDI ports -- a loopMIDI port created "
-                                         "after this window opened won't appear until this is "
-                                         "clicked");
-    externalMidiRescanButton.onClick = [this] { populateExternalMidiDevices(); };
-    content.addAndMakeVisible (externalMidiRescanButton);
-
-    populateExternalMidiDevices();
-
-    //--------------------------------------------------------------------------
-    // The preset bar. Grouped with the title and the history arrows rather than opposite
-    // them -- see the members' own comments in PluginEditor.h.
-    theme::setRole (presetNameButton, theme::Role::presetChip);
-    theme::setCaption (presetNameButton, "Preset");
-    presetNameButton.setTooltip ("The loaded preset -- click to browse, save, rename or delete. "
-                                 "A dot after the name means the patch has been edited since it "
-                                 "was loaded");
-    presetNameButton.onClick = [this] { showPresetMenu(); };
-    content.addAndMakeVisible (presetNameButton);
-
-    theme::setRole (presetPrevButton, theme::Role::stepperPrev);
-    presetPrevButton.setTooltip ("Load the previous preset");
-    presetPrevButton.onClick = [this] { processorRef.presetManager.loadRelative (-1); };
-    content.addAndMakeVisible (presetPrevButton);
-
-    theme::setRole (presetNextButton, theme::Role::stepperNext);
-    presetNextButton.setTooltip ("Load the next preset");
-    presetNextButton.onClick = [this] { processorRef.presetManager.loadRelative (1); };
-    content.addAndMakeVisible (presetNextButton);
-
-    theme::styleActionButton (presetSaveButton);
-    presetSaveButton.setTooltip ("Save over the loaded preset. With nothing loaded, asks for a name");
-    presetSaveButton.onClick = [this]
-    {
-        // saveToCurrent() fails only when there is nothing to overwrite, which is exactly
-        // when Save should be asking for a name instead. That fallback is what makes it safe
-        // to leave this on the pill rather than behind the menu.
-        if (! processorRef.presetManager.saveToCurrent())
-            promptForName ("Save preset", {},
-                           [this] (const juce::String& name)
-                           { processorRef.presetManager.saveAs (name); });
-    };
-    content.addAndMakeVisible (presetSaveButton);
-
-    // The manager lives on the processor and outlives this editor, so this is cleared again
-    // in the destructor.
-    processorRef.presetManager.onChange = [this] { refreshPresetChip(); };
-    refreshPresetChip();
+    content.addAndMakeVisible (presetBar);
 
     auto& state = processorRef.apvts;
 
@@ -319,237 +196,11 @@ RavelAudioProcessorEditor::~RavelAudioProcessorEditor()
 {
     stopTimer();
 
-    // The PresetManager is the processor's and outlives this window, so a callback that
-    // captured `this` has to go before `this` does.
-    processorRef.presetManager.onChange = nullptr;
+    // Whatever the debounce above was still holding. Closing the window is the one moment the
+    // size is certain not to change again, and the timer is not going to fire now.
+    storeEditorSize();
 
     setLookAndFeel (nullptr);
-}
-
-//==============================================================================
-void RavelAudioProcessorEditor::refreshPresetChip()
-{
-    const auto& presets = processorRef.presetManager;
-
-    presetNameButton.setButtonText (presets.getDisplayName());
-    theme::setShowingPlaceholder (presetNameButton, ! presets.hasCurrent());
-
-    // Kept in step here as well as on the timer, so a load clears the dot on the click that
-    // loaded rather than up to a frame later.
-    appliedPresetDirty = presets.isDirty() ? 1 : 0;
-    theme::setShowingDirtyMarker (presetNameButton, appliedPresetDirty == 1);
-}
-
-void RavelAudioProcessorEditor::addPresetEntriesToMenu (juce::PopupMenu& menu,
-                                                        const std::vector<PresetManager::Entry>& level,
-                                                        int& nextItemId)
-{
-    const auto currentFile = processorRef.presetManager.getCurrentFile();
-
-    for (const auto& entry : level)
-    {
-        if (entry.isFolder())
-        {
-            juce::PopupMenu submenu;
-            addPresetEntriesToMenu (submenu, entry.children, nextItemId);
-            menu.addSubMenu (entry.name, submenu);
-            continue;
-        }
-
-        // Ticked, not disabled: picking the preset you are already on is how an edit you did
-        // not mean to make gets thrown away.
-        menu.addItem (nextItemId++, entry.name, true, entry.file == currentFile);
-        presetMenuFiles.push_back (entry.file);
-    }
-}
-
-void RavelAudioProcessorEditor::showPresetMenu()
-{
-    auto& presets = processorRef.presetManager;
-
-    // Rescanned every time the menu opens rather than only at startup, so a preset saved
-    // from a second instance of the plugin is in the list now instead of after this window
-    // has been closed and reopened.
-    presets.refresh();
-
-    presetMenuFiles.clear();
-
-    juce::PopupMenu menu;
-    menu.setLookAndFeel (&lookAndFeel);
-
-    menu.addItem (presetInitItem, "Init", true, ! presets.hasCurrent());
-    menu.addSeparator();
-
-    int nextItemId = firstPresetFileItem;
-    addPresetEntriesToMenu (menu, presets.getEntries(), nextItemId);
-
-    // A disabled line rather than nothing at all: an empty gap between two separators reads
-    // as the menu having failed to load, not as there being nothing to load.
-    if (presetMenuFiles.empty())
-        menu.addItem (-1, "No presets saved", false, false);
-
-    menu.addSeparator();
-    menu.addItem (presetSaveItem,   "Save");
-    menu.addItem (presetSaveAsItem, "Save as...");
-    menu.addItem (presetRenameItem, "Rename...", presets.hasCurrent());
-    menu.addItem (presetDeleteItem, "Delete",    presets.hasCurrent());
-    menu.addSeparator();
-    menu.addItem (presetShowFolderItem, "Show presets folder");
-
-    // Anchored to the boxed part of the chip rather than to the whole button, so the menu
-    // drops from the field it fills instead of from the caption beside it.
-    const auto boxArea = presetNameButton.localAreaToGlobal (theme::chipBoxArea (presetNameButton));
-
-    // Toggle state is what the chip's own drawing reads as "my menu is open": an async menu
-    // leaves the button itself unpressed for the whole time it is showing, so
-    // shouldDrawButtonAsDown never covers this.
-    presetNameButton.setToggleState (true, juce::dontSendNotification);
-
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea (boxArea)
-                                                   .withMinimumWidth (boxArea.getWidth()),
-                        [safeThis = juce::Component::SafePointer<RavelAudioProcessorEditor> (this)] (int result)
-                        {
-                            if (auto* self = safeThis.getComponent())
-                            {
-                                self->presetNameButton.setToggleState (false, juce::dontSendNotification);
-                                self->handlePresetMenuResult (result);
-                            }
-                        });
-}
-
-void RavelAudioProcessorEditor::handlePresetMenuResult (int menuItemId)
-{
-    auto& presets = processorRef.presetManager;
-
-    switch (menuItemId)
-    {
-        case 0:                                     // dismissed without picking anything
-            return;
-
-        case presetInitItem:
-            presets.loadInit();
-            return;
-
-        case presetSaveItem:
-            if (! presets.saveToCurrent())
-                promptForName ("Save preset", {},
-                               [this] (const juce::String& name)
-                               { processorRef.presetManager.saveAs (name); });
-            return;
-
-        case presetSaveAsItem:
-            promptForName ("Save preset as", presets.getDisplayName(),
-                           [this] (const juce::String& name)
-                           { processorRef.presetManager.saveAs (name); });
-            return;
-
-        case presetRenameItem:
-            promptForName ("Rename preset", presets.getDisplayName(),
-                           [this] (const juce::String& name)
-                           { processorRef.presetManager.renameCurrent (name); });
-            return;
-
-        case presetDeleteItem:
-            // The one preset action undo cannot walk back -- everything else here only moves
-            // parameters -- so it is the one that asks first.
-            juce::AlertWindow::showOkCancelBox (
-                juce::MessageBoxIconType::WarningIcon,
-                "Delete preset",
-                "Delete \"" + presets.getDisplayName() + "\"? This cannot be undone.",
-                "Delete", "Cancel", this,
-                juce::ModalCallbackFunction::create (
-                    [safeThis = juce::Component::SafePointer<RavelAudioProcessorEditor> (this)] (int result)
-                    {
-                        if (result != 1)
-                            return;
-
-                        if (auto* self = safeThis.getComponent())
-                            self->processorRef.presetManager.deleteCurrent();
-                    }));
-            return;
-
-        case presetShowFolderItem:
-        {
-            // Created first: revealToUser() on a folder that does not exist yet does nothing
-            // at all, which looks exactly like the menu item being broken.
-            const auto directory = PresetManager::getPresetDirectory();
-            directory.createDirectory();
-            directory.revealToUser();
-            return;
-        }
-
-        default:
-            break;
-    }
-
-    // Anything left is a preset, numbered from firstPresetFileItem as the menu was built.
-    const auto index = (size_t) (menuItemId - firstPresetFileItem);
-
-    if (index < presetMenuFiles.size())
-        presets.load (presetMenuFiles[index]);
-}
-
-void RavelAudioProcessorEditor::promptForName (const juce::String& title,
-                                               const juce::String& initialText,
-                                               std::function<void (const juce::String&)> onAccept)
-{
-    // Async, never AlertWindow's blocking form: a plugin editor that spins a modal loop
-    // stalls the host's message thread along with it.
-    nameWindow = std::make_unique<juce::AlertWindow> (title, juce::String(),
-                                                      juce::MessageBoxIconType::NoIcon, this);
-
-    nameWindow->addTextEditor ("name", initialText, "Preset name");
-    nameWindow->addButton ("Save",   1, juce::KeyPress (juce::KeyPress::returnKey));
-    nameWindow->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
-
-    nameWindow->enterModalState (
-        true,
-        juce::ModalCallbackFunction::create (
-            [safeThis = juce::Component::SafePointer<RavelAudioProcessorEditor> (this),
-             accept = std::move (onAccept)] (int result)
-            {
-                auto* self = safeThis.getComponent();
-
-                if (self == nullptr || self->nameWindow == nullptr)
-                    return;
-
-                const auto name = self->nameWindow->getTextEditorContents ("name");
-
-                // Freed here rather than by enterModalState's own deleteWhenDismissed, which
-                // would take the window away before its text could be read out of it.
-                self->nameWindow.reset();
-
-                if (result == 1 && name.trim().isNotEmpty())
-                    accept (name);
-            }),
-        false);
-}
-
-//==============================================================================
-void RavelAudioProcessorEditor::populateExternalMidiDevices()
-{
-    const auto currentIdentifier = processorRef.externalMidiOutput.getCurrentDeviceIdentifier();
-
-    externalMidiBox.clear (juce::dontSendNotification);
-    externalMidiDeviceIds.clear();
-
-    externalMidiBox.addItem ("Host MIDI only", 1);
-    int selectedId = 1;
-
-    for (const auto& info : juce::MidiOutput::getAvailableDevices())
-    {
-        externalMidiDeviceIds.add (info.identifier);
-        const int itemId = externalMidiDeviceIds.size() + 1; // ids start at 2, list is 0-based
-
-        externalMidiBox.addItem (info.name, itemId);
-
-        if (info.identifier == currentIdentifier)
-            selectedId = itemId;
-    }
-
-    // dontSendNotification: this reflects state the processor already has, so it must not
-    // loop back through onChange and call setDevice() again.
-    externalMidiBox.setSelectedId (selectedId, juce::dontSendNotification);
 }
 
 //==============================================================================
@@ -800,6 +451,19 @@ void RavelAudioProcessorEditor::resized()
     content.setTransform (juce::AffineTransform::scale (scale));
     content.setBounds (0, 0, nativeContentWidth, nativeContentHeight);
 
+    // Not written here: this runs on every frame of a drag-resize. Marked instead, and written
+    // by the timer once the size has stopped moving -- see storeEditorSize().
+    editorSizeDirty = true;
+    editorSizeSettleTicks = 0;
+}
+
+void RavelAudioProcessorEditor::storeEditorSize()
+{
+    if (! editorSizeDirty)
+        return;
+
+    editorSizeDirty = false;
+
     // Persisted as plain state-tree properties (see the restore in the constructor) so the
     // window reopens at the size it was left, not back at 100%.
     processorRef.apvts.state.setProperty ("editorWidth",  getWidth(),  nullptr);
@@ -883,37 +547,16 @@ void RavelAudioProcessorEditor::layoutContent()
     // the header's two groups reading as two groups.
     header.removeFromLeft (12);
 
-    auto presetPill = header.removeFromLeft (presetPillWidth());
-    content.presetArea = presetPill;
-
-    auto presetInner = presetPill.reduced (presetPadding, (headerHeight - presetRowHeight) / 2);
-
-    presetPrevButton.setBounds (presetInner.removeFromLeft (presetStepperWidth));
-    presetInner.removeFromLeft (presetStepperGap);
-    presetNameButton.setBounds (presetInner.removeFromLeft (presetChipWidth));
-    presetInner.removeFromLeft (presetStepperGap);
-    presetNextButton.setBounds (presetInner.removeFromLeft (presetStepperWidth));
-    presetInner.removeFromLeft (gap);
-    presetSaveButton.setBounds (presetInner);
+    presetBar.setBounds (header.removeFromLeft (PresetBar::preferredWidth()));
 
     //--------------------------------------------------------------------------
     // Opposite the logo, flush against the header's right edge, on a raised pill rather than
     // flat on the surface -- see ContentComponent::paint(). Global rather than
     // per-workspace, so the header is where it belongs: it routes both Note and CC output
     // alike, not something either tab owns.
-    const int externalMidiChipWidth = externalMidiPadding * 2 + externalMidiComboWidth + gap
-                                        + theme::actionButtonWidth ("Rescan", externalMidiRowHeight);
-
-    auto externalMidiChip = header.removeFromRight (externalMidiChipWidth);
-    content.externalMidiArea = externalMidiChip;
-
-    auto externalMidiInner = externalMidiChip.reduced (
-        externalMidiPadding, (headerHeight - externalMidiRowHeight) / 2);
-
-    externalMidiRescanButton.setBounds (externalMidiInner.removeFromRight (
-        theme::actionButtonWidth ("Rescan", externalMidiRowHeight)));
-    externalMidiInner.removeFromRight (gap);
-    externalMidiBox.setBounds (externalMidiInner);
+    // Full header height, not the row height: the pill is the raised ground, and its contents
+    // are centred inside it by the selector's own resized().
+    externalMidiSelector.setBounds (header.removeFromRight (ExternalMidiSelector::preferredWidth()));
 
     r.removeFromTop (gap);
 
@@ -956,6 +599,10 @@ void RavelAudioProcessorEditor::updateHistoryButtons()
 //==============================================================================
 void RavelAudioProcessorEditor::timerCallback()
 {
+    // A resize that has stood still for half a second is a resize the user has finished.
+    if (editorSizeDirty && ++editorSizeSettleTicks >= editorSizeSettleDelay)
+        storeEditorSize();
+
     const auto& engine = processorRef.getEngine();
 
     // Polled, because anything at all that moves a parameter -- a step drag, a pattern
@@ -963,16 +610,10 @@ void RavelAudioProcessorEditor::timerCallback()
     // coming past the buttons.
     updateHistoryButtons();
 
-    // Same reasoning for the preset chip's dirty dot, with one addition: the parameter that
-    // makes a patch dirty can move on the audio thread, so the PresetManager only ever sets
-    // an atomic flag and this is where it reaches the UI.
-    const int presetDirty = processorRef.presetManager.isDirty() ? 1 : 0;
-
-    if (presetDirty != appliedPresetDirty)
-    {
-        appliedPresetDirty = presetDirty;
-        theme::setShowingDirtyMarker (presetNameButton, presetDirty == 1);
-    }
+    // Same reasoning for the preset chip's edited dot, with one addition: the parameter that
+    // makes a patch dirty can move on the audio thread, so the PresetManager only ever sets an
+    // atomic flag and this is where it reaches the UI.
+    presetBar.tick();
 
     for (int lane = 0; lane < noteLanes.size(); ++lane)
         noteLanes[lane]->setPlayingStep (engine.getCurrentStep (lane, params::LaneKind::note));

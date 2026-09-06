@@ -1,25 +1,35 @@
 #pragma once
 
-#include "Parameters.h"
+#include "ParameterTables.h"
 
 #include <atomic>
 #include <cstdint>
 #include <limits>
+#include <utility>
 
 /**
     The sequencer core.
 
-    Step positions are derived from the host's absolute PPQ position rather than
-    accumulated from a running counter. That costs a floor() per lane per sample
-    but it means loops, jumps, scrubbing and tempo changes all land on exactly the
-    step the timeline says they should, with no drift and no resync logic.
+    Step positions are derived from the host's absolute PPQ position rather than accumulated
+    from a running counter, so loops, jumps, scrubbing and tempo changes all land on exactly
+    the step the timeline says they should, with no drift and no resync logic.
+
+    Deriving one costs a division and a floor, which is why it happens once per step boundary
+    and not once per sample. Everything about a lane -- which step it is on, that step's value,
+    whether it fires -- is a function of that index, so all of it holds until the index changes,
+    and at 1/16 and 120 bpm that is once every 6000 samples. See nextBoundarySample().
 */
 class SequencerEngine
 {
 public:
     //==========================================================================
-    /** Per-lane parameter values, read once per block off the audio thread's
-        atomics so the inner sample loop touches only plain floats.
+    /** What both kinds of lane have: a pattern, and the controls that decide how it is
+        traversed. This is everything the step-resolution path reads, which is why it is the
+        type that path takes -- a Note lane and a CC lane step identically, they only differ in
+        what their value ends up driving.
+
+        Read once per block off the audio thread's atomics, so the sample loop touches only
+        plain floats.
     */
     struct LaneSnapshot
     {
@@ -27,23 +37,40 @@ public:
         bool  enabled[params::numSteps] {};
         float chance[params::numSteps] {};
 
+        /** The lane's mute -- and also how a lane the instance does not have yet is expressed.
+            False makes every one of its steps behave as if switched off: nothing added to the
+            mix, nothing triggered, and its CC latched where it was. It is also what lets
+            buildSnapshot() leave the three arrays above untouched: nothing reads them while
+            this is false. */
+        bool  active    = true;
+        int   length    = params::numSteps;
+        int   division  = params::divIndex_1_16;
+        int   direction = 0;
+        float depth     = 0.0f;
+    };
+
+    /** A Note lane: the pattern above, plus the two things only a note has.
+
+        Split from the CC lane rather than one struct carrying both sets of fields with half of
+        them inert. That cost 512 bytes of a ~2.5 KB snapshot rebuilt every block on nothing --
+        but the reason to fix it is that "a CC lane never reads velocity" was a comment, and is
+        now a fact about the type.
+    */
+    struct NoteLaneSnapshot : LaneSnapshot
+    {
         /** Per-step accent, as a trim on the global Velocity. 1 is unity. */
         float velocity[params::numSteps] {};
 
         /** Per-step note length, as a percentage of the step's own length. 100 touches the
             next step without overlapping it; above that overlaps into it (see Voices). */
         float gate[params::numSteps] {};
+    };
 
-        /** The lane's mute. False makes every one of its steps behave as if switched off:
-            nothing added to the mix, nothing triggered, and its CC latched where it was. */
-        bool  active    = true;
-        int   length    = params::numSteps;
-        int   division  = params::divIndex_1_16;
-        int   direction = 0;
-        float depth     = 0.0f;
-
-        // Only ever meaningful on a CC lane: a Note lane never has these parameters, and
-        // this stays at its default for one.
+    /** A CC lane: the pattern above, plus its own destination -- the whole reason a CC lane
+        exists, rather than an optional tap on any lane.
+    */
+    struct CcLaneSnapshot : LaneSnapshot
+    {
         bool  ccOn      = false;
         int   ccNumber  = 20;
         int   ccChannel = 1;
@@ -55,8 +82,8 @@ public:
 
     struct Snapshot
     {
-        LaneSnapshot noteLanes[params::numLanes];
-        LaneSnapshot ccLanes[params::numLanes];
+        NoteLaneSnapshot noteLanes[params::numLanes];
+        CcLaneSnapshot   ccLanes[params::numLanes];
 
         // Which Note lane's advance fires the shared note in mixed (non-poly) mode. CC has
         // no equivalent: its output is never "triggered", it continuously reflects the fold.
@@ -153,6 +180,19 @@ public:
     //==========================================================================
     // Read by the editor's timer. Plain relaxed atomics: a torn read just means
     // one stale repaint frame.
+    /** Hands the editor's timer the step each lane is sitting on, or -1 on every lane while
+        nothing is playing.
+
+        Called on the way out of every path through process(), the stopped one included --
+        which used to return before reaching the store, leaving the playhead marker parked on
+        whatever step the transport happened to halt on as though the sequencer were still
+        running there.
+    */
+    void publishUiSteps (bool running) noexcept;
+
+    /** -1 means this lane is not playing a step right now. */
+    static constexpr int noStep = -1;
+
     int getCurrentStep (int lane, params::LaneKind kind = params::LaneKind::note) const noexcept
     {
         return (kind == params::LaneKind::cc ? ccUiStep[lane] : noteUiStep[lane])
@@ -178,6 +218,24 @@ private:
         adjacent candidates -- which is sufficient because offsets are bounded to half a step.
     */
     static std::int64_t resolveGlobalIndex (double ppq, double stepPpq, float swing) noexcept;
+
+    /** The first sample offset after `from` at which resolveGlobalIndex() stops returning
+        `currentIndex`, or numSamples if it does not change again inside this block.
+
+        This is what lets the sample loop stop asking. A lane's step, its value and whether it
+        fires are all functions of the global index, so they are constant between boundaries --
+        and at 1/16 and 120 bpm a boundary is 6000 samples apart. Resolving the index once per
+        boundary instead of once per sample is the same answer, arrived at a few thousand times
+        less often.
+
+        Exact, not approximate: it inverts the same inequality resolveGlobalIndex() tests, then
+        confirms the result against resolveGlobalIndex() itself, so a lane can never step on a
+        different sample than it used to.
+    */
+    static int nextBoundarySample (std::int64_t currentIndex,
+                                   double ppqAtBlockStart, double ppqPerSample,
+                                   double stepPpq, float swing,
+                                   int from, int numSamples) noexcept;
 
     /** Pitch bend sensitivity (RPN 0) for the note channel. Written out as raw RPN controller
         messages rather than via a JUCE helper, because those return a MidiBuffer by value and
@@ -224,8 +282,29 @@ private:
 
     bool anyVoiceActive() const noexcept;
 
-    /** Counts down each sounding voice and emits note-off as they expire. */
-    void advanceVoices (juce::MidiBuffer& out, int sampleOffset);
+    /** Counts `samples` off every sounding voice and emits note-off for those that run out.
+
+        Takes a span rather than always stepping by one because the sample loop no longer
+        calls it on every sample. Walking all 32 slots 48000 times a second, almost always to
+        find that none of them had expired, was pure overhead: the loop now counts down to the
+        soonest expiry and only comes here when it actually arrives. Passing 1 reproduces the
+        per-sample behaviour exactly.
+    */
+    void advanceVoices (juce::MidiBuffer& out, int sampleOffset, int samples);
+
+    /** The fewest samples any sounding voice has left, or int max when none is sounding --
+        which the caller reads as "no note-off is due inside this block". */
+    int soonestVoiceExpiry() const noexcept;
+
+    /** Applies deferred countdown to every sounding voice without retiring any.
+
+        Called before a note is started and once at the end of a block, so the slots are back
+        on the caller's own clock: a fresh voice's gate is counted from the sample it starts
+        on, and the allocator picks which voice to steal by how much gate each has left. Only
+        ever called while the deferred span is shorter than the soonest expiry, so nothing it
+        touches can already have run out.
+    */
+    void settleVoices (int samples) noexcept;
 
     /** The single place a voice actually goes off: note-off, freeing the slot, and -- if the
         slot was sounding on an MPE member channel -- freeing that channel back to the pool

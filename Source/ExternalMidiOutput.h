@@ -26,14 +26,30 @@ public:
 
     /** Audio-thread only, real-time safe: never blocks, never allocates. Every message Ravel's
         engine emits is a 1-3 byte channel-voice message -- note on/off, CC, pitch bend -- so a
-        fixed-size event is enough; there is no need to carry a full juce::MidiMessage (whose
-        copy can allocate) across the ring buffer. Silently dropped if no device is open or the
-        buffer is full.
+        fixed-size event is enough; there is no need to carry a full juce::MidiMessage across
+        the ring buffer. Silently dropped if no device is open or the buffer is full.
+
+        Raw bytes rather than a juce::MidiMessage because the caller is iterating a MidiBuffer,
+        whose metadata already exposes exactly these two things -- building a MidiMessage from
+        them only to read them straight back out is work with nothing at the end of it.
     */
-    void pushMessage (const juce::MidiMessage& message);
+    void pushMessage (const juce::uint8* data, int numBytes);
 
 private:
     void run() override;
+
+    /** All Sound Off and All Notes Off on all sixteen channels.
+
+        Sent to a port we are about to stop using. Ravel closes its own notes by emitting
+        note-offs, and those reach this port the same way the note-ons did -- but a port being
+        swapped away from, or closed with the plugin, will never be handed the ones that have
+        not happened yet. Whatever it was sounding would hang there until the instrument was
+        reset by hand, and the host's own copy of the stream gives no clue why.
+
+        Both messages because instruments differ over which they honour, and neither is
+        expensive: this runs on the message thread, once, when a port is being let go.
+    */
+    static void silence (juce::MidiOutput* target);
 
     struct QueuedEvent
     {

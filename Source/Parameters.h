@@ -1,272 +1,47 @@
 #pragma once
 
+#include "ParameterTables.h"
+
 #include <juce_audio_processors/juce_audio_processors.h>
 
-#include <array>
-#include <cmath>
+#include <vector>
 
 /**
-    Parameter IDs, choice lists and the small lookup tables shared between the
-    audio engine and the editor.
+    Parameter IDs, the APVTS layout, and the pattern actions behind the editor's buttons.
+
+    The lookup tables the audio engine needs as well -- lane and step counts, clock
+    divisions, the scale table, the pitch-bend helpers -- live in ParameterTables.h, which
+    this includes. Everything here needs juce_audio_processors; nothing there does, which is
+    the whole point of the split. See that file's own header.
 */
 namespace params
 {
 
-// The most lanes an instance can have. Every lane's parameters exist from the moment the
-// plugin is created, because a VST3 cannot grow its parameter list at runtime -- so "adding
-// a lane" raises laneCount, and the lanes above the count are simply inert and hidden. Their
-// step data stays where it is, which is what lets a removed lane come back unchanged.
-inline constexpr int numLanes = 4;
-inline constexpr int numSteps = 16;
-
 //==============================================================================
-// Clock divisions. Each value is a step length measured in quarter notes,
-// because that is the unit AudioPlayHead reports positions in (PPQ).
-inline const juce::StringArray divisionNames
-    { "1/1", "1/2", "1/4", "1/4T", "1/8", "1/8T", "1/16", "1/16T", "1/32" };
+// The remaining choice lists. Neither is paired with a data table the way divisions and
+// scales are, so they are spelled out here -- but both are built rather than declared, so
+// there is no static-initialisation order to think about and no global juce::String
+// construction at load time.
 
-inline constexpr double divisionPpq[]
-    { 4.0, 2.0, 1.0, 2.0 / 3.0, 0.5, 1.0 / 3.0, 0.25, 1.0 / 6.0, 0.125 };
-
-inline constexpr int divIndex_1_4  = 2;
-inline constexpr int divIndex_1_8  = 4;
-inline constexpr int divIndex_1_16 = 6;
-
-inline const juce::StringArray directionNames  { "Forward", "Reverse", "Ping-Pong", "Random" };
-inline const juce::StringArray triggerNames    { "Lane 1", "Lane 2", "Lane 3", "Lane 4", "Any Lane" };
-
-//==============================================================================
-// Pitch is either quantized to scale degrees or continuous. Continuous pitch is carried as
-// the nearest note plus a pitch bend on the note channel, so a whole chord or a set of
-// overlapping notes shares one bend -- the trade for surviving hosts that merge MIDI
-// channels when routing between tracks.
-//
-// RPN 0 is pitch bend sensitivity, which the receiving instrument has to be told: leaving it
-// at an instrument's own default while we scale for a different range plays the wrong
-// interval.
-inline constexpr int pitchBendRangeRpn = 0;
-
-// RPN 6, the MPE Configuration Message: sent on a zone's master channel, its value is how
-// many member channels follow it. Ravel only ever offers one Lower Zone, so the value sent
-// is always SequencerEngine::mpeMemberChannels.
-inline constexpr int mpeConfigurationRpn = 6;
-
-/** Centre position of the 14-bit pitch wheel: no bend. */
-inline constexpr int pitchBendCentre = 8192;
-
-/** The wheel value that expresses a pitch offset in semitones, for an instrument set to the
-    given bend range. Clamped rather than wrapped, so an offset larger than the range bottoms
-    out at the extreme instead of jumping to the opposite one.
-*/
-inline int pitchBendForSemitones (float semitones, int bendRange) noexcept
+inline juce::StringArray directionNameList()
 {
-    const float normalised = juce::jlimit (-1.0f, 1.0f,
-                                           semitones / (float) juce::jmax (1, bendRange));
-
-    return juce::jlimit (0, 16383, pitchBendCentre + (int) std::lround (normalised * 8191.0f));
+    return { "Forward", "Reverse", "Ping-Pong", "Random" };
 }
 
-//==============================================================================
-// Scales are stored as steps of an equal division of the octave rather than as semitones,
-// so 19-, 23-, 31-, 41- and 53-EDO sit in the same table as the familiar 12-EDO ones and the
-// engine needs one code path for all of them. Every tuning here keeps a 2:1 octave, which is what
-// makes the mapping onto MIDI note numbers tractable: a full scale-octave is always exactly
-// 12 semitones however many degrees it took to climb, so only the degrees *within* an octave
-// ever fall between the keys.
-//
-// 53 is the largest EDO in the table and so sets the array width.
-inline constexpr int maxScaleSize = 53;
-
-struct ScaleDef
+/** Which Note lane's advance fires the shared note in mixed (non-poly) mode, with "Any
+    Lane" on the end. Built from numLanes rather than written out, so the list cannot come
+    to describe a different number of lanes than the plugin actually has -- the engine reads
+    any index at or above numLanes as "any". */
+inline juce::StringArray triggerNameList()
 {
-    /** Degrees above the root, in steps of `edo`. Only the first `size` entries are used. */
-    std::array<int, maxScaleSize> intervals;
-    int size;
+    juce::StringArray names;
 
-    /** Equal divisions of the octave the intervals are counted in. */
-    int edo;
-};
+    for (int lane = 0; lane < numLanes; ++lane)
+        names.add ("Lane " + juce::String (lane + 1));
 
-/** Every step of an EDO, i.e. that tuning's own chromatic scale. A function because spelling
-    out 53 consecutive integers by hand is noise, not documentation.
-*/
-constexpr ScaleDef edoChromatic (int edo) noexcept
-{
-    ScaleDef def { {}, edo, edo };
-
-    for (int i = 0; i < edo; ++i)
-        def.intervals[(size_t) i] = i;
-
-    return def;
+    names.add ("Any Lane");
+    return names;
 }
-
-inline const juce::StringArray scaleNames
-{
-    "Chromatic", "Major", "Natural Minor", "Harmonic Minor",
-    "Pentatonic Minor", "Pentatonic Major", "Dorian", "Mixolydian", "Whole Tone",
-
-    "19 Chromatic", "19 Major", "19 Natural Minor", "19 Harmonic Minor",
-    "19 Pentatonic Minor", "19 Blues",
-
-    "23 Chromatic", "23 Pentatonic", "23 Mavila 7", "23 Mavila 9",
-
-    "31 Chromatic", "31 Major", "31 Natural Minor", "31 Harmonic Minor",
-    "31 Pentatonic Minor", "31 Blues",
-
-    "41 Chromatic", "41 Major", "41 Natural Minor", "41 Harmonic Minor",
-    "41 Pentatonic Minor",
-
-    "53 Chromatic", "53 Just Major", "53 Just Minor", "53 Pythagorean Major",
-    "53 Just Pentatonic", "53 Rast", "53 Hicaz"
-};
-
-inline constexpr ScaleDef scales[]
-{
-    //--------------------------------------------------------------------------
-    // 12-EDO. Unchanged, and still the only ones that land exactly on MIDI notes.
-    edoChromatic (12),                          // Chromatic
-    { { 0, 2, 4, 5, 7, 9, 11 }, 7, 12 },        // Major
-    { { 0, 2, 3, 5, 7, 8, 10 }, 7, 12 },        // Natural Minor
-    { { 0, 2, 3, 5, 7, 8, 11 }, 7, 12 },        // Harmonic Minor
-    { { 0, 3, 5, 7, 10 },       5, 12 },        // Pentatonic Minor
-    { { 0, 2, 4, 7, 9 },        5, 12 },        // Pentatonic Major
-    { { 0, 2, 3, 5, 7, 9, 10 }, 7, 12 },        // Dorian
-    { { 0, 2, 4, 5, 7, 9, 10 }, 7, 12 },        // Mixolydian
-    { { 0, 2, 4, 6, 8, 10 },    6, 12 },        // Whole Tone
-
-    //--------------------------------------------------------------------------
-    // 19-EDO. Step 63.2 cents. A meantone tuning, so the diatonic scales below are the
-    // ordinary ones respelled -- 3+3+2+3+3+3+2 instead of 2+2+1+2+2+2+1 -- and sound
-    // recognisably major and minor, with thirds closer to just than 12-EDO manages.
-    // What is new is that sharps and flats separate: C# sits a step below Db.
-    edoChromatic (19),                          // 19 Chromatic
-    { { 0, 3, 6, 8, 11, 14, 17 }, 7, 19 },      // 19 Major
-    { { 0, 3, 5, 8, 11, 13, 16 }, 7, 19 },      // 19 Natural Minor
-    { { 0, 3, 5, 8, 11, 13, 17 }, 7, 19 },      // 19 Harmonic Minor
-    { { 0, 5, 8, 11, 16 },        5, 19 },      // 19 Pentatonic Minor
-    { { 0, 5, 8, 9, 11, 16 },     6, 19 },      // 19 Blues
-
-    //--------------------------------------------------------------------------
-    // 23-EDO. Step 52.2 cents. The odd one out: its best fifth (13 steps, 678 cents) is a
-    // quarter-tone flat, so diatonic harmony does not survive the trip and transcribing a
-    // 12-EDO scale into it is pointless. What it does have is the mavila family, where a
-    // flat fifth turns the diatonic scale inside out -- the "major" scale comes out with
-    // two large steps and five small ones, the reverse of the usual arrangement. Those MOS
-    // scales are generated by stacking that 13-step fifth, which is why they are the ones
-    // offered here.
-    edoChromatic (23),                          // 23 Chromatic
-    { { 0, 3, 6, 13, 16 },              5, 23 },    // 23 Pentatonic  (2L 3s)
-    { { 0, 3, 6, 9, 13, 16, 19 },       7, 23 },    // 23 Mavila 7    (2L 5s, antidiatonic)
-    { { 0, 3, 6, 9, 12, 13, 16, 19, 22 }, 9, 23 },  // 23 Mavila 9    (7L 2s)
-
-    //--------------------------------------------------------------------------
-    // 31-EDO. Step 38.7 cents. The best meantone in this table: its fifth (18 steps, 696.8
-    // cents) is close to quarter-comma meantone, which makes its major third (10 steps, 387.1
-    // cents) fall within a cent and a half of just (386.3) -- closer than 19-EDO manages. The
-    // diatonic scales are the ordinary ones respelled 5-5-3-5-5-5-3, same idea as 19-EDO's
-    // 3-3-2-3-3-3-2, just with two more degrees of room, so sharps and flats separate further
-    // (the chromatic semitone is 2 steps here, versus 19-EDO's 1).
-    edoChromatic (31),                              // 31 Chromatic
-    { { 0, 5, 10, 13, 18, 23, 28 }, 7, 31 },        // 31 Major
-    { { 0, 5, 8, 13, 18, 21, 26 },  7, 31 },        // 31 Natural Minor
-    { { 0, 5, 8, 13, 18, 21, 28 },  7, 31 },        // 31 Harmonic Minor
-    { { 0, 8, 13, 18, 26 },         5, 31 },        // 31 Pentatonic Minor
-    { { 0, 8, 13, 15, 18, 26 },     6, 31 },        // 31 Blues (adds the flat-5 blue note)
-
-    //--------------------------------------------------------------------------
-    // 41-EDO. Step 29.3 cents. The opposite trade from 31: its fifth (24 steps, 702.4 cents)
-    // is within half a cent of pure 3/2, better than 12-EDO's own, so it's the one to reach for
-    // when what matters is Pythagorean-accurate fifths rather than sweeter thirds (its major
-    // third, 13 steps at 380.5 cents, is a passable 5/4 but not a standout). The diatonic
-    // scales are the ordinary ones respelled 7-7-3-7-7-7-3 -- the same construction as 12-EDO's
-    // 2-2-1-2-2-2-1 and 19-EDO's 3-3-2-3-3-3-2, just carried on a near-pure chain of fifths.
-    edoChromatic (41),                              // 41 Chromatic
-    { { 0, 7, 14, 17, 24, 31, 38 }, 7, 41 },        // 41 Major
-    { { 0, 7, 10, 17, 24, 27, 34 }, 7, 41 },        // 41 Natural Minor
-    { { 0, 7, 10, 17, 24, 27, 38 }, 7, 41 },        // 41 Harmonic Minor
-    { { 0, 10, 17, 24, 34 },        5, 41 },        // 41 Pentatonic Minor
-
-    //--------------------------------------------------------------------------
-    // 53-EDO. Step 22.6 cents, the Holdrian comma. Its fifth is 31 steps (701.9 cents,
-    // under a cent from just) and its major third 17 steps (384.9 cents), so it renders
-    // 5-limit just intonation almost exactly -- and, separately, Pythagorean tuning, which
-    // is why the two major scales below differ at all. It is also the grid Turkish makam
-    // theory is written on, hence Rast and Hicaz.
-    //
-    // 53 degrees to the octave means Range is spending them fast: at the default Range of
-    // 12 the chromatic scale covers a quarter of an octave, so turn Range up for these.
-    edoChromatic (53),                          // 53 Chromatic
-    { { 0, 9, 17, 22, 31, 39, 48 }, 7, 53 },    // 53 Just Major        9/8 5/4 4/3 3/2 5/3 15/8
-    { { 0, 9, 14, 22, 31, 36, 45 }, 7, 53 },    // 53 Just Minor        9/8 6/5 4/3 3/2 8/5 9/5
-    { { 0, 9, 18, 22, 31, 40, 49 }, 7, 53 },    // 53 Pythagorean Major stacked 3/2s
-    { { 0, 9, 17, 31, 39 },         5, 53 },    // 53 Just Pentatonic
-    { { 0, 9, 17, 22, 31, 40, 48 }, 7, 53 },    // 53 Rast   9-8-5-9-9-8-5 commas
-    { { 0, 5, 17, 22, 31, 39, 44 }, 7, 53 },    // 53 Hicaz  5-12-5 tetrachord + Rast pentachord
-};
-
-inline constexpr int numScales = (int) (sizeof (scales) / sizeof (scales[0]));
-
-/** Equal divisions of the octave the scale's degrees are measured in. */
-inline int scaleEdo (int scaleIndex) noexcept
-{
-    return scales[(size_t) juce::jlimit (0, numScales - 1, scaleIndex)].edo;
-}
-
-/** Degrees the scale packs into one octave -- 5 for a pentatonic, 53 for 53-EDO chromatic. */
-inline int scaleSize (int scaleIndex) noexcept
-{
-    return scales[(size_t) juce::jlimit (0, numScales - 1, scaleIndex)].size;
-}
-
-/** True when the scale's degrees do not all coincide with 12-EDO semitones, so its notes
-    only play in tune if they carry a pitch bend.
-*/
-inline bool scaleNeedsBend (int scaleIndex) noexcept
-{
-    return scaleEdo (scaleIndex) != 12;
-}
-
-/** Converts a scale-degree offset into semitones, wrapping octaves as it goes.
-
-    Mapping the mixed value onto scale *degrees* rather than semitones-then-snap
-    means every step lands on a usable note and the range is distributed evenly,
-    instead of clustering several steps onto the same snapped pitch.
-
-    Fractional for a non-12 EDO; whole numbers, exactly, for the 12-EDO scales.
-*/
-inline float scaleStepToSemitone (int step, int scaleIndex) noexcept
-{
-    const auto& s = scales[(size_t) juce::jlimit (0, numScales - 1, scaleIndex)];
-    const int size = s.size;
-
-    const int octave = (int) std::floor ((double) step / (double) size);
-    const int degree = step - octave * size;
-
-    // Counted in EDO steps first and converted once, so a whole number of octaves comes back
-    // as an exact multiple of 12 rather than accumulating rounding per octave.
-    return (float) (octave * s.edo + s.intervals[(size_t) degree]) * 12.0f / (float) s.edo;
-}
-
-/** Linear mix-to-pitch mapping used when Quantize is off.
-
-    The scale is deliberately not consulted here. Continuous pitch is meant to be raw
-    microtonal values, so Range is read as semitones and the mapping is a straight ramp.
-    Scale quantisation applies only when Quantize is on.
-*/
-inline float continuousSemitones (float mix, int rangeSemitones) noexcept
-{
-    return mix * (float) rangeSemitones;
-}
-
-//==============================================================================
-/** Which pool a lane belongs to. Notes and CC each have their own independent stack of up
-    to numLanes lanes -- a Note lane's mix drives pitch (and poly-mode note triggering); a
-    CC lane's mix drives the Mix CC, and each CC lane also keeps its own direct tap onto its
-    own CC number, independent of that fold. A VST3 cannot grow its parameter list at
-    runtime, so both pools' parameters exist for all numLanes lanes from the start -- this
-    is what selects which pool's ID a given lane/step belongs to.
-*/
-enum class LaneKind { note, cc };
 
 //==============================================================================
 // Per-lane parameter IDs. Lanes and steps are 1-based in the ID strings so the
@@ -309,11 +84,6 @@ inline constexpr auto rangeOctavesId = "range_octaves";
 inline constexpr auto scaleId         = "scale";
 inline constexpr auto midiChannelId  = "midi_ch";
 
-// The master velocity every note starts from, in place of the parameter that used to set it.
-// Each step's own accent trims down from here, so this is the ceiling and 127 is deliberately
-// not it: leaving headroom is what lets an accent read as an accent rather than as everything
-// else being quieter.
-inline constexpr int fixedVelocity = 100;
 
 // The CC tab's own Mix destination -- fed by the CC-lane fold, the same way pitch is fed
 // by the Note-lane fold.

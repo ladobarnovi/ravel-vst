@@ -149,31 +149,40 @@ namespace
     {
         SequencerEngine::Snapshot s;
 
-        for (auto* lanes : { s.noteLanes, s.ccLanes })
-        for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
+        // Everything both kinds of lane share. Taken as the base type, because a Note lane and
+        // a CC lane are now different types that happen to step identically -- which is the
+        // shape of the engine, and so the shape of the setup.
+        const auto setUpPattern = [] (SequencerEngine::LaneSnapshot& lane)
         {
-            auto& lane = lanes[laneIndex];
-
             for (int i = 0; i < params::numSteps; ++i)
             {
                 lane.values[i]  = 0.0f;
                 lane.enabled[i] = true;
-            }
-
-            // Both default to unity in the parameter layout, so the harness has to set them
-            // too -- a default-constructed Snapshot would leave every step at zero velocity.
-            for (int i = 0; i < params::numSteps; ++i)
-            {
-                lane.chance[i]   = 1.0f;
-                lane.velocity[i] = 1.0f;
-                lane.gate[i]     = 60.0f;
+                lane.chance[i]  = 1.0f;
             }
 
             lane.length    = params::numSteps;
             lane.division  = params::divIndex_1_16;
             lane.direction = 0;
             lane.depth     = 0.0f;
-            lane.ccOn      = false;
+        };
+
+        for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
+        {
+            auto& note = s.noteLanes[laneIndex];
+            setUpPattern (note);
+
+            // Both default to unity in the parameter layout, so the harness has to set them
+            // too -- a default-constructed Snapshot would leave every step at zero velocity.
+            for (int i = 0; i < params::numSteps; ++i)
+            {
+                note.velocity[i] = 1.0f;
+                note.gate[i]     = 60.0f;
+            }
+
+            auto& cc = s.ccLanes[laneIndex];
+            setUpPattern (cc);
+            cc.ccOn = false;
         }
 
         s.swing      = 0.0f;
@@ -410,6 +419,19 @@ int main()
 
         check (wasHeld, "a note is sounding before the stop");
         check (released, "stopping the transport sends note-off (no stuck note)");
+
+        // The editor draws a playhead ring on whichever step getCurrentStep names. A stopped
+        // transport used to return from process() before it got as far as writing these, so
+        // the ring stayed parked on whatever step the transport happened to halt on -- the
+        // one visible thing in the window still claiming to be running.
+        bool everyLaneIdle = true;
+
+        for (int lane = 0; lane < params::numLanes; ++lane)
+            everyLaneIdle = everyLaneIdle
+                         && engine.getCurrentStep (lane, params::LaneKind::note) == SequencerEngine::noStep
+                         && engine.getCurrentStep (lane, params::LaneKind::cc)   == SequencerEngine::noStep;
+
+        check (everyLaneIdle, "and clears the playhead instead of leaving it parked on a step");
     }
 
     //==========================================================================
@@ -640,7 +662,7 @@ int main()
             auto s = baseSnapshot();
             s.noteLanes[0].length    = 1;
             s.noteLanes[0].values[0] = 0.25f;
-            s.scale        = params::scaleNames.indexOf ("19 Chromatic");
+            s.scale        = params::scaleIndexNamed ("19 Chromatic");
             s.rangeOctaves = 1;
             s.root         = 48;
             s.quantize     = true;
@@ -960,7 +982,7 @@ int main()
 
         for (int i = 0; i < params::numScales; ++i)
         {
-            const auto& def = params::scales[(size_t) i];
+            const auto& def = params::scaleAt (i);
 
             rootIsZero = rootIsZero && def.intervals[0] == 0
                                     && std::abs (params::scaleStepToSemitone (0, i)) < 1.0e-6f;
@@ -978,7 +1000,15 @@ int main()
                              && def.intervals[(size_t) d] < def.edo;
         }
 
-        check (params::scaleNames.size() == params::numScales, "every scale in the table is named");
+        bool everyScaleNamed = true;
+
+        for (int i = 0; i < params::numScales; ++i)
+            everyScaleNamed = everyScaleNamed
+                           && params::scaleName (i) != nullptr
+                           && juce::String (params::scaleName (i)).isNotEmpty()
+                           && params::scaleIndexNamed (params::scaleName (i)) == i;
+
+        check (everyScaleNamed, "every scale in the table is named, and uniquely");
         check (rootIsZero,    "degree 0 is the root in every scale");
         check (octavesExact,  "a scale-octave is exactly 12 semitones in every tuning");
         check (degreesSorted, "degrees ascend and stay inside one octave of their EDO");
@@ -987,7 +1017,7 @@ int main()
     //==========================================================================
     section ("Non-12 EDO scales land where the tuning says");
     {
-        const auto indexOfScale = [] (const char* name) { return params::scaleNames.indexOf (name); };
+        const auto indexOfScale = [] (const char* name) { return params::scaleIndexNamed (name); };
 
         const auto centsOfDegree = [&] (const char* name, int degree)
         {
@@ -1024,7 +1054,7 @@ int main()
     section ("A quantized microtonal scale plays as note + bend");
     {
         auto s = baseSnapshot();
-        s.scale      = params::scaleNames.indexOf ("19 Chromatic");
+        s.scale      = params::scaleIndexNamed ("19 Chromatic");
         s.quantize   = true;
         s.root       = 48;
         s.rangeOctaves = 1;      // one 19-EDO octave over the full mix range
@@ -1083,7 +1113,7 @@ int main()
     section ("A quantized microtonal scale announces its bend range");
     {
         auto s = baseSnapshot();
-        s.scale       = params::scaleNames.indexOf ("53 Just Major");
+        s.scale       = params::scaleIndexNamed ("53 Just Major");
         s.quantize    = true;
         s.bendRange   = 5;
         s.midiChannel = 2;
@@ -1123,7 +1153,7 @@ int main()
         // Same hazard as switching Quantize back on: a 12-EDO scale never writes the wheel,
         // so the bend the last 19-EDO note left behind would detune everything after it.
         auto s = baseSnapshot();
-        s.scale = params::scaleNames.indexOf ("19 Chromatic");
+        s.scale = params::scaleIndexNamed ("19 Chromatic");
         s.noteLanes[0].length = 1;
         s.noteLanes[0].values[0] = 7.0f / 19.0f;    // a degree that sits between two keys
         s.rangeOctaves = 1;
