@@ -10,10 +10,14 @@
 /**
     The sequencer core.
 
-    Step positions are derived from the host's absolute PPQ position rather than
-    accumulated from a running counter. That costs a floor() per lane per sample
-    but it means loops, jumps, scrubbing and tempo changes all land on exactly the
-    step the timeline says they should, with no drift and no resync logic.
+    Step positions are derived from the host's absolute PPQ position rather than accumulated
+    from a running counter, so loops, jumps, scrubbing and tempo changes all land on exactly
+    the step the timeline says they should, with no drift and no resync logic.
+
+    Deriving one costs a division and a floor, which is why it happens once per step boundary
+    and not once per sample. Everything about a lane -- which step it is on, that step's value,
+    whether it fires -- is a function of that index, so all of it holds until the index changes,
+    and at 1/16 and 120 bpm that is once every 6000 samples. See nextBoundarySample().
 */
 class SequencerEngine
 {
