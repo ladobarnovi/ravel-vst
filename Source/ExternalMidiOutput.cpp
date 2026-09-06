@@ -42,19 +42,17 @@ juce::String ExternalMidiOutput::getCurrentDeviceIdentifier() const
 }
 
 //==============================================================================
-void ExternalMidiOutput::pushMessage (const juce::MidiMessage& message)
+void ExternalMidiOutput::pushMessage (const juce::uint8* data, int numBytes)
 {
     if (! deviceOpen.load (std::memory_order_acquire))
         return;
 
-    const int numBytes = message.getRawDataSize();
-
     // Every message SequencerEngine::process() emits is a 1-3 byte channel-voice message; a
     // longer one would be a bug upstream, not something to handle by growing this queue's
     // fixed-size slots.
-    jassert (numBytes <= 3);
+    jassert (numBytes >= 1 && numBytes <= 3);
 
-    if (numBytes > 3)
+    if (numBytes < 1 || numBytes > 3)
         return;
 
     const auto scope = fifo.write (1);
@@ -65,7 +63,7 @@ void ExternalMidiOutput::pushMessage (const juce::MidiMessage& message)
     const int index = scope.blockSize1 > 0 ? scope.startIndex1 : scope.startIndex2;
 
     auto& event = queue[(size_t) index];
-    std::memcpy (event.data, message.getRawData(), (size_t) numBytes);
+    std::memcpy (event.data, data, (size_t) numBytes);
     event.length = (uint8_t) numBytes;
 
     wakeUp.signal();

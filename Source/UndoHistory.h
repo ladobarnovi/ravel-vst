@@ -2,6 +2,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <deque>
 #include <vector>
 
 /**
@@ -79,7 +80,9 @@ private:
 
     juce::AudioProcessor& processor;
 
-    std::vector<Snapshot> undoStack, redoStack;
+    // Deques, not vectors: the oldest step is dropped once maxDepth is reached, and popping
+    // the front of a vector shifts every one of the other 127 snapshots to do it.
+    std::deque<Snapshot> undoStack, redoStack;
 
     // One user action is one turn of the message loop. A pattern action writes up to forty
     // parameters in a tight loop and has to land as a single step, while two clicks on two

@@ -106,15 +106,6 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
         const auto& np = noteLaneParams[lane];
         auto& ns = s.noteLanes[lane];
 
-        for (int step = 0; step < params::numSteps; ++step)
-        {
-            ns.values[step]  = np.values[step]->load();
-            ns.enabled[step] = np.enabled[step]->load() > 0.5f;
-            ns.chance[step]  = np.chance[step]->load();
-            ns.velocity[step] = np.stepVelocity[step]->load();
-            ns.gate[step]     = np.stepGate[step]->load();
-        }
-
         // A lane the instance has not been given yet is inert in exactly the same way a
         // muted one is, so the engine needs to know about only the one flag.
         ns.active    = lane < noteLaneCount && np.active->load() > 0.5f;
@@ -123,21 +114,40 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
         ns.direction = (int) std::lround (np.direction->load());
         ns.depth     = np.depth->load();
 
+        // Read only if something is going to look at them. An inert lane's steps are never
+        // consulted -- see the bail-out in SequencerEngine's refreshLane -- and this is the
+        // block that made a one-lane instance, which is what a fresh one is, pay for four:
+        // eighty atomic loads a block for a lane that is not on screen and cannot be heard.
+        if (ns.active)
+        {
+            for (int step = 0; step < params::numSteps; ++step)
+            {
+                ns.values[step]   = np.values[step]->load();
+                ns.enabled[step]  = np.enabled[step]->load() > 0.5f;
+                ns.chance[step]   = np.chance[step]->load();
+                ns.velocity[step] = np.stepVelocity[step]->load();
+                ns.gate[step]     = np.stepGate[step]->load();
+            }
+        }
+
         const auto& cp = ccLaneParams[lane];
         auto& cs = s.ccLanes[lane];
-
-        for (int step = 0; step < params::numSteps; ++step)
-        {
-            cs.values[step]  = cp.values[step]->load();
-            cs.enabled[step] = cp.enabled[step]->load() > 0.5f;
-            cs.chance[step]  = cp.chance[step]->load();
-        }
 
         cs.active    = lane < ccLaneCount && cp.active->load() > 0.5f;
         cs.length    = (int) std::lround (cp.length->load());
         cs.division  = (int) std::lround (cp.division->load());
         cs.direction = (int) std::lround (cp.direction->load());
         cs.depth     = cp.depth->load();
+
+        if (cs.active)
+        {
+            for (int step = 0; step < params::numSteps; ++step)
+            {
+                cs.values[step]  = cp.values[step]->load();
+                cs.enabled[step] = cp.enabled[step]->load() > 0.5f;
+                cs.chance[step]  = cp.chance[step]->load();
+            }
+        }
 
         cs.ccOn      = cp.ccOn->load() > 0.5f;
         cs.ccNumber  = (int) std::lround (cp.ccNumber->load());
@@ -234,7 +244,7 @@ void RavelAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     // track's own "MIDI To" disconnected in Ableton is what actually makes this the only path
     // an event takes, not anything this plugin decides on its own.
     for (const auto metadata : midiMessages)
-        externalMidiOutput.pushMessage (metadata.getMessage());
+        externalMidiOutput.pushMessage (metadata.data, metadata.numBytes);
 }
 
 //==============================================================================

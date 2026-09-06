@@ -19,8 +19,13 @@ class SequencerEngine
 {
 public:
     //==========================================================================
-    /** Per-lane parameter values, read once per block off the audio thread's
-        atomics so the inner sample loop touches only plain floats.
+    /** What both kinds of lane have: a pattern, and the controls that decide how it is
+        traversed. This is everything the step-resolution path reads, which is why it is the
+        type that path takes -- a Note lane and a CC lane step identically, they only differ in
+        what their value ends up driving.
+
+        Read once per block off the audio thread's atomics, so the sample loop touches only
+        plain floats.
     */
     struct LaneSnapshot
     {
@@ -28,23 +33,40 @@ public:
         bool  enabled[params::numSteps] {};
         float chance[params::numSteps] {};
 
+        /** The lane's mute -- and also how a lane the instance does not have yet is expressed.
+            False makes every one of its steps behave as if switched off: nothing added to the
+            mix, nothing triggered, and its CC latched where it was. It is also what lets
+            buildSnapshot() leave the three arrays above untouched: nothing reads them while
+            this is false. */
+        bool  active    = true;
+        int   length    = params::numSteps;
+        int   division  = params::divIndex_1_16;
+        int   direction = 0;
+        float depth     = 0.0f;
+    };
+
+    /** A Note lane: the pattern above, plus the two things only a note has.
+
+        Split from the CC lane rather than one struct carrying both sets of fields with half of
+        them inert. That cost 512 bytes of a ~2.5 KB snapshot rebuilt every block on nothing --
+        but the reason to fix it is that "a CC lane never reads velocity" was a comment, and is
+        now a fact about the type.
+    */
+    struct NoteLaneSnapshot : LaneSnapshot
+    {
         /** Per-step accent, as a trim on the global Velocity. 1 is unity. */
         float velocity[params::numSteps] {};
 
         /** Per-step note length, as a percentage of the step's own length. 100 touches the
             next step without overlapping it; above that overlaps into it (see Voices). */
         float gate[params::numSteps] {};
+    };
 
-        /** The lane's mute. False makes every one of its steps behave as if switched off:
-            nothing added to the mix, nothing triggered, and its CC latched where it was. */
-        bool  active    = true;
-        int   length    = params::numSteps;
-        int   division  = params::divIndex_1_16;
-        int   direction = 0;
-        float depth     = 0.0f;
-
-        // Only ever meaningful on a CC lane: a Note lane never has these parameters, and
-        // this stays at its default for one.
+    /** A CC lane: the pattern above, plus its own destination -- the whole reason a CC lane
+        exists, rather than an optional tap on any lane.
+    */
+    struct CcLaneSnapshot : LaneSnapshot
+    {
         bool  ccOn      = false;
         int   ccNumber  = 20;
         int   ccChannel = 1;
@@ -56,8 +78,8 @@ public:
 
     struct Snapshot
     {
-        LaneSnapshot noteLanes[params::numLanes];
-        LaneSnapshot ccLanes[params::numLanes];
+        NoteLaneSnapshot noteLanes[params::numLanes];
+        CcLaneSnapshot   ccLanes[params::numLanes];
 
         // Which Note lane's advance fires the shared note in mixed (non-poly) mode. CC has
         // no equivalent: its output is never "triggered", it continuously reflects the fold.

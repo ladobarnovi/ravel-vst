@@ -26,11 +26,14 @@ public:
 
     /** Audio-thread only, real-time safe: never blocks, never allocates. Every message Ravel's
         engine emits is a 1-3 byte channel-voice message -- note on/off, CC, pitch bend -- so a
-        fixed-size event is enough; there is no need to carry a full juce::MidiMessage (whose
-        copy can allocate) across the ring buffer. Silently dropped if no device is open or the
-        buffer is full.
+        fixed-size event is enough; there is no need to carry a full juce::MidiMessage across
+        the ring buffer. Silently dropped if no device is open or the buffer is full.
+
+        Raw bytes rather than a juce::MidiMessage because the caller is iterating a MidiBuffer,
+        whose metadata already exposes exactly these two things -- building a MidiMessage from
+        them only to read them straight back out is work with nothing at the end of it.
     */
-    void pushMessage (const juce::MidiMessage& message);
+    void pushMessage (const juce::uint8* data, int numBytes);
 
 private:
     void run() override;

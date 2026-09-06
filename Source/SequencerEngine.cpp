@@ -699,21 +699,37 @@ void SequencerEngine::process (const Snapshot& s,
 
         const bool advanced = (run.globalIndex != state.lastGlobalIndex);
 
-        run.step  = stepIndexFor (run.globalIndex, run.length, ln.direction, laneIndex);
-        run.value = ln.values[(size_t) run.step];
+        run.step = stepIndexFor (run.globalIndex, run.length, ln.direction, laneIndex);
 
-        const float chance = ln.chance[(size_t) run.step];
+        // A muted lane, or one the instance does not have yet, adds nothing to the fold and
+        // fires nothing -- so none of its per-step data is ever looked at. Bailing out before
+        // reading any of it is what lets buildSnapshot() skip writing it, and that is where the
+        // cost actually sat: eighty atomic loads per note lane per block, for lanes the user
+        // cannot even see. The index above is still resolved, so the lane keeps its place on
+        // the timeline and comes back mid-pattern rather than from the top.
+        if (! ln.active)
+        {
+            run.stepOn       = false;
+            run.value        = 0.0f;
+            run.contribution = 0.0f;
+        }
+        else
+        {
+            run.value = ln.values[(size_t) run.step];
 
-        // A step that loses its probability roll behaves exactly like a step that is switched
-        // off: transparent for the mix, and it fires nothing. The roll is a pure function of
-        // the timeline position, so it holds steady for the whole step and repeats identically
-        // next time round the loop. A muted lane is exactly a lane whose steps are all off.
-        run.stepOn = ln.active && ln.enabled[(size_t) run.step];
+            const float chance = ln.chance[(size_t) run.step];
 
-        if (run.stepOn && chance < 0.999f)
-            run.stepOn = hashToUnitFloat (run.globalIndex, laneIndex, probabilitySalt) < chance;
+            // A step that loses its probability roll behaves exactly like a step that is
+            // switched off: transparent for the mix, and it fires nothing. The roll is a pure
+            // function of the timeline position, so it holds steady for the whole step and
+            // repeats identically next time round the loop.
+            run.stepOn = ln.enabled[(size_t) run.step];
 
-        run.contribution = ln.depth * run.value;
+            if (run.stepOn && chance < 0.999f)
+                run.stepOn = hashToUnitFloat (run.globalIndex, laneIndex, probabilitySalt) < chance;
+
+            run.contribution = ln.depth * run.value;
+        }
 
         if (advanced)
         {

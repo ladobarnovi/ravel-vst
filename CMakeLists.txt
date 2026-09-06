@@ -208,39 +208,9 @@ if(RAVEL_BUILD_TESTS)
             juce::juce_recommended_warning_flags
     )
 
-    # TEMPORARY — remove this target, its sources and its add_test() once the Phase 2
-    # engine rewrite is green. It builds the engine twice: once as it is now, and once
-    # from Tests/ReferenceEngine.cpp, a frozen copy of it from before the rewrite. The
-    # only thing it asserts is that the two emit identical MIDI over a randomised sweep,
-    # which is worth a second copy of the engine for exactly as long as the rewrite takes
-    # and no longer.
-    juce_add_console_app(RavelEquivalenceTests PRODUCT_NAME "RavelEquivalenceTests")
-
-    target_sources(RavelEquivalenceTests PRIVATE
-        Tests/EngineEquivalenceTests.cpp
-        Tests/ReferenceEngine.cpp
-        Source/SequencerEngine.cpp
-    )
-
-    target_include_directories(RavelEquivalenceTests PRIVATE Source Tests)
-
-    target_compile_definitions(RavelEquivalenceTests PRIVATE
-        JUCE_WEB_BROWSER=0
-        JUCE_USE_CURL=0
-    )
-
-    target_link_libraries(RavelEquivalenceTests
-        PRIVATE
-            juce::juce_audio_basics
-        PUBLIC
-            juce::juce_recommended_config_flags
-            juce::juce_recommended_warning_flags
-    )
-
     enable_testing()
-    add_test(NAME engine      COMMAND RavelTests)
-    add_test(NAME processor   COMMAND RavelProcessorTests)
-    add_test(NAME equivalence COMMAND RavelEquivalenceTests)
+    add_test(NAME engine    COMMAND RavelTests)
+    add_test(NAME processor COMMAND RavelProcessorTests)
 endif()
 
 if(RAVEL_SNAPSHOT_SOURCE)

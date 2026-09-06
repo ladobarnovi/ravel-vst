@@ -24,6 +24,16 @@ void UndoHistory::parameterGestureChanged (int, bool gestureIsStarting)
     if (! gestureIsStarting || restoring)
         return;
 
+    // Capturing allocates -- a vector of every parameter's value, and a message-queue post
+    // besides -- so it has to be certain of the thread it is on. Every gesture the plugin
+    // itself raises comes from the editor, but this is a host callback: what arrives here is
+    // whatever the host decides to send, and a host that reports a gesture from its audio
+    // callback would turn one keystroke's worth of bookkeeping into an allocation inside
+    // processBlock. Dropping such a gesture costs an undo step in a case that does not
+    // currently arise; taking it costs a dropout.
+    if (! juce::MessageManager::existsAndIsCurrentThread())
+        return;
+
     captureBeforeEdit();
 }
 
@@ -48,7 +58,7 @@ void UndoHistory::captureBeforeEdit()
     undoStack.push_back (takeSnapshot());
 
     if (undoStack.size() > maxDepth)
-        undoStack.erase (undoStack.begin());
+        undoStack.pop_front();
 
     // Editing after an undo is a new branch: what was undone is no longer reachable.
     redoStack.clear();

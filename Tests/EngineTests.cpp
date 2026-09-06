@@ -149,31 +149,40 @@ namespace
     {
         SequencerEngine::Snapshot s;
 
-        for (auto* lanes : { s.noteLanes, s.ccLanes })
-        for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
+        // Everything both kinds of lane share. Taken as the base type, because a Note lane and
+        // a CC lane are now different types that happen to step identically -- which is the
+        // shape of the engine, and so the shape of the setup.
+        const auto setUpPattern = [] (SequencerEngine::LaneSnapshot& lane)
         {
-            auto& lane = lanes[laneIndex];
-
             for (int i = 0; i < params::numSteps; ++i)
             {
                 lane.values[i]  = 0.0f;
                 lane.enabled[i] = true;
-            }
-
-            // Both default to unity in the parameter layout, so the harness has to set them
-            // too -- a default-constructed Snapshot would leave every step at zero velocity.
-            for (int i = 0; i < params::numSteps; ++i)
-            {
-                lane.chance[i]   = 1.0f;
-                lane.velocity[i] = 1.0f;
-                lane.gate[i]     = 60.0f;
+                lane.chance[i]  = 1.0f;
             }
 
             lane.length    = params::numSteps;
             lane.division  = params::divIndex_1_16;
             lane.direction = 0;
             lane.depth     = 0.0f;
-            lane.ccOn      = false;
+        };
+
+        for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
+        {
+            auto& note = s.noteLanes[laneIndex];
+            setUpPattern (note);
+
+            // Both default to unity in the parameter layout, so the harness has to set them
+            // too -- a default-constructed Snapshot would leave every step at zero velocity.
+            for (int i = 0; i < params::numSteps; ++i)
+            {
+                note.velocity[i] = 1.0f;
+                note.gate[i]     = 60.0f;
+            }
+
+            auto& cc = s.ccLanes[laneIndex];
+            setUpPattern (cc);
+            cc.ccOn = false;
         }
 
         s.swing      = 0.0f;
