@@ -125,6 +125,25 @@ namespace
         jassert (param != nullptr);
         param->setValueNotifyingHost (param->convertTo0to1 ((float) index));
     }
+
+    /** What a parameter comes up at, in plain (denormalised) units.
+
+        Read back from the parameter rather than spelled out at each call site, because a
+        literal here goes stale the moment a default moves and takes the test's meaning with
+        it -- which is exactly what happened when the note-lane step default went from 0 to
+        0.25 and left seven assertions in this file checking against a number the plugin no
+        longer used. Asking the parameter keeps "back where it started" meaning that whatever
+        the default becomes.
+    */
+    float defaultOf (RavelAudioProcessor& processor, const juce::String& paramID)
+    {
+        if (auto* param = dynamic_cast<juce::RangedAudioParameter*> (
+                              processor.apvts.getParameter (paramID)))
+            return param->getNormalisableRange().convertFrom0to1 (param->getDefaultValue());
+
+        jassertfalse;
+        return 0.0f;
+    }
 }
 
 //==============================================================================
@@ -162,16 +181,21 @@ int main()
 
         bool flat = true, fullLength = true;
 
+        // The note-lane default is deliberately not zero -- a freshly added lane is meant to
+        // be audibly pitched rather than looking silent -- so what makes a lane "flat" is
+        // every step agreeing, not every step being nothing.
+        const float stepDefault = defaultOf (processor, params::stepValueId (0, 0));
+
         for (int lane = 0; lane < params::numLanes; ++lane)
         {
             fullLength = fullLength
                           && (int) std::lround (value (params::laneLengthId (lane))) == params::numSteps;
 
             for (int step = 0; step < params::numSteps; ++step)
-                flat = flat && std::abs (value (params::stepValueId (lane, step))) < 1.0e-6f;
+                flat = flat && std::abs (value (params::stepValueId (lane, step)) - stepDefault) < 1.0e-6f;
         }
 
-        check (flat, "every lane is sixteen steps of zero");
+        check (flat, "every lane is sixteen steps of the same value");
         check (fullLength, "and sixteen steps long");
 
         MockPlayHead playHead;
@@ -199,7 +223,20 @@ int main()
 
         check (counts.noteOns == 8, "eight notes over two beats at the default 1/16 rate");
         check (counts.noteOffs == counts.noteOns, "every note-on is matched by a note-off");
-        check (counts.firstNote == 24, "first note is the default root (C0)");
+        // Derived from the defaults rather than typed in, so moving Root, Range or the step
+        // default moves this with them instead of leaving it asserting a stale pitch. A stock
+        // instance has Quantize off, one lane at full Depth, and every step at the same value,
+        // so the mix that reaches pitchFor() is just that step default.
+        const float defaultMix   = defaultOf (processor, params::stepValueId (0, 0))
+                                     * defaultOf (processor, params::laneDepthId (0));
+        const int   defaultRoot  = (int) std::lround (defaultOf (processor, params::rootNoteId));
+        const int   defaultRange = (int) std::lround (defaultOf (processor, params::rangeOctavesId));
+
+        const int expectedNote = juce::jlimit (0, 127, (int) std::lround (
+            (float) defaultRoot + params::continuousSemitones (defaultMix, defaultRange * 12)));
+
+        check (counts.firstNote == expectedNote,
+               "first note is the root transposed by the default step value");
         check (counts.firstVelocity == params::fixedVelocity,
                "and plays at the pinned master velocity, 100");
         check (counts.controllers > 0, "CC is emitted alongside notes -- both are always on");
@@ -507,7 +544,8 @@ int main()
         check (std::abs (value (0, 0) - 0.25f) < 0.01f, "the first undo restores the previous value");
 
         check (processor.undoHistory.undo(), "undo moves again");
-        check (std::abs (value (0, 0)) < 0.01f, "the second undo reaches the value it started at");
+        check (std::abs (value (0, 0) - defaultOf (processor, params::stepValueId (0, 0))) < 0.01f,
+               "the second undo reaches the value it started at");
 
         check (! processor.undoHistory.undo(), "undo stops at the beginning rather than wrapping");
     }
@@ -532,7 +570,8 @@ int main()
         processor.undoHistory.closeCurrentEdit();
         processor.undoHistory.undo();
 
-        check (std::abs (value()) < 0.01f, "undo took the value back");
+        check (std::abs (value() - defaultOf (processor, params::stepValueId (0, 0))) < 0.01f,
+               "undo took the value back");
         check (processor.undoHistory.canRedo(), "and left something to redo");
 
         check (processor.undoHistory.redo(), "redo reports that it moved");
@@ -569,13 +608,17 @@ int main()
 
         processor.undoHistory.undo();
 
-        bool allZero = true;
+        // Back to where the lane started, which is its default value rather than zero.
+        const float stepDefault = defaultOf (processor, params::stepValueId (0, 0));
+
+        bool allBackToDefault = true;
 
         for (int step = 0; step < params::numSteps; ++step)
-            allZero = allZero
-                   && std::abs (processor.apvts.getRawParameterValue (params::stepValueId (0, step))->load()) < 1.0e-6f;
+            allBackToDefault = allBackToDefault
+                   && std::abs (processor.apvts.getRawParameterValue (params::stepValueId (0, step))->load()
+                                  - stepDefault) < 1.0e-6f;
 
-        check (allZero, "and one undo takes the whole lane back");
+        check (allBackToDefault, "and one undo takes the whole lane back");
 
         //----------------------------------------------------------------------
         // Paste writes five parameters per step across the lane, which is the widest single
@@ -601,7 +644,8 @@ int main()
 
         for (int step = 0; step < params::numSteps; ++step)
             pasteUndone = pasteUndone
-                       && std::abs (processor.apvts.getRawParameterValue (params::stepValueId (0, step))->load()) < 1.0e-6f;
+                       && std::abs (processor.apvts.getRawParameterValue (params::stepValueId (0, step))->load()
+                                      - stepDefault) < 1.0e-6f;
 
         check (pasteUndone, "and undoing it leaves the target lane as it was");
     }
@@ -696,7 +740,8 @@ int main()
                  && std::abs (division->getValue() - division->getDefaultValue()) < 1.0e-6f,
                "the slot left free at the top goes back to that lane's own defaults");
 
-        check (std::abs (get (params::stepValueId (2, 0))) < 0.01f,
+        check (std::abs (get (params::stepValueId (2, 0))
+                           - defaultOf (processor, params::stepValueId (2, 0))) < 0.01f,
                "so adding a lane again gives a new lane, not a copy of the one that moved");
     }
 

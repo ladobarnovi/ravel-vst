@@ -1,3 +1,22 @@
+/*  GENERATED — DO NOT EDIT, DO NOT KEEP.
+
+    A frozen, mechanically renamed copy of Source/SequencerEngine.{h,cpp} as it stood at
+    commit b07dbd1, before the per-boundary rewrite. It exists only so
+    EngineEquivalenceTests can run the old engine and the new one side by side over the
+    same timeline and prove they emit byte-identical MIDI.
+
+    Regenerate with:
+        sed 's/SequencerEngine/ReferenceEngine/g' Source/SequencerEngine.h  > Tests/ReferenceEngine.h
+        sed 's/SequencerEngine/ReferenceEngine/g' Source/SequencerEngine.cpp > Tests/ReferenceEngine.cpp
+    (then restore this banner, and re-apply the ParameterTables.h include plus the
+    divisionPpq() accessor calls -- Phase 1 changed that shared API after this was frozen.
+    Neither is a behaviour change: divisionPpq(i) clamps to exactly the bound the old
+    subscript did.)
+
+    DELETE this file, its .cpp/.h pair, EngineEquivalenceTests.cpp and the
+    RavelEquivalenceTests target once Phase 2 is green. Keeping a second copy of the
+    engine around is how the two drift.
+*/
 #pragma once
 
 #include "ParameterTables.h"
@@ -14,7 +33,7 @@
     but it means loops, jumps, scrubbing and tempo changes all land on exactly the
     step the timeline says they should, with no drift and no resync logic.
 */
-class SequencerEngine
+class ReferenceEngine
 {
 public:
     //==========================================================================

@@ -1,4 +1,20 @@
-#include "SequencerEngine.h"
+/*  GENERATED — DO NOT EDIT, DO NOT KEEP.
+
+    A frozen, mechanically renamed copy of Source/SequencerEngine.{h,cpp} as it stood at
+    commit b07dbd1, before the per-boundary rewrite. It exists only so
+    EngineEquivalenceTests can run the old engine and the new one side by side over the
+    same timeline and prove they emit byte-identical MIDI.
+
+    Regenerate with:
+        sed 's/SequencerEngine/ReferenceEngine/g' Source/SequencerEngine.h  > Tests/ReferenceEngine.h
+        sed 's/SequencerEngine/ReferenceEngine/g' Source/SequencerEngine.cpp > Tests/ReferenceEngine.cpp
+    (then restore this banner)
+
+    DELETE this file, its .cpp/.h pair, EngineEquivalenceTests.cpp and the
+    RavelEquivalenceTests target once Phase 2 is green. Keeping a second copy of the
+    engine around is how the two drift.
+*/
+#include "ReferenceEngine.h"
 
 namespace
 {
@@ -52,14 +68,14 @@ namespace
 }
 
 //==============================================================================
-void SequencerEngine::sendPitchBendRange (juce::MidiBuffer& out, int sampleOffset,
+void ReferenceEngine::sendPitchBendRange (juce::MidiBuffer& out, int sampleOffset,
                                           int channel, int bendRange)
 {
     addRpn (out, sampleOffset, channel, params::pitchBendRangeRpn, bendRange);
 }
 
 //==============================================================================
-void SequencerEngine::prepare (double sampleRate)
+void ReferenceEngine::prepare (double sampleRate)
 {
     currentSampleRate = sampleRate > 0.0 ? sampleRate : 44100.0;
 
@@ -70,7 +86,7 @@ void SequencerEngine::prepare (double sampleRate)
     reset();
 }
 
-void SequencerEngine::reset()
+void ReferenceEngine::reset()
 {
     for (auto* states : { noteLaneStates, ccLaneStates })
         for (int lane = 0; lane < params::numLanes; ++lane)
@@ -114,7 +130,7 @@ void SequencerEngine::reset()
 }
 
 //==============================================================================
-int SequencerEngine::stepIndexFor (std::int64_t globalIndex, int length, int direction, int laneIndex) noexcept
+int ReferenceEngine::stepIndexFor (std::int64_t globalIndex, int length, int direction, int laneIndex) noexcept
 {
     if (length <= 1)
         return 0;
@@ -147,7 +163,7 @@ int SequencerEngine::stepIndexFor (std::int64_t globalIndex, int length, int dir
 }
 
 //==============================================================================
-float SequencerEngine::timingOffsetFor (std::int64_t globalIndex, float swing) noexcept
+float ReferenceEngine::timingOffsetFor (std::int64_t globalIndex, float swing) noexcept
 {
     // Swing delays every other step of the absolute grid, so it stays anchored to the
     // bar rather than to where a short pattern happens to have started.
@@ -157,7 +173,7 @@ float SequencerEngine::timingOffsetFor (std::int64_t globalIndex, float swing) n
     return juce::jlimit (-0.49f, 0.49f, swing * 0.5f);
 }
 
-std::int64_t SequencerEngine::resolveGlobalIndex (double ppq, double stepPpq,
+std::int64_t ReferenceEngine::resolveGlobalIndex (double ppq, double stepPpq,
                                                  float swing) noexcept
 {
     // See the note on boundaryEpsilon below: ppq / stepPpq lands a hair under an integer
@@ -186,7 +202,7 @@ std::int64_t SequencerEngine::resolveGlobalIndex (double ppq, double stepPpq,
 }
 
 //==============================================================================
-bool SequencerEngine::anyVoiceActive() const noexcept
+bool ReferenceEngine::anyVoiceActive() const noexcept
 {
     for (const auto& voice : voices)
         if (voice.note >= 0)
@@ -195,7 +211,7 @@ bool SequencerEngine::anyVoiceActive() const noexcept
     return false;
 }
 
-void SequencerEngine::releaseVoice (juce::MidiBuffer& out, int sampleOffset, int slot)
+void ReferenceEngine::releaseVoice (juce::MidiBuffer& out, int sampleOffset, int slot)
 {
     if (voices[slot].note < 0)
         return;
@@ -214,13 +230,13 @@ void SequencerEngine::releaseVoice (juce::MidiBuffer& out, int sampleOffset, int
     voices[slot].samplesRemaining = 0;
 }
 
-void SequencerEngine::releaseAllVoices (juce::MidiBuffer& out, int sampleOffset)
+void ReferenceEngine::releaseAllVoices (juce::MidiBuffer& out, int sampleOffset)
 {
     for (int i = 0; i < maxVoices; ++i)
         releaseVoice (out, sampleOffset, i);
 }
 
-void SequencerEngine::advanceVoices (juce::MidiBuffer& out, int sampleOffset)
+void ReferenceEngine::advanceVoices (juce::MidiBuffer& out, int sampleOffset)
 {
     for (int i = 0; i < maxVoices; ++i)
     {
@@ -232,7 +248,7 @@ void SequencerEngine::advanceVoices (juce::MidiBuffer& out, int sampleOffset)
     }
 }
 
-bool SequencerEngine::slotIsOwned (int slot, int voiceLimit, bool polyMode) noexcept
+bool ReferenceEngine::slotIsOwned (int slot, int voiceLimit, bool polyMode) noexcept
 {
     const int limit = juce::jlimit (1, voicesPerLane, voiceLimit);
 
@@ -242,7 +258,7 @@ bool SequencerEngine::slotIsOwned (int slot, int voiceLimit, bool polyMode) noex
                     : slot < limit;
 }
 
-void SequencerEngine::retireUnownedVoices (juce::MidiBuffer& out, int sampleOffset,
+void ReferenceEngine::retireUnownedVoices (juce::MidiBuffer& out, int sampleOffset,
                                            int voiceLimit, bool polyMode)
 {
     for (int i = 0; i < maxVoices; ++i)
@@ -254,7 +270,7 @@ void SequencerEngine::retireUnownedVoices (juce::MidiBuffer& out, int sampleOffs
     }
 }
 
-int SequencerEngine::allocateVoice (juce::MidiBuffer& out, int sampleOffset,
+int ReferenceEngine::allocateVoice (juce::MidiBuffer& out, int sampleOffset,
                                     int note, int channel, int begin, int end)
 {
     const int first = juce::jlimit (0, maxVoices - 1, begin);
@@ -286,7 +302,7 @@ int SequencerEngine::allocateVoice (juce::MidiBuffer& out, int sampleOffset,
     return stolen;
 }
 
-int SequencerEngine::allocateMpeChannel (juce::MidiBuffer& out, int sampleOffset)
+int ReferenceEngine::allocateMpeChannel (juce::MidiBuffer& out, int sampleOffset)
 {
     for (int i = 0; i < mpeMemberChannels; ++i)
         if (mpeChannels[i].voiceSlot < 0)
@@ -307,7 +323,7 @@ int SequencerEngine::allocateMpeChannel (juce::MidiBuffer& out, int sampleOffset
 }
 
 //==============================================================================
-SequencerEngine::PitchResult SequencerEngine::pitchFor (float value, const Snapshot& s,
+ReferenceEngine::PitchResult ReferenceEngine::pitchFor (float value, const Snapshot& s,
                                                        int bendRange) noexcept
 {
     PitchResult result;
@@ -359,7 +375,7 @@ SequencerEngine::PitchResult SequencerEngine::pitchFor (float value, const Snaps
     return result;
 }
 
-int SequencerEngine::velocityFor (const Snapshot& s, int laneIndex, int stepIndex) noexcept
+int ReferenceEngine::velocityFor (const Snapshot& s, int laneIndex, int stepIndex) noexcept
 {
     const auto& ln = s.noteLanes[(size_t) juce::jlimit (0, params::numLanes - 1, laneIndex)];
     const float step = ln.velocity[(size_t) juce::jlimit (0, params::numSteps - 1, stepIndex)];
@@ -374,13 +390,13 @@ int SequencerEngine::velocityFor (const Snapshot& s, int laneIndex, int stepInde
     return juce::jlimit (1, 127, (int) std::lround (scaled));
 }
 
-float SequencerEngine::gateFor (const Snapshot& s, int laneIndex, int stepIndex) noexcept
+float ReferenceEngine::gateFor (const Snapshot& s, int laneIndex, int stepIndex) noexcept
 {
     const auto& ln = s.noteLanes[(size_t) juce::jlimit (0, params::numLanes - 1, laneIndex)];
     return ln.gate[(size_t) juce::jlimit (0, params::numSteps - 1, stepIndex)];
 }
 
-void SequencerEngine::startNote (juce::MidiBuffer& out, int sampleOffset, const PitchResult& pitch,
+void ReferenceEngine::startNote (juce::MidiBuffer& out, int sampleOffset, const PitchResult& pitch,
                                  int velocity, int gateSamples, int begin, int end,
                                  bool mpeOn, int fixedChannel, int bendRange)
 {
@@ -426,7 +442,7 @@ void SequencerEngine::startNote (juce::MidiBuffer& out, int sampleOffset, const 
 }
 
 //==============================================================================
-void SequencerEngine::process (const Snapshot& s,
+void ReferenceEngine::process (const Snapshot& s,
                                juce::MidiBuffer& out,
                                int numSamples,
                                double ppqAtBlockStart,
