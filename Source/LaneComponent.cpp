@@ -17,14 +17,6 @@ namespace
         }
     }
 
-    /** The faint horizontal marks a bar carries for the layers it is *not* currently showing.
-
-        Only where that layer is away from its own default, so a lane picks these up exactly
-        where something has been dialled in and stays clean everywhere else. Without them,
-        switching to Value hides every probability and gate you set, and the only way to find
-        them again is to switch back and look.
-    */
-    const juce::Colour ghostTick { 0xff7d878f };
 }
 
 //==============================================================================
@@ -102,8 +94,6 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
 
         *attachments[i] = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
             state, setups[i].paramID, slider);
-
-        hasLayer[i] = true;
     }
 
     // The bars are deaf to the mouse and the slot takes the gesture for all four of them (see
@@ -353,46 +343,17 @@ void StepSlot::paint (juce::Graphics& g)
 
 void StepSlot::paintOverChildren (juce::Graphics& g)
 {
-    const auto bar = barArea().toFloat();
-
-    // Drawn over the children rather than in paint(), because the bar fills that rectangle
-    // and would cover anything painted underneath it.
-    for (auto layer : { StepLayer::value, StepLayer::velocity, StepLayer::chance, StepLayer::gate })
-    {
-        if (layer == currentLayer)
-            continue;
-
-        // Never built at all on a CC slot, which has no velocity or gate to mark. An
-        // unattached Slider still reports a default 0..10 range, so the range cannot be the
-        // test -- whether the attachment was made is what actually decides it.
-        if (! hasLayer[(int) layer])
-            continue;
-
-        auto& slider = sliderFor (layer);
-
-        // Only where the layer has actually been moved off its default, so a lane picks these
-        // up exactly where something has been dialled in and stays clean everywhere else.
-        if (std::abs (slider.getValue() - slider.getDoubleClickReturnValue()) < 1.0e-4)
-            continue;
-
-        const auto range = slider.getRange();
-        const float proportion = (float) ((slider.getValue() - range.getStart()) / range.getLength());
-
-        const float y = juce::jlimit (bar.getY(), bar.getBottom() - 1.0f,
-                                      bar.getBottom() - bar.getHeight() * proportion);
-
-        g.setColour (ghostTick.withAlpha (0.5f));
-        g.fillRect (bar.getX() + 1.0f, y, bar.getWidth() - 2.0f, 1.0f);
-    }
-
     if (! playing)
         return;
 
+    // Over the children rather than in paint(), because the bar fills this rectangle and would
+    // cover anything painted underneath it.
+    //
     // A ring rather than a fill, so the playhead never hides the value it is standing on. A
     // muted lane keeps its playhead -- it is still running, and unmuting it mid-bar should not
     // be a surprise.
     g.setColour (accent.withAlpha (0.55f));
-    g.drawRoundedRectangle (bar.reduced (0.5f), 1.5f, 1.0f);
+    g.drawRoundedRectangle (barArea().toFloat().reduced (0.5f), 1.5f, 1.0f);
 }
 
 void StepSlot::resized()

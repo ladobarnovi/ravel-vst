@@ -168,11 +168,6 @@ private:
 
     const int step;
 
-    /** Which of the four layers this slot actually built. A CC slot has no velocity and no
-        gate, and an unattached juce::Slider still reports a plausible-looking default range
-        -- so this is the only reliable way to ask, and the ghost ticks need to know. */
-    bool hasLayer[numStepLayers] {};
-
     juce::Slider valueSlider, velocitySlider, chanceSlider, gateSlider;
     juce::ToggleButton onButton;
 

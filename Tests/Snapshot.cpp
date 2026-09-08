@@ -49,9 +49,9 @@ namespace
 
         At its defaults every lane is sixteen steps long, running Forward at full depth with
         every step at the same value -- which is a picture in which the wrap marker, the
-        out-of-range steps, the ghost ticks for the unselected layers, a muted lane, a
-        switched-off step and a negative Mix amount are all invisible. None of those can be
-        reviewed from a snapshot of the defaults, so the snapshot sets a patch that has them.
+        out-of-range steps, a muted lane, a switched-off step and a negative Mix amount are all
+        invisible. None of those can be reviewed from a snapshot of the defaults, so the
+        snapshot sets a patch that has them.
 
         Deliberately not a preset: this is a fixture for looking at the UI, and nothing the
         plugin ships should depend on it.
@@ -91,14 +91,6 @@ namespace
                 // A couple of gaps per lane, so the off-step treatment appears.
                 if (random.nextFloat() < 0.14f)
                     setParameter (state, params::stepOnId (lane, step), 0.0f);
-
-                // And a couple of steps carrying a probability or a gate away from default, so
-                // the ghost ticks the bars draw for the unselected layers appear.
-                if (random.nextFloat() < 0.18f)
-                    setParameter (state, params::stepChanceId (lane, step), 0.45f + random.nextFloat() * 0.4f);
-
-                if (random.nextFloat() < 0.15f)
-                    setParameter (state, params::stepGateId (lane, step), 90.0f + random.nextFloat() * 90.0f);
             }
         }
 

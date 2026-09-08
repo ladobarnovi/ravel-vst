@@ -55,9 +55,9 @@ destination on the end of it.
 | ✕ | — | Takes this lane out. The lanes below it move up to close the gap |
 
 On a **Note lane** the sixteen tall bars edit one of four per-step rows at a time, picked with
-the **Value / Velocity / Prob / Gate** selector down the left of the lane. The three that are
-not selected show as faint ticks across the bars, and only where they are away from their
-default, so an untouched lane stays clean.
+the **Value / Velocity / Prob / Gate** selector down the left of the lane. Only the selected row
+is drawn — the bars show one layer at a time and nothing else, so a lane reads as the pattern
+you are actually editing.
 
 A **CC lane** gets the same selector with one chip in it: **Value**, latched, because that is
 the only layer its bars have. Velocity and Gate are only ever arguments to *start a note* and a
@@ -66,8 +66,8 @@ the chip stays, so the CC tab's step grid lines up with the Notes tab's and read
 grid with fewer layers behind it rather than as a different kind of control.
 
 A CC lane's per-step **Chance** is the one parameter with no control of its own. It still works —
-it decides whether a step reaches the fold, and the fold is what the CC output follows — and its
-tick is still drawn across the bars, but it is reachable only through host automation.
+it decides whether a step reaches the fold, and the fold is what the CC output follows — but it
+is reachable only through host automation.
 
 Everything else on a CC lane's strip is what a Note lane has: Length, Rate, **Direction** and Mix
 amount. Its own **Send / Number / Channel / Offset** are not there, because they are a destination
@@ -522,9 +522,9 @@ cmake --build build --target RavelSnapshot --config Debug
 ```
 
 The arguments are the output file, which tab (`notes` or `cc`) and how many lanes. It dials in a
-fixed patch first — odd lane lengths, a muted lane, some steps switched off, some probability and
-gate away from default — because at its defaults the window shows none of the states worth
-checking: no wrap marker, no out-of-cycle steps, no ghost ticks, no negative Mix amount.
+fixed patch first — odd lane lengths, a muted lane, some steps switched off — because at its
+defaults the window shows none of the states worth checking: no wrap marker, no out-of-cycle
+steps, no negative Mix amount.
 
 ---
 
