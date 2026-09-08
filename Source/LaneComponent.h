@@ -49,9 +49,9 @@ namespace lane
     inline constexpr int wellPadTop    = 7;
     inline constexpr int wellPadBottom = 6;
 
-    inline constexpr int barHeight    = 112; ///< The tall value bar.
+    inline constexpr int barHeight    = 124; ///< The tall value bar.
     inline constexpr int stepInnerGap = 5;   ///< Bar to trig, and trig to number.
-    inline constexpr int trigHeight   = 9;   ///< The on/off strip under a bar.
+    inline constexpr int trigHeight   = 12;  ///< The on/off strip under a bar.
     inline constexpr int numberHeight = 10;  ///< 1..16 under the trigs.
 
     /** One step slot, top to bottom. */
