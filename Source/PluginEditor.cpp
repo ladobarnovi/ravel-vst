@@ -278,10 +278,10 @@ void RavelAudioProcessorEditor::buildWorkspaces()
     ccMix.add (params::ccChannelId, "Channel");
     ccMix.add (params::ccOffsetId,  "Offset", RowStyle::slider);
 
-    // Slew is not the Mix CC's -- it smooths every CC this plugin sends, including each lane's
-    // own tap -- so it is separated from the four rows above rather than reading as a fifth
-    // field of the same destination.
-    ccMix.addGroupBreak ("Every CC stream");
+    // Slew is not strictly the Mix CC's -- it smooths every CC this plugin sends, each lane's
+    // own tap included -- but it sits in this column all the same: it is the only global CC
+    // control there is, and a rule and a heading to say so cost more attention than the
+    // distinction is worth. The tooltip carries it.
     ccMix.add (params::slewId, "Slew", RowStyle::slider)
          ->setTooltip ("Smooths the Mix CC and every CC lane's own tap. Never touches pitch");
 

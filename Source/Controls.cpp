@@ -197,28 +197,15 @@ ControlGroup::ControlGroup (juce::AudioProcessorValueTreeState& state, const juc
 ControlRow* ControlGroup::add (const juce::String& paramID, const juce::String& caption,
                                RowStyle style)
 {
-    Entry entry;
-    entry.row = std::make_unique<ControlRow> (apvts, paramID, caption, style);
-
-    auto* row = entry.row.get();
+    auto* row = rows.add (new ControlRow (apvts, paramID, caption, style));
     addAndMakeVisible (row->getControl());
 
     if (dimmed)
         row->setDimmed (true);
 
-    entries.push_back (std::move (entry));
     resized();
 
     return row;
-}
-
-void ControlGroup::addGroupBreak (const juce::String& label)
-{
-    Entry entry;
-    entry.breakLabel = label;
-
-    entries.push_back (std::move (entry));
-    resized();
 }
 
 void ControlGroup::setRowHeight (int newRowHeight)
@@ -241,21 +228,15 @@ void ControlGroup::setDimmed (bool shouldBeDimmed)
 
     dimmed = shouldBeDimmed;
 
-    for (auto& entry : entries)
-        if (entry.row != nullptr)
-            entry.row->setDimmed (shouldBeDimmed);
+    for (auto* row : rows)
+        row->setDimmed (shouldBeDimmed);
 
     repaint();
 }
 
 int ControlGroup::getPreferredHeight() const
 {
-    int total = headingText.isNotEmpty() ? theme::headingHeight : 0;
-
-    for (const auto& entry : entries)
-        total += entry.height (rowHeight);
-
-    return total;
+    return (headingText.isNotEmpty() ? theme::headingHeight : 0) + rows.size() * rowHeight;
 }
 
 void ControlGroup::paint (juce::Graphics& g)
@@ -291,28 +272,6 @@ void ControlGroup::paint (juce::Graphics& g)
         g.setColour (theme::outline);
         g.fillRect (rule);
     }
-
-    // Group breaks: the label, then a rule running out to the column's right edge.
-    for (const auto& entry : entries)
-    {
-        if (entry.row != nullptr || entry.bounds.isEmpty())
-            continue;
-
-        auto line = entry.bounds.withTrimmedTop (9).withHeight (16);
-
-        const int labelWidth = (int) std::ceil (
-            juce::GlyphArrangement::getStringWidth (theme::rowFont(), entry.breakLabel));
-
-        g.setFont (theme::rowFont());
-        g.setColour (theme::textFaint);
-        g.drawText (entry.breakLabel, line.removeFromLeft (labelWidth),
-                    juce::Justification::centredLeft, false);
-
-        line.removeFromLeft (8);
-
-        g.setColour (theme::outline);
-        g.fillRect (line.withSizeKeepingCentre (line.getWidth(), 1));
-    }
 }
 
 void ControlGroup::resized()
@@ -322,13 +281,8 @@ void ControlGroup::resized()
     if (headingText.isNotEmpty())
         r.removeFromTop (theme::headingHeight);
 
-    for (auto& entry : entries)
-    {
-        entry.bounds = r.removeFromTop (entry.height (rowHeight));
-
-        if (entry.row != nullptr)
-            entry.row->getControl().setBounds (entry.bounds);
-    }
+    for (auto* row : rows)
+        row->getControl().setBounds (r.removeFromTop (rowHeight));
 }
 
 //==============================================================================

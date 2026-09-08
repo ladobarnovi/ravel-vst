@@ -219,8 +219,11 @@ no note if that lane is the trigger source.
 
 ### Lanes
 
-Every lane starts as sixteen steps of zero — a flat pattern on the root, not a demo to clear
-away — and lanes differ only in their default rate. *+ Add lane* sits under the last lane of the
+Every lane starts flat — sixteen steps of one value, not a demo to clear away — and lanes differ
+only in their default rate. The **first Note lane** is the one exception: its steps come up at
+25 % so a freshly loaded instance is audibly doing something rather than looking broken. Every
+lane after it, and every CC lane, starts at zero, because a lane you just added is a blank sheet
+to draw on and one that arrives already pitched is something to clear away first. *+ Add lane* sits under the last lane of the
 current stack and appends one at the bottom; **each lane carries its own Remove**, at the right
 of its action row, so any lane can go and not just the last one. The window grows and shrinks to
 fit the lane count on its own; **it's also resizable by hand**, from the bottom-right corner or
@@ -274,12 +277,13 @@ footer below that tab's lane stack, laid out as a row of headed columns:
 
 | Column | Controls |
 |---|---|
-| Mix CC | Send, Number, Channel, Offset, then — under a rule reading *Every CC stream* — Slew |
+| Mix CC | Send, Number, Channel, Offset, Slew |
 | Lane 1 … Lane 4 | Send, Number, Channel, Offset — that lane's own tap |
 
-Slew sits under its own rule because it is not the Mix CC's: it smooths every CC this plugin
-sends, that lane taps included, and without the break it reads as a fifth field of the
-destination above it.
+**Slew** is not strictly the Mix CC's — it smooths every CC this plugin sends, the lane taps
+included — but it sits in that column anyway, as an ordinary fifth row. It is the only global CC
+control there is, and a rule and a sub-heading to mark the distinction cost more attention than
+the distinction is worth; the tooltip carries it instead.
 
 Swing is not repeated here — it is shared, and lives on the Notes page.
 
@@ -511,7 +515,7 @@ out of scope for a plugin only running on your own machine.)
 .\build\RavelProcessorTests_artefacts\Release\RavelProcessorTests.exe
 ```
 
-253 checks across two suites, neither needing a plugin host.
+255 checks across two suites, neither needing a plugin host.
 
 `Tests/EngineTests.cpp` (118 checks) drives `SequencerEngine` over a synthetic timeline. The
 engine takes PPQ positions as plain arguments rather than reading a playhead itself, which is
@@ -523,7 +527,7 @@ path — including that note number plus pitch bend reconstructs the intended fr
 that non-12 EDO scales land where the tuning says, and that the bend range is actually
 transmitted.
 
-`Tests/ProcessorTests.cpp` (135 checks) drives the real `RavelAudioProcessor::processBlock`
+`Tests/ProcessorTests.cpp` (137 checks) drives the real `RavelAudioProcessor::processBlock`
 through a mock playhead. This covers the layer where the plugin could compile, load and still
 emit nothing: playhead handling, the free-run fallback, the parameter snapshot, state
 round-trip, every pattern action — including that RND, CLR and Invert act on the selected row,

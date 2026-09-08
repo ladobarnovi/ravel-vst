@@ -182,22 +182,38 @@ int main()
 
         bool flat = true, fullLength = true;
 
-        // The note-lane default is deliberately not zero -- a freshly added lane is meant to
-        // be audibly pitched rather than looking silent -- so what makes a lane "flat" is
-        // every step agreeing, not every step being nothing.
-        const float stepDefault = defaultOf (processor, params::stepValueId (0, 0));
-
+        // "Flat" means every step in a lane agrees with the others, not that every step is
+        // zero and not that the lanes agree with each other: the first Note lane comes up
+        // pitched so a fresh instance is audibly doing something, and the rest come up at zero
+        // so a lane you add is a blank sheet. So each lane is measured against its own default.
         for (int lane = 0; lane < params::numLanes; ++lane)
         {
             fullLength = fullLength
                           && (int) std::lround (value (params::laneLengthId (lane))) == params::numSteps;
 
+            const float laneDefault = defaultOf (processor, params::stepValueId (lane, 0));
+
             for (int step = 0; step < params::numSteps; ++step)
-                flat = flat && std::abs (value (params::stepValueId (lane, step)) - stepDefault) < 1.0e-6f;
+                flat = flat && std::abs (value (params::stepValueId (lane, step)) - laneDefault) < 1.0e-6f;
         }
 
-        check (flat, "every lane is sixteen steps of the same value");
+        check (flat, "every lane is sixteen steps of one value");
         check (fullLength, "and sixteen steps long");
+
+        //----------------------------------------------------------------------
+        // The first lane carries the audible default; every lane after it starts silent, so
+        // adding a lane gives something to draw on rather than a pattern to clear away.
+        check (defaultOf (processor, params::stepValueId (0, 0)) > 0.0f,
+               "the first Note lane comes up pitched");
+
+        bool laterLanesSilent = true;
+
+        for (int lane = 1; lane < params::numLanes; ++lane)
+            for (int step = 0; step < params::numSteps; ++step)
+                laterLanesSilent = laterLanesSilent
+                                     && defaultOf (processor, params::stepValueId (lane, step)) == 0.0f;
+
+        check (laterLanesSilent, "every Note lane after the first comes up flat at zero");
 
         MockPlayHead playHead;
         processor.setPlayConfigDetails (0, 2, 48000.0, 512);

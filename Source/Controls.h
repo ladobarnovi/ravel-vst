@@ -116,15 +116,6 @@ public:
     ControlRow* add (const juce::String& paramID, const juce::String& caption,
                      RowStyle style = RowStyle::automatic);
 
-    /** Adds a labelled rule across the column, separating what follows from what came before.
-
-        For the one case where a column holds two kinds of thing: the CC page's first column
-        is the Mix CC's own destination, and then Slew, which is not the Mix CC's -- it
-        smooths every CC this plugin sends. Without the break it reads as a fifth field of
-        the destination above it.
-    */
-    void addGroupBreak (const juce::String& label);
-
     /** A colour chip before the heading, marking this column as belonging to that lane.
 
         Only the CC page's per-lane columns use it. It is the same accent the lane's rail and
@@ -153,24 +144,10 @@ public:
     void resized() override;
 
 private:
-    /** One line of the column: either a parameter, or a labelled break between them. Held in
-        one list rather than two so the order they were added in is the order they lay out in,
-        which is the only thing the caller has expressed. */
-    struct Entry
-    {
-        std::unique_ptr<ControlRow> row;     ///< Null on a break.
-        juce::String breakLabel;
-        juce::Rectangle<int> bounds;         ///< Filled by resized(); paint() draws breaks from it.
-
-        int height (int forRow) const noexcept { return row != nullptr ? forRow : breakHeight; }
-
-        static constexpr int breakHeight = 28;
-    };
-
     juce::AudioProcessorValueTreeState& apvts;
     const juce::String headingText;
 
-    std::vector<Entry> entries;
+    juce::OwnedArray<ControlRow> rows;
 
     juce::Colour headingAccent;
     bool hasHeadingAccent = false;
