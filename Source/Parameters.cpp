@@ -371,26 +371,91 @@ namespace
 
         return 0.0f;
     }
+
+    // The normalised pair. Rows have unlike ranges -- Gate runs 5..200 where Value runs 0..1 --
+    // so an action that has to work on any of them spreads and mirrors in 0..1 and lets each
+    // parameter map that onto its own range.
+    void setParamNormalised (juce::AudioProcessorValueTreeState& state, const juce::String& paramID,
+                             float normalised)
+    {
+        if (auto* parameter = state.getParameter (paramID))
+        {
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, normalised));
+            parameter->endChangeGesture();
+        }
+    }
+
+    float getParamNormalised (juce::AudioProcessorValueTreeState& state, const juce::String& paramID)
+    {
+        if (auto* parameter = state.getParameter (paramID))
+            return parameter->getValue();
+
+        return 0.0f;
+    }
 }
 
-void randomiseLaneValues (juce::AudioProcessorValueTreeState& state, int lane, juce::Random& random,
-                          LaneKind kind)
+//==============================================================================
+juce::String stepLayerId (int lane, int step, StepLayer layer, LaneKind kind)
 {
-    for (int step = 0; step < numSteps; ++step)
-        setParam (state, stepValueId (lane, step, kind), random.nextFloat());
+    const bool isCc = kind == LaneKind::cc;
+
+    switch (layer)
+    {
+        case StepLayer::velocity: return isCc ? juce::String() : stepVelocityId (lane, step);
+        case StepLayer::gate:     return isCc ? juce::String() : stepGateId (lane, step);
+        case StepLayer::chance:   return stepChanceId (lane, step, kind);
+        case StepLayer::value:
+        default:                  return stepValueId (lane, step, kind);
+    }
 }
 
-void clearLaneValues (juce::AudioProcessorValueTreeState& state, int lane, LaneKind kind)
+float stepLayerNeutral (StepLayer layer) noexcept
 {
-    for (int step = 0; step < numSteps; ++step)
-        setParam (state, stepValueId (lane, step, kind), 0.0f);
+    switch (layer)
+    {
+        case StepLayer::velocity: return 1.0f;    // unity: the trim takes nothing off
+        case StepLayer::chance:   return 1.0f;    // always fires
+        case StepLayer::gate:     return 60.0f;   // a normal note length, as % of the step
+        case StepLayer::value:
+        default:                  return 0.0f;
+    }
 }
 
-void invertLaneValues (juce::AudioProcessorValueTreeState& state, int lane, LaneKind kind)
+juce::String stepLayerName (StepLayer layer)
+{
+    switch (layer)
+    {
+        case StepLayer::velocity: return "Velocity";
+        case StepLayer::chance:   return "Prob";
+        case StepLayer::gate:     return "Gate";
+        case StepLayer::value:
+        default:                  return "Value";
+    }
+}
+
+void randomiseLaneRow (juce::AudioProcessorValueTreeState& state, int lane, juce::Random& random,
+                       LaneKind kind, StepLayer layer)
 {
     for (int step = 0; step < numSteps; ++step)
-        setParam (state, stepValueId (lane, step, kind),
-                  1.0f - getParam (state, stepValueId (lane, step, kind)));
+        if (const auto id = stepLayerId (lane, step, layer, kind); id.isNotEmpty())
+            setParamNormalised (state, id, random.nextFloat());
+}
+
+void clearLaneRow (juce::AudioProcessorValueTreeState& state, int lane, LaneKind kind, StepLayer layer)
+{
+    const float neutral = stepLayerNeutral (layer);
+
+    for (int step = 0; step < numSteps; ++step)
+        if (const auto id = stepLayerId (lane, step, layer, kind); id.isNotEmpty())
+            setParam (state, id, neutral);
+}
+
+void invertLaneRow (juce::AudioProcessorValueTreeState& state, int lane, LaneKind kind, StepLayer layer)
+{
+    for (int step = 0; step < numSteps; ++step)
+        if (const auto id = stepLayerId (lane, step, layer, kind); id.isNotEmpty())
+            setParamNormalised (state, id, 1.0f - getParamNormalised (state, id));
 }
 
 void rotateLane (juce::AudioProcessorValueTreeState& state, int lane, int direction, LaneKind kind)

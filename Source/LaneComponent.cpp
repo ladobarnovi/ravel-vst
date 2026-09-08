@@ -68,12 +68,18 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
     // Parameters.cpp) -- so for a CC-kind slot only Value and Chance get built at all.
     const bool isCc = kind == params::LaneKind::cc;
 
+    // Both the id and the double-click reset come from params, so a bar resets to exactly what
+    // the lane's Clear puts that row back to.
     const LayerSetup setups[]
     {
-        { valueSlider,    params::stepValueId (laneIndex, stepIndex, kind),  0.0 },
-        { velocitySlider, isCc ? juce::String() : params::stepVelocityId (laneIndex, stepIndex),  1.0 },
-        { chanceSlider,   params::stepChanceId (laneIndex, stepIndex, kind), 1.0 },
-        { gateSlider,     isCc ? juce::String() : params::stepGateId (laneIndex, stepIndex),      60.0 },
+        { valueSlider,    params::stepLayerId (laneIndex, stepIndex, StepLayer::value, kind),
+                          params::stepLayerNeutral (StepLayer::value) },
+        { velocitySlider, params::stepLayerId (laneIndex, stepIndex, StepLayer::velocity, kind),
+                          params::stepLayerNeutral (StepLayer::velocity) },
+        { chanceSlider,   params::stepLayerId (laneIndex, stepIndex, StepLayer::chance, kind),
+                          params::stepLayerNeutral (StepLayer::chance) },
+        { gateSlider,     params::stepLayerId (laneIndex, stepIndex, StepLayer::gate, kind),
+                          params::stepLayerNeutral (StepLayer::gate) },
     };
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>* attachments[]
@@ -81,10 +87,9 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
 
     for (int i = 0; i < numStepLayers; ++i)
     {
-        // Velocity (1) and Gate (3): skipped entirely for a CC lane, rather than attached to
-        // the note lane of the same number that stepVelocityId/stepGateId would otherwise
-        // silently resolve to.
-        if (isCc && (i == (int) StepLayer::velocity || i == (int) StepLayer::gate))
+        // Empty for a CC lane's velocity and gate, which do not exist -- skipped rather than
+        // attached to the note lane of the same number those ids would otherwise resolve to.
+        if (setups[i].paramID.isEmpty())
             continue;
 
         auto& slider = setups[i].slider;
@@ -499,23 +504,22 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
         theme::setRuled (*child, true);
 
     //--------------------------------------------------------------------------
-    randomiseButton.setTooltip ("Randomize this lane's sixteen step values");
     theme::setRole (randomiseButton, theme::Role::laneAction);
     randomiseButton.onClick = [this, kind]
     {
-        slideThrough ([this, kind] { params::randomiseLaneValues (apvts, lane, random, kind); });
+        slideThrough ([this, kind]
+                      { params::randomiseLaneRow (apvts, lane, random, kind, currentLayer); });
     };
     addAndMakeVisible (randomiseButton);
 
-    clearButton.setTooltip ("Zero this lane's sixteen step values");
     theme::setRole (clearButton, theme::Role::laneAction);
     clearButton.onClick = [this, kind]
     {
-        slideThrough ([this, kind] { params::clearLaneValues (apvts, lane, kind); });
+        slideThrough ([this, kind]
+                      { params::clearLaneRow (apvts, lane, kind, currentLayer); });
     };
     addAndMakeVisible (clearButton);
 
-    menuButton.setTooltip ("Rotate, invert, copy and paste this lane's pattern");
     theme::setRole (menuButton, theme::Role::laneMenu);
     menuButton.onClick = [this] { showActionsMenu(); };
     addAndMakeVisible (menuButton);
@@ -742,6 +746,17 @@ void LaneComponent::applyLaneState()
     repaint();
 }
 
+void LaneComponent::updateActionTooltips()
+{
+    // RND, CLR and the menu all act on the selected row, and which row that is has to be
+    // readable from the button rather than inferred from what happens after pressing it.
+    const auto row = params::stepLayerName (currentLayer);
+
+    randomiseButton.setTooltip ("Randomize this lane's sixteen " + row + " steps");
+    clearButton.setTooltip ("Put this lane's sixteen " + row + " steps back to their default");
+    menuButton.setTooltip ("Rotate or copy the whole pattern, or invert its " + row + " row");
+}
+
 void LaneComponent::setLayer (StepLayer layer)
 {
     // False on the constructor's own call, which sets the layer the lane opens on -- there is
@@ -762,6 +777,8 @@ void LaneComponent::setLayer (StepLayer layer)
 
     for (auto* slot : slots)
         slot->setLayer (layer);
+
+    updateActionTooltips();
 
     if (changed)
         startValueSlide();
@@ -818,7 +835,7 @@ void LaneComponent::showActionsMenu()
 
     menu.addItem (1, "Rotate left");
     menu.addItem (2, "Rotate right");
-    menu.addItem (3, "Invert values");
+    menu.addItem (3, "Invert " + params::stepLayerName (currentLayer));
     menu.addSeparator();
     menu.addItem (4, "Copy pattern");
     menu.addItem (5, "Paste pattern", clipboard.valid);
@@ -850,7 +867,8 @@ void LaneComponent::showActionsMenu()
                                 {
                                     case 1: params::rotateLane (state, laneIndex, -1, laneKind); break;
                                     case 2: params::rotateLane (state, laneIndex, 1, laneKind); break;
-                                    case 3: params::invertLaneValues (state, laneIndex, laneKind); break;
+                                    case 3: params::invertLaneRow (state, laneIndex, laneKind,
+                                                                   safeThis->currentLayer); break;
                                     case 5: params::pasteLane (state, laneIndex, safeThis->clipboard, laneKind); break;
                                     default: break;
                                 }

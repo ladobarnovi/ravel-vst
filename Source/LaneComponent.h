@@ -95,11 +95,14 @@ namespace lane
     All four are full-height bars stacked in the same rectangle with one visible at a time,
     rather than four smaller bars competing for the slot. Every bar keeps its own parameter
     attachment, since nothing has to be rebound when the selection changes.
+
+    Defined in Parameters.h, because the pattern actions take one -- Randomize acts on the row
+    the bars are showing -- and aliased here so the editor can go on spelling it unqualified.
 */
-enum class StepLayer { value = 0, velocity = 1, chance = 2, gate = 3 };
+using StepLayer = params::StepLayer;
 
 /** How many layers a step has, and how many StepLayer values there are. */
-inline constexpr int numStepLayers = 4;
+inline constexpr int numStepLayers = params::numStepLayers;
 
 class LaneComponent;
 
@@ -357,6 +360,9 @@ private:
     StepLayer currentLayer = StepLayer::value;
 
     void setLayer (StepLayer);
+
+    /** Re-words RND, CLR and the pattern menu for whichever row is now selected. */
+    void updateActionTooltips();
 
     //--------------------------------------------------------------------------
     /** Runs a pattern edit with the bars sliding to their new heights rather than jumping.

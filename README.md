@@ -51,7 +51,7 @@ destination on the end of it.
 | 16 gate bars | 5–200 % | *Note lanes only.* How long each step's note is held, as % of the step. Above 100 % overlaps into the next step (see Polyphony) |
 | 16 chance bars | 0–100 % | Per-step probability of firing |
 | Direction | Forward, Reverse, Ping-Pong, Random | How the lane traverses its steps |
-| RND / CLR / ⋯ | — | Pattern actions |
+| RND / CLR / ⋯ | — | Pattern actions. RND, CLR and Invert act on the **selected row** |
 | ✕ | — | Takes this lane out. The lanes below it move up to close the gap |
 
 On a **Note lane** the sixteen tall bars edit one of four per-step rows at a time, picked with
@@ -64,7 +64,7 @@ to, over about 140 ms, eased out. Sixteen bars changing height at once otherwise
 grid being replaced; sliding them says the pattern stayed where it was and you changed which of
 its rows you are looking at.
 
-The same slide runs for every **pattern action that rewrites the values** — RND, CLR, Rotate,
+The same slide runs for every **pattern action that rewrites the row** — RND, CLR, Rotate,
 Invert and Paste — for the same reason, and it is the same code: the slide reads its destination
 live rather than capturing it, so it does not care whether the bars moved because a different
 slider is being read or because that slider's value changed. Copy is the one entry that does not
@@ -135,11 +135,26 @@ the previous level rather than dropping to zero. All CC streams share the global
 
 ### Pattern actions
 
-**RND** re-rolls a lane's values, **CLR** zeroes them. Both touch values only — the toggles
-and chances are left alone, so a lane's rhythm survives a re-roll. The **⋯** menu has Rotate
-Left/Right, Invert Values, and Copy/Paste Pattern. Rotate and paste move value, on/off and
-chance together — and, on a Note lane, velocity and gate as well — because rotating only the
-values would slide a pattern out from under its own rhythm.
+**RND** re-rolls a row and **CLR** resets one — and the row they act on is whichever the lane's
+bars are currently showing. With Prob selected, RND re-rolls the probabilities; with Gate
+selected, the gates. Anything else would be a button that appears to do nothing whenever you are
+not on Value. Invert, in the **⋯** menu, follows the selection the same way, and names the row it
+is about to mirror.
+
+Each acts across that row's *own* range, not over 0–1: Gate runs 5–200, so randomising it spreads
+over 5–200 and inverting it mirrors about 102.5 rather than about 0.5.
+
+**CLR resets rather than zeroes.** Only Value clears to zero. Velocity, Prob and Gate are trims
+on something that already works — unity, always-fires, and a normal note length — so zeroing them
+gives silent notes, a lane that never fires, and zero-length notes, which are three ways of
+switching the lane off rather than of clearing it. Each goes back to its own neutral (1, 1 and
+60 %), which is also what double-clicking one of its bars resets to; the two read from the same
+table so they cannot drift apart.
+
+The step toggles are never touched by any of these, so a lane's rhythm survives a re-roll. Rotate
+and Paste are the exception to the whole selected-row rule: they move value, on/off and chance
+together — and, on a Note lane, velocity and gate as well — because rotating only one row would
+slide it out from under the rest of the pattern.
 
 The clipboard is per stack: you can paste one Note lane onto another, or one CC lane onto
 another, but not across the two.
@@ -496,9 +511,9 @@ out of scope for a plugin only running on your own machine.)
 .\build\RavelProcessorTests_artefacts\Release\RavelProcessorTests.exe
 ```
 
-244 checks across two suites, neither needing a plugin host.
+253 checks across two suites, neither needing a plugin host.
 
-`Tests/EngineTests.cpp` (117 checks) drives `SequencerEngine` over a synthetic timeline. The
+`Tests/EngineTests.cpp` (118 checks) drives `SequencerEngine` over a synthetic timeline. The
 engine takes PPQ positions as plain arguments rather than reading a playhead itself, which is
 what makes that possible. Covers step timing, gate length, per-lane length and rate, disabled
 steps, the fold, transport jumps, stuck-note release on stop, directions, probability,
@@ -508,11 +523,13 @@ path — including that note number plus pitch bend reconstructs the intended fr
 that non-12 EDO scales land where the tuning says, and that the bend range is actually
 transmitted.
 
-`Tests/ProcessorTests.cpp` (127 checks) drives the real `RavelAudioProcessor::processBlock`
+`Tests/ProcessorTests.cpp` (135 checks) drives the real `RavelAudioProcessor::processBlock`
 through a mock playhead. This covers the layer where the plugin could compile, load and still
 emit nothing: playhead handling, the free-run fallback, the parameter snapshot, state
-round-trip, every pattern action, lane add/remove and its undo behaviour, and the MIDI
-capability flags a host reads to decide whether to offer the plugin as a MIDI source.
+round-trip, every pattern action — including that RND, CLR and Invert act on the selected row,
+across that row's own range, and skip a row the lane kind does not have — lane add/remove and its
+undo behaviour, and the MIDI capability flags a host reads to decide whether to offer the plugin
+as a MIDI source.
 
 Worth keeping: these tests caught a real bug. Step boundaries were landing one sample late
 at some positions, because `ppqPerSample` is `1/24000` at 120 bpm / 48 kHz — not exactly

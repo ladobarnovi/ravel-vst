@@ -227,24 +227,33 @@ int main (int argc, char** argv)
         std::vector<juce::TextButton*> buttons;
         collectDescendants<juce::TextButton> (*editor, buttons);
 
-        int clicked = 0;
+        // Each label in turn, so a sequence like "Prob+RND" selects a row and then acts on
+        // it. Only the last one's slide is captured; the ones before it are setup.
+        juce::StringArray labels;
+        labels.addTokens (switchTo, "+", "");
 
-        for (auto* button : buttons)
-            if (button->getButtonText().equalsIgnoreCase (switchTo) && button->isVisible())
+        for (const auto& label : labels)
+        {
+            int clicked = 0;
+
+            for (auto* button : buttons)
+                if (button->getButtonText().equalsIgnoreCase (label.trim()) && button->isVisible())
+                {
+                    button->triggerClick();
+                    ++clicked;
+                }
+
+            if (clicked == 0)
             {
-                button->triggerClick();
-                ++clicked;
+                std::fprintf (stderr, "no visible lane chip labelled '%s'\n", label.toRawUTF8());
+                return 1;
             }
 
-        if (clicked == 0)
-        {
-            std::fprintf (stderr, "no visible lane chip labelled '%s'\n", switchTo.toRawUTF8());
-            return 1;
+            // triggerClick() posts the callback, so nothing has happened until the queue has
+            // been turned over once. A setup click is given long enough for its own slide to
+            // finish, so the captured one starts from a settled window.
+            pump (label == labels.strings.getLast() ? 1 : 250);
         }
-
-        // triggerClick() posts the callback, so the slide has not started until the queue has
-        // been turned over once.
-        pump (1);
 
         // Sampled across a little more than the slide's own length, so the last frame shows it
         // settled rather than leaving the reader guessing whether it ever arrived.

@@ -60,6 +60,37 @@ juce::String stepChanceId   (int lane, int step, LaneKind kind = LaneKind::note)
 juce::String stepVelocityId (int lane, int step);
 juce::String stepGateId     (int lane, int step);
 
+//==============================================================================
+/** Which of a step's four continuous parameters is being addressed.
+
+    Lives here rather than in the editor because the pattern actions below take one: a lane's
+    Randomize acts on whichever row its bars are currently showing, so "which row" is a
+    parameter-domain idea and not only a UI one.
+*/
+enum class StepLayer { value = 0, velocity = 1, chance = 2, gate = 3 };
+
+inline constexpr int numStepLayers = 4;
+
+/** The parameter one step's given row lives in, or an empty string where that lane kind has no
+    such row -- a CC lane has neither velocity nor gate. Callers skip the empty ones rather
+    than addressing the note lane of the same number that stepVelocityId would resolve to. */
+juce::String stepLayerId (int lane, int step, StepLayer layer, LaneKind kind = LaneKind::note);
+
+/** What a row goes back to when it is cleared, and what a double-click on one of its bars
+    resets to.
+
+    Not zero for three of the four. Velocity, Chance and Gate are all *trims* on something that
+    already works -- unity, always-fires, and a normal note length -- so zeroing them gives
+    silent notes, a lane that never fires and zero-length notes, which are three ways of
+    turning the lane off rather than of clearing it. Only Value, where zero is a real musical
+    position, clears to zero.
+*/
+float stepLayerNeutral (StepLayer layer) noexcept;
+
+/** The row's name as the UI writes it, for tooltips that have to say which row an action is
+    about to rewrite. */
+juce::String stepLayerName (StepLayer layer);
+
 juce::String laneOnId       (int lane, LaneKind kind = LaneKind::note);
 juce::String laneLengthId   (int lane, LaneKind kind = LaneKind::note);
 juce::String laneDivId      (int lane, LaneKind kind = LaneKind::note);
@@ -136,15 +167,25 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 // without a UI. Both touch step *values* only -- the on/off toggles are left alone,
 // so a lane's rhythm survives a re-roll.
 
-/** Gives every step in the lane a new random value. */
-void randomiseLaneValues (juce::AudioProcessorValueTreeState& state, int lane, juce::Random& random,
-                          LaneKind kind = LaneKind::note);
+// All three act on one row of the lane -- whichever the lane's bars are currently showing --
+// rather than always on Value. Randomizing the row you are looking at is the only reading of
+// the button that matches what is under it; the alternative is a Randomize that appears to do
+// nothing whenever Prob or Gate is selected.
+//
+// Each spreads or mirrors across that row's *own* range, so Gate's 5..200 is randomised over
+// 5..200 rather than over Value's 0..1.
 
-/** Zeroes every step value in the lane. */
-void clearLaneValues (juce::AudioProcessorValueTreeState& state, int lane, LaneKind kind = LaneKind::note);
+/** Gives every step in the row a new random value, anywhere in that row's range. */
+void randomiseLaneRow (juce::AudioProcessorValueTreeState& state, int lane, juce::Random& random,
+                       LaneKind kind = LaneKind::note, StepLayer layer = StepLayer::value);
 
-/** Mirrors every step value about the midpoint (value -> 1 - value). */
-void invertLaneValues (juce::AudioProcessorValueTreeState& state, int lane, LaneKind kind = LaneKind::note);
+/** Puts every step in the row back to its neutral -- see stepLayerNeutral. */
+void clearLaneRow (juce::AudioProcessorValueTreeState& state, int lane,
+                   LaneKind kind = LaneKind::note, StepLayer layer = StepLayer::value);
+
+/** Mirrors every step in the row about the middle of that row's own range. */
+void invertLaneRow (juce::AudioProcessorValueTreeState& state, int lane,
+                    LaneKind kind = LaneKind::note, StepLayer layer = StepLayer::value);
 
 /** Shifts the lane's steps round by one. Negative rotates left, positive rotates right.
 
