@@ -17,7 +17,7 @@ namespace lane
     // Across.
     inline constexpr int railWidth    = 3;   ///< The accent edge, hard against the lane's left.
     inline constexpr int slotWidth    = 32;  ///< Lane number, and the mute under it.
-    inline constexpr int selectorWidth = 46; ///< Val / Vel / Prob / Gate.
+    inline constexpr int selectorWidth = 46; ///< Val / Vel / Prob / Gate -- Val alone on a CC lane.
     inline constexpr int paramWidth   = 190; ///< Length, Rate, Direction, Mix amount.
     inline constexpr int columnGap    = 14;
     inline constexpr int padRight     = 16;
@@ -54,9 +54,8 @@ namespace lane
     inline constexpr int chromeWidth = slotWidth + columnGap + selectorWidth + columnGap
                                           + columnGap + paramWidth + padRight;
 
-    /** The width a lane wants. Both kinds are the same: a CC lane reserves the layer
-        selector's column and leaves it empty rather than closing it up, so switching tabs
-        does not shuffle the step grid sideways under the cursor. */
+    /** The width a lane wants. Both kinds are the same, so switching tabs does not shuffle
+        the step grid sideways under the cursor. */
     inline constexpr int nativeWidth = chromeWidth + wellWidth;
 
     //--------------------------------------------------------------------------
@@ -67,14 +66,14 @@ namespace lane
     inline constexpr int actionGap    = 12;
     inline constexpr int actionHeight = 21;
 
-    /** How tall a lane of this kind needs to be.
+    /** How tall a lane needs to be: whichever of its two columns wins.
 
-        A Note lane is taller than a CC lane, and by whichever of its two columns wins: the
-        step area is a fixed height, and the parameter column's is the sum of what that kind
-        of lane actually carries -- four parameters for a Note lane, three for a CC lane,
-        which has no Direction of its own on the strip.
+        The step area is a fixed height, and the parameter column's is the sum of the four
+        parameters every lane carries. One height for both kinds -- a CC lane's strip holds
+        the same Length, Rate, Direction and Mix amount a Note lane's does, and the two only
+        differ in how many layers sit behind the step bars.
     */
-    int heightFor (params::LaneKind kind);
+    int height();
 }
 
 /** Which of a step's four continuous parameters the tall bars currently edit.
@@ -209,12 +208,17 @@ private:
 //==============================================================================
 /** A full lane: 16 steps plus the parameters worth reaching for while it plays.
 
-    A Note lane and a CC lane share Length, Rate and Mix amount. Only a Note lane carries
-    Direction on the strip and a layer selector beside the steps; a CC lane's own
-    Send/Number/Channel/Offset live in the CC page's footer rather than here, one column per
-    lane -- they are a destination, which is a property of where the lane goes rather than of
-    the pattern in it, and putting them on the strip made a CC lane twice the parameter block
-    of a Note lane for something the user sets once.
+    Both kinds carry the same strip -- Length, Rate, Direction and Mix amount -- because both
+    are the same sequencer with a different destination on the end of it. They differ in one
+    place only: how many layers sit behind the step bars, and so how many chips the selector
+    beside them offers. A Note lane has four (Value, Velocity, Prob, Gate); a CC lane has
+    Value alone, because Velocity and Gate are only ever arguments to starting a note and a CC
+    lane never starts one.
+
+    A CC lane's own Send/Number/Channel/Offset live in the CC page's footer rather than here,
+    one column per lane -- they are a destination, which is a property of where the lane goes
+    rather than of the pattern in it, and putting them on the strip made a CC lane twice the
+    parameter block of a Note lane for something the user sets once.
 */
 class LaneComponent final : public juce::Component
 {

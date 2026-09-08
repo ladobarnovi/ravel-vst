@@ -44,12 +44,11 @@ namespace
         that makes them worth dragging. Also grows and shrinks with which workspace is
         selected, since each one's footer is only as tall as its own columns need.
     */
-    int windowHeightForWorkspace (int numActiveLanes, params::LaneKind kind,
-                                  bool showingAddLane, int settingsPanelHeight)
+    int windowHeightForWorkspace (int numActiveLanes, bool showingAddLane, int settingsPanelHeight)
     {
         return headerHeight
                  + TabStrip::height
-                 + numActiveLanes * lane::heightFor (kind)
+                 + numActiveLanes * lane::height()
                  + (showingAddLane ? addLaneHeight : 0)
                  + settingsPanelHeight;
     }
@@ -481,10 +480,10 @@ void RavelAudioProcessorEditor::updateSizeConstraints()
                                     : 1.0;
 
     nativeContentHeight = outputTabs.getSelectedIndex() == 0
-        ? windowHeightForWorkspace (noteLaneCount, params::LaneKind::note,
-                                     addNoteLaneButton.isVisible(), notesSettingsPage.getPreferredHeight())
-        : windowHeightForWorkspace (ccLaneCount, params::LaneKind::cc,
-                                     addCcLaneButton.isVisible(), ccSettingsPage.getPreferredHeight());
+        ? windowHeightForWorkspace (noteLaneCount, addNoteLaneButton.isVisible(),
+                                     notesSettingsPage.getPreferredHeight())
+        : windowHeightForWorkspace (ccLaneCount, addCcLaneButton.isVisible(),
+                                     ccSettingsPage.getPreferredHeight());
 
     // Locked so a drag-resize zooms uniformly rather than stretching bars into ellipses.
     sizeConstrainer.setFixedAspectRatio ((double) nativeContentWidth / (double) nativeContentHeight);
@@ -531,14 +530,16 @@ void RavelAudioProcessorEditor::storeEditorSize()
 namespace
 {
     /** The lane-stack-plus-add-button-plus-footer layout, run once per workspace against that
-        workspace's own bounds. Both get this same shape -- only the lane kind and the settings
-        page differ -- so it is written once rather than duplicated for Notes and for CC.
+        workspace's own bounds. Both get this same shape -- only the lane stack and the
+        settings page differ -- so it is written once rather than duplicated for Notes and for
+        CC. Lanes of both kinds are the same height, so this does not need to know which it is
+        laying out.
 
         A template only because WorkspaceComponent is private to the editor and this lives
         outside it; there is one instantiation, and it is the same code either way.
     */
     template <typename WorkspaceType>
-    void layoutWorkspace (WorkspaceType& workspace, int activeLaneCount, params::LaneKind kind,
+    void layoutWorkspace (WorkspaceType& workspace, int activeLaneCount,
                           juce::OwnedArray<LaneComponent>& lanesArray, juce::TextButton& addButton,
                           TabPage& settingsPage)
     {
@@ -546,7 +547,7 @@ namespace
         // carries its own padding and its own bottom hairline. See LaneComponent::paint().
         auto r = workspace.getLocalBounds();
 
-        const int laneHeight = lane::heightFor (kind);
+        const int laneHeight = lane::height();
 
         for (int laneIndex = 0; laneIndex < juce::jmin (activeLaneCount, lanesArray.size()); ++laneIndex)
             lanesArray[laneIndex]->setBounds (r.removeFromTop (laneHeight));
@@ -622,10 +623,8 @@ void RavelAudioProcessorEditor::layoutContent()
     notesWorkspace.setBounds (r);
     ccWorkspace.setBounds (r);
 
-    layoutWorkspace (notesWorkspace, noteLaneCount, params::LaneKind::note,
-                     noteLanes, addNoteLaneButton, notesSettingsPage);
-    layoutWorkspace (ccWorkspace, ccLaneCount, params::LaneKind::cc,
-                     ccLanes, addCcLaneButton, ccSettingsPage);
+    layoutWorkspace (notesWorkspace, noteLaneCount, noteLanes, addNoteLaneButton, notesSettingsPage);
+    layoutWorkspace (ccWorkspace, ccLaneCount, ccLanes, addCcLaneButton, ccSettingsPage);
 }
 
 //==============================================================================

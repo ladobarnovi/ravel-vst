@@ -28,16 +28,15 @@ namespace
 }
 
 //==============================================================================
-int lane::heightFor (params::LaneKind kind)
+int lane::height()
 {
     const int ruledBlock = ParamBlock::preferredHeight() + 1;
     const int ruledRow   = theme::paramRowHeight;
 
-    // Length, Rate, [Direction], Mix amount, then the action chips pushed to the foot.
-    const int paramHeight = ruledBlock                                        // Length
-                              + ruledRow                                      // Rate
-                              + (kind == params::LaneKind::note ? ruledRow : 0) // Direction
-                              + ruledBlock                                    // Mix amount
+    // Length, Rate, Direction, Mix amount, then the action chips pushed to the foot. Both
+    // kinds of lane carry all four, so there is one height rather than one per kind: a CC
+    // lane's steps traverse exactly as a Note lane's do.
+    const int paramHeight = ruledBlock + ruledRow + ruledRow + ruledBlock
                               + actionGap + actionHeight;
 
     return padTop + juce::jmax (wellHeight, paramHeight) + padBottom + separatorHeight;
@@ -467,9 +466,9 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
     rateGroup.setRowHeight (theme::paramRowHeight);
     rateGroup.add (params::laneDivId (laneIndex, kind), "Rate");
 
-    // A CC lane has no Direction row on the strip -- see this class's own comment.
-    if (kind == params::LaneKind::note)
-        rateGroup.add (params::laneDirId (laneIndex, kind), "Direction");
+    // Both kinds: a CC lane's steps traverse the same way a Note lane's do, and the engine
+    // reads the parameter for both (see PluginProcessor's lane snapshot).
+    rateGroup.add (params::laneDirId (laneIndex, kind), "Direction");
 
     addAndMakeVisible (rateGroup);
 
@@ -506,35 +505,38 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
     addChildComponent (removeButton);
 
     //--------------------------------------------------------------------------
-    if (kind == params::LaneKind::note)
-    {
-        static const char* layerTooltips[]
-        {
-            "Value: the bars edit each step's value, which drives pitch",
-            "Velocity: the bars edit each step's accent",
-            "Probability: the bars edit each step's chance of firing",
-            "Gate: the bars edit how long each step's note is held",
-        };
+    // A CC lane builds the selector too, but only its first chip. Velocity and Gate are only
+    // ever arguments to starting a note and a CC lane never starts one, so there is genuinely
+    // nothing for the other three to select -- but a blank column left the CC tab's steps
+    // looking like a different kind of grid from the Notes tab's, when they are the same grid
+    // with fewer layers behind it. One latched chip says "Value, and that is all there is"
+    // where an empty column said nothing at all.
+    const int builtLayers = kind == params::LaneKind::note ? numStepLayers : 1;
 
-        for (int i = 0; i < numStepLayers; ++i)
-        {
-            auto& button = layerButtons[i];
-
-            button.setTooltip (layerTooltips[i]);
-            button.setClickingTogglesState (false);
-            theme::setRole (button, theme::Role::layerChip);
-            theme::setAccent (button, accent);
-            button.onClick = [this, i] { setLayer ((StepLayer) i); };
-            addAndMakeVisible (button);
-        }
-    }
-    else
+    static const char* layerTooltips[]
     {
-        // A CC lane has no layer to select -- the bars always edit Value -- so the selector
-        // never appears, leaving its column blank rather than four chips that would do
-        // nothing. The column itself stays, so the step grid lines up across both tabs.
-        for (auto& button : layerButtons)
+        "Value: the bars edit each step's value",
+        "Velocity: the bars edit each step's accent",
+        "Probability: the bars edit each step's chance of firing",
+        "Gate: the bars edit how long each step's note is held",
+    };
+
+    for (int i = 0; i < numStepLayers; ++i)
+    {
+        auto& button = layerButtons[i];
+
+        if (i >= builtLayers)
+        {
             button.setVisible (false);
+            continue;
+        }
+
+        button.setTooltip (layerTooltips[i]);
+        button.setClickingTogglesState (false);
+        theme::setRole (button, theme::Role::layerChip);
+        theme::setAccent (button, accent);
+        button.onClick = [this, i] { setLayer ((StepLayer) i); };
+        addAndMakeVisible (button);
     }
 
     // The attachment drives the slider through Slider::Listener, the same way the step trigs'
@@ -882,8 +884,8 @@ void LaneComponent::resized()
 
     lengthBlock.setBounds (paramBlock.removeFromTop (ParamBlock::preferredHeight() + 1));
 
-    const int rateRows = kind == params::LaneKind::note ? 2 : 1;
-    rateGroup.setBounds (paramBlock.removeFromTop (rateRows * theme::paramRowHeight));
+    // Rate and Direction, on both kinds of lane.
+    rateGroup.setBounds (paramBlock.removeFromTop (2 * theme::paramRowHeight));
 
     mixBlock.setBounds (paramBlock.removeFromTop (ParamBlock::preferredHeight() + 1));
 

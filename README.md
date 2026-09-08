@@ -26,13 +26,16 @@ they are two separate sequencers sharing one clock, one transport and one plugin
 | What the fold drives | Pitch, over an MPE zone (or one channel) | The Mix CC |
 | Lanes | 1–4, own count | 1–4, own count |
 | Per-step | Value, Velocity, Chance, Gate | Value, Chance |
-| Per-lane shaping | Direction | — (always Forward) |
+| Per-lane shaping | Length, Rate, Direction, Mix amount | The same four |
 | Per-lane output | — | Its own Send / Number / Channel / Offset |
 | Swing | Shared — one control, on the Notes page | Shared — driven by the Notes page |
 
-CC lanes deliberately carry less. Velocity and Gate are only ever arguments to *start a note*,
-and a CC lane never starts one, so it has neither — which also keeps the plugin's automatable
-parameter count from doubling for nothing.
+The two differ per *step*, not per lane. Velocity and Gate are only ever arguments to *start a
+note*, and a CC lane never starts one, so it has neither — which also keeps the plugin's
+automatable parameter count from doubling for nothing. Everything a lane does as a lane —
+how long it is, how fast it runs, which way it traverses, how much it contributes to its
+stack's fold — is the same on both, because both are the same sequencer with a different
+destination on the end of it.
 
 ### Per lane
 
@@ -47,7 +50,7 @@ parameter count from doubling for nothing.
 | 16 velocity bars | 0–100 % | *Note lanes only.* Per-step accent, as a trim on the fixed master velocity of 100 (100 % is unity, so a bar only ever pulls a step below it) |
 | 16 gate bars | 5–200 % | *Note lanes only.* How long each step's note is held, as % of the step. Above 100 % overlaps into the next step (see Polyphony) |
 | 16 chance bars | 0–100 % | Per-step probability of firing |
-| Direction | Forward, Reverse, Ping-Pong, Random | *Note lanes only* |
+| Direction | Forward, Reverse, Ping-Pong, Random | How the lane traverses its steps |
 | RND / CLR / ⋯ | — | Pattern actions |
 | ✕ | — | Takes this lane out. The lanes below it move up to close the gap |
 
@@ -56,19 +59,20 @@ the **Value / Velocity / Prob / Gate** selector down the left of the lane. The t
 not selected show as faint ticks across the bars, and only where they are away from their
 default, so an untouched lane stays clean.
 
-A **CC lane** has no selector — its bars always edit Value, and the column is left blank rather
-than filled with four chips that would do nothing. The column itself stays, so the step grid
-lines up in the same place on both tabs.
+A **CC lane** gets the same selector with one chip in it: **Value**, latched, because that is
+the only layer its bars have. Velocity and Gate are only ever arguments to *start a note* and a
+CC lane never starts one, so there is genuinely nothing else to offer — but the column stays and
+the chip stays, so the CC tab's step grid lines up with the Notes tab's and reads as the same
+grid with fewer layers behind it rather than as a different kind of control.
 
-Two of a CC lane's parameters exist without a control on the strip, and both behave the same way:
-they still work, they are still saved and recalled, and they are reachable only through host
-automation. **Chance** decides whether a step reaches the fold, and its tick is still drawn on the
-bars. **Direction** traverses the lane's steps exactly as a Note lane's does, but a CC lane's
-strip has no row for it, so it stays Forward unless something else moves it.
+A CC lane's per-step **Chance** is the one parameter with no control of its own. It still works —
+it decides whether a step reaches the fold, and the fold is what the CC output follows — and its
+tick is still drawn across the bars, but it is reachable only through host automation.
 
-A CC lane's own **Send / Number / Channel / Offset** are not on the strip either — they are a
-destination rather than a pattern, set once and then left, so they live in the CC tab's footer,
-one column per lane. See [CC outputs](#cc-outputs).
+Everything else on a CC lane's strip is what a Note lane has: Length, Rate, **Direction** and Mix
+amount. Its own **Send / Number / Channel / Offset** are not there, because they are a destination
+rather than a pattern — set once and then left — so they live in the CC tab's footer, one column
+per lane. See [CC outputs](#cc-outputs).
 
 ### Probability
 
