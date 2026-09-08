@@ -2,20 +2,23 @@
 
 namespace
 {
-    constexpr int rowHeight   = 22;
-    constexpr int padding     = 10;
-    constexpr int gap         = 8;
+    constexpr int rowHeight = 22;
+    constexpr int gap       = 8;
 
-    // Wider than a chevron strictly needs, because the glyph is scaled off the smaller of the
-    // button's two dimensions -- at 16 it would be drawn to fit a 16px box inside a 22px row
-    // and come out visibly lighter than the value it sits beside.
+    // Wide enough that the chevron is not scaled off a box smaller than the row it sits in:
+    // the glyph is drawn to the smaller of the button's two dimensions, so a 16px stepper in a
+    // 22px pill comes out visibly lighter than the name beside it.
     constexpr int stepperWidth = 20;
-    constexpr int stepperGap   = 4;
 
-    // Caption plus a name field. Wider than the MIDI box's because preset names are the user's
-    // own words rather than a fixed list of stock choices, and a name that elides after twelve
-    // characters makes the chip useless for telling two patches apart.
-    constexpr int chipWidth = 240;
+    // Preset names are the user's own words rather than a fixed list of stock choices, and a
+    // name that elides after twelve characters makes the pill useless for telling two patches
+    // apart.
+    constexpr int nameWidth = 150;
+
+    /** The pill: a stepper, the name, a stepper, all inside one sunken box. Grouping them is
+        what says the two chevrons walk *this* list rather than being two more header buttons
+        that happen to be arrow-shaped. */
+    constexpr int pillWidth = stepperWidth * 2 + nameWidth;
 
     // Menu item ids. Presets are numbered from firstPresetFileItem upward as the menu is built,
     // so an id above it indexes straight into the bar's own list of files.
@@ -36,8 +39,7 @@ namespace
 PresetBar::PresetBar (RavelAudioProcessor& processor)
     : processorRef (processor)
 {
-    theme::setRole (nameButton, theme::Role::presetChip);
-    theme::setCaption (nameButton, "Preset");
+    theme::setRole (nameButton, theme::Role::presetName);
     nameButton.setTooltip ("The loaded preset -- click to browse, save, rename or delete. "
                            "A dot after the name means the patch has been edited since it "
                            "was loaded");
@@ -54,7 +56,7 @@ PresetBar::PresetBar (RavelAudioProcessor& processor)
     nextButton.onClick = [this] { processorRef.presetManager.loadRelative (1); };
     addAndMakeVisible (nextButton);
 
-    theme::styleActionButton (saveButton);
+    theme::setRole (saveButton, theme::Role::headerButton);
     saveButton.setTooltip ("Save over the loaded preset. With nothing loaded, asks for a name");
     saveButton.onClick = [this]
     {
@@ -67,6 +69,15 @@ PresetBar::PresetBar (RavelAudioProcessor& processor)
                            { processorRef.presetManager.saveAs (name); });
     };
     addAndMakeVisible (saveButton);
+
+    // Beside Save rather than only in the menu, because it is the other half of the same
+    // gesture: Save keeps what you have, Init throws it away and starts over. Having to open
+    // a browser to find "start from nothing" is what makes people build a blank preset called
+    // Init and load that instead.
+    theme::setRole (initButton, theme::Role::headerButton);
+    initButton.setTooltip ("Reset every parameter to its default. Ctrl+Z brings the patch back");
+    initButton.onClick = [this] { processorRef.presetManager.loadInit(); };
+    addAndMakeVisible (initButton);
 
     // The manager lives on the processor and outlives this bar, so this is cleared again in the
     // destructor.
@@ -82,8 +93,8 @@ PresetBar::~PresetBar()
 //==============================================================================
 int PresetBar::preferredWidth()
 {
-    return padding * 2 + stepperWidth * 2 + stepperGap * 2 + chipWidth + gap
-             + theme::actionButtonWidth ("Save", rowHeight);
+    return pillWidth + gap + theme::chipWidth ("Save", 20)
+                     + gap + theme::chipWidth ("Init", 20);
 }
 
 void PresetBar::tick()
@@ -167,9 +178,10 @@ void PresetBar::showMenu()
     menu.addSeparator();
     menu.addItem (presetShowFolderItem, "Show presets folder");
 
-    // Anchored to the boxed part of the chip rather than to the whole button, so the menu drops
-    // from the field it fills instead of from the caption beside it.
-    const auto boxArea = nameButton.localAreaToGlobal (theme::chipBoxArea (nameButton));
+    // Anchored to the name field, so the menu drops from the thing it is a list of. Widened to
+    // the whole pill: a menu narrower than the control it opened from reads as belonging to
+    // something else.
+    const auto boxArea = nameButton.localAreaToGlobal (nameButton.getLocalBounds());
 
     // Toggle state is what the chip's own drawing reads as "my menu is open": an async menu
     // leaves the button itself unpressed for the whole time it is showing, so
@@ -299,19 +311,31 @@ void PresetBar::promptForName (const juce::String& title,
 //==============================================================================
 void PresetBar::paint (juce::Graphics& g)
 {
-    g.setColour (theme::raised);
-    g.fillRoundedRectangle (getLocalBounds().toFloat(), 5.0f);
+    // Only the pill is drawn here; Save and Init sit on the header's own ground beside it and
+    // draw their own chips. The pill is sunk rather than raised because the name inside it is
+    // a field showing what is loaded, not a button -- even though clicking it opens the
+    // browser.
+    auto pill = getLocalBounds().withSizeKeepingCentre (pillWidth, rowHeight)
+                                .withX (0).toFloat();
+
+    g.setColour (theme::well);
+    g.fillRoundedRectangle (pill, 2.5f);
+
+    g.setColour (theme::outline);
+    g.drawRoundedRectangle (pill.reduced (0.5f), 2.5f, 1.0f);
 }
 
 void PresetBar::resized()
 {
-    auto inner = getLocalBounds().reduced (padding, (getHeight() - rowHeight) / 2);
+    auto inner = getLocalBounds().withSizeKeepingCentre (getWidth(), rowHeight);
 
     prevButton.setBounds (inner.removeFromLeft (stepperWidth));
-    inner.removeFromLeft (stepperGap);
-    nameButton.setBounds (inner.removeFromLeft (chipWidth));
-    inner.removeFromLeft (stepperGap);
+    nameButton.setBounds (inner.removeFromLeft (nameWidth));
     nextButton.setBounds (inner.removeFromLeft (stepperWidth));
+
     inner.removeFromLeft (gap);
-    saveButton.setBounds (inner);
+    saveButton.setBounds (inner.removeFromLeft (theme::chipWidth ("Save", 20)));
+
+    inner.removeFromLeft (gap);
+    initButton.setBounds (inner.removeFromLeft (theme::chipWidth ("Init", 20)));
 }

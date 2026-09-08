@@ -111,7 +111,23 @@ if(APPLE)
     endforeach()
 endif()
 
+# ---- Fonts -------------------------------------------------------------------
+# Archivo, compiled in rather than loaded from disk. A plugin cannot rely on the host
+# machine having any particular font installed, and JUCE's default sans-serif is whatever
+# the OS hands back -- Segoe UI on Windows, Helvetica on macOS -- which is exactly the kind
+# of difference that turns a layout measured against one font into overlapping text on the
+# other. Every string in the UI is measured and drawn in these two faces on every platform.
+juce_add_binary_data(RavelFonts SOURCES
+    Assets/Archivo-Regular.ttf
+    Assets/Archivo-SemiBold.ttf)
+
+# The plugin targets are shared libraries, so everything linked into them has to be
+# position-independent; a static library built without this fails to link on Linux and on
+# any macOS build that is not x86_64.
+set_target_properties(RavelFonts PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+
 target_sources(Ravel PRIVATE
+    Source/Theme.cpp
     Source/Parameters.cpp
     Source/PresetManager.cpp
     Source/SequencerEngine.cpp
@@ -134,6 +150,7 @@ target_compile_definitions(Ravel PUBLIC
 
 target_link_libraries(Ravel
     PRIVATE
+        RavelFonts
         juce::juce_audio_utils
         juce::juce_audio_processors
     PUBLIC
@@ -183,6 +200,7 @@ if(RAVEL_BUILD_TESTS)
 
     target_sources(RavelProcessorTests PRIVATE
         Tests/ProcessorTests.cpp
+        Source/Theme.cpp
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp
         Source/LaneComponent.cpp
@@ -190,9 +208,6 @@ if(RAVEL_BUILD_TESTS)
         Source/RavelLookAndFeel.cpp
         Source/ExternalMidiSelector.cpp
         Source/PresetBar.cpp
-    Source/PresetBar.cpp
-    Source/ExternalMidiSelector.cpp
-    Source/PresetBar.cpp
         Source/Parameters.cpp
         Source/PresetManager.cpp
         Source/SequencerEngine.cpp
@@ -210,6 +225,7 @@ if(RAVEL_BUILD_TESTS)
 
     target_link_libraries(RavelProcessorTests
         PRIVATE
+            RavelFonts
             juce::juce_audio_utils
             juce::juce_audio_processors
         PUBLIC
@@ -222,17 +238,43 @@ if(RAVEL_BUILD_TESTS)
     add_test(NAME processor COMMAND RavelProcessorTests)
 endif()
 
+# ---- Editor snapshot ---------------------------------------------------------
+# Renders the editor straight to a PNG with no host and no visible window, so a layout
+# change can be looked at from a build step instead of by loading the VST3 into a DAW.
+# Off unless asked for:
+#
+#   cmake -S . -B build -DRAVEL_SNAPSHOT_SOURCE=Tests/Snapshot.cpp
+#   cmake --build build --target RavelSnapshot --config Debug
+#   RavelSnapshot.exe out.png [notes|cc] [laneCount]
+#
+# See Tests/Snapshot.cpp.
 if(RAVEL_SNAPSHOT_SOURCE)
     juce_add_console_app(RavelSnapshot PRODUCT_NAME "RavelSnapshot")
-    target_sources(RavelSnapshot PRIVATE ${RAVEL_SNAPSHOT_SOURCE}
-        Source/PluginProcessor.cpp Source/PluginEditor.cpp Source/LaneComponent.cpp
-        Source/Controls.cpp Source/RavelLookAndFeel.cpp Source/ExternalMidiSelector.cpp Source/PresetBar.cpp Source/Parameters.cpp Source/SequencerEngine.cpp
-        Source/PresetManager.cpp Source/UndoHistory.cpp Source/ExternalMidiOutput.cpp)
+
+    target_sources(RavelSnapshot PRIVATE
+        ${RAVEL_SNAPSHOT_SOURCE}
+        Source/Theme.cpp
+        Source/PluginProcessor.cpp
+        Source/PluginEditor.cpp
+        Source/LaneComponent.cpp
+        Source/Controls.cpp
+        Source/RavelLookAndFeel.cpp
+        Source/ExternalMidiSelector.cpp
+        Source/PresetBar.cpp
+        Source/Parameters.cpp
+        Source/SequencerEngine.cpp
+        Source/PresetManager.cpp
+        Source/UndoHistory.cpp
+        Source/ExternalMidiOutput.cpp
+    )
+
     target_include_directories(RavelSnapshot PRIVATE Source)
+
     target_compile_definitions(RavelSnapshot PRIVATE
         JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JucePlugin_Name="Ravel"
         JUCE_MODAL_LOOPS_PERMITTED=1)
+
     target_link_libraries(RavelSnapshot
-        PRIVATE juce::juce_audio_utils juce::juce_audio_processors juce::juce_gui_extra
+        PRIVATE RavelFonts juce::juce_audio_utils juce::juce_audio_processors juce::juce_gui_extra
         PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
 endif()

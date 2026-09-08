@@ -2,62 +2,86 @@
 
 namespace
 {
-    // Tall enough for the left column's four layer buttons (Value, Velocity, Prob, Gate)
-    // plus the lane number above them; the step bars take whatever is left, so a taller
-    // lane just makes them taller. Also covers a CC lane's own parameter block: Length/
-    // Rate/Depth/Direction plus Send/Number/Channel/Offset is 8 rows on ControlGroup's
-    // 2-column grid, taller than a Note lane's own four -- but the layer buttons set the
-    // floor for both, so one constant still fits.
-    constexpr int laneHeight    = 150;
+    //--------------------------------------------------------------------------
+    // The window is four stacked bands, edge to edge, with no outer margin: header, tab bar,
+    // lane stack, settings footer. Each band carries its own ground colour and its own inner
+    // padding, which is what separates them -- there is no gap between any two of them and no
+    // frame drawn round anything.
+    constexpr int headerHeight  = 43;   ///< 22px of controls, 10px above and below, 1px rule.
+    constexpr int headerPadX    = 14;
+    constexpr int headerGap     = 12;   ///< Between groups inside the header.
+    constexpr int addLaneHeight = 40;
 
-    constexpr int headerHeight  = 26;
-    constexpr int laneBarHeight = 22;
-    constexpr int gap           = 8;
-    constexpr int margin        = 12;
-
-    // The window's native (100%-zoom) width: whatever a lane needs to draw 16 steps at
-    // lane::stepSlotWidth, plus the margin either side. Derived rather than typed in, so
-    // changing the step width moves the window with it instead of leaving a gap between
-    // the last step and the parameter block. Both workspaces share it -- a CC lane's own
-    // destination fields replace Note-only screen space rather than adding any -- so
-    // neither tab is ever wider than the other. The user can zoom in or out from here; see
-    // RavelAudioProcessorEditor::updateSizeConstraints().
-    constexpr int nativeContentWidth = margin * 2 + lane::nativeWidth;
-
-    // Square, and taller than a value row: the arrows are a click target rather than a line
-    // of text, and 22px keeps them comfortably hittable inside a 26px header.
+    // Square, and taller than a value row: the arrows are a click target rather than a line of
+    // text, and 22px keeps them comfortably hittable inside the header.
     constexpr int historyButton = 22;
 
-    // How far the user can zoom the window either side of native size. Below 60% the step
-    // bars stop being useful click targets; above 150% there's nothing left to reveal.
+    /** The window's native (100%-zoom) width: whatever a lane needs to draw sixteen steps at
+        lane::stepBarWidth. Derived rather than typed in, so changing the step width moves the
+        window with it instead of leaving a gap between the last step and the parameter block.
+        Both workspaces share it -- a CC lane reserves the layer selector's column rather than
+        closing it up -- so neither tab is ever wider than the other. */
+    constexpr int nativeContentWidth = lane::nativeWidth;
+
+    // How far the user can zoom the window either side of native size. Below 60% the step bars
+    // stop being useful click targets; above 150% there's nothing left to reveal.
     constexpr double minZoom = 0.6;
     constexpr double maxZoom = 1.5;
 
-    /** The window grows and shrinks with the lane count rather than the lanes sharing a
-        fixed height between them: one lane in a window sized for four would be mostly empty
-        panel, and four lanes squeezed into one lane's height would cost the step bars the
-        resolution that makes them worth dragging. Also grows and shrinks with which
-        workspace is selected -- a CC lane is taller than a Note lane, and each workspace's
-        own settings panel is only as tall as its own columns need.
+    //--------------------------------------------------------------------------
+    // Settings-footer column widths, including each column's own 18px padding either side.
+    // Fixed rather than a share of the window: the columns then land in the same places on both
+    // tabs, and a row's caption stays near the value it names instead of being stretched away
+    // from it.
+    constexpr int settingsColumn     = 220;
+    constexpr int settingsColumnWide = 250;   ///< Clock, whose rows carry a track and a read-out.
+    constexpr int ccMixColumn        = 260;   ///< Mix CC, which carries a group break as well.
+    constexpr int ccLaneColumn       = 200;
+
+    /** The window grows and shrinks with the lane count rather than the lanes sharing a fixed
+        height between them: one lane in a window sized for four would be mostly empty panel,
+        and four lanes squeezed into one lane's height would cost the step bars the resolution
+        that makes them worth dragging. Also grows and shrinks with which workspace is
+        selected, since each one's footer is only as tall as its own columns need.
     */
-    int windowHeightForWorkspace (int numActiveLanes, int laneHeightForKind, int settingsPanelHeight)
+    int windowHeightForWorkspace (int numActiveLanes, params::LaneKind kind,
+                                  bool showingAddLane, int settingsPanelHeight)
     {
-        return margin * 2 + headerHeight + gap
-                 + TabStrip::height + gap
-                 + numActiveLanes * (laneHeightForKind + gap)
-                 + laneBarHeight + gap
+        return headerHeight
+                 + TabStrip::height
+                 + numActiveLanes * lane::heightFor (kind)
+                 + (showingAddLane ? addLaneHeight : 0)
                  + settingsPanelHeight;
     }
+}
 
-    /** A settings page's own panel height: the reduced(14, 8) margin layoutContent() applies
-        (8 top, 8 bottom) plus however tall its tallest column actually is -- there is no
-        longer a sub-tab strip to add on top of that, since the top-level Notes/CC split
-        already separates what Pitch/Timing/Routing used to.
-    */
-    int settingsPanelHeightFor (const TabPage& page)
-    {
-        return 16 + page.getPreferredHeight();
-    }
+//==============================================================================
+void RavelAudioProcessorEditor::ContentComponent::paint (juce::Graphics& g)
+{
+    // The header's own band. A shallow vertical gradient rather than a flat fill: it is the one
+    // band above the lane stack, and the gradient is what gives it an edge to sit on without a
+    // second rule being drawn under the one already there.
+    g.setGradientFill (juce::ColourGradient::vertical (theme::headerTop, (float) headerArea.getY(),
+                                                       theme::headerBottom, (float) headerArea.getBottom()));
+    g.fillRect (headerArea);
+
+    g.setColour (theme::outline);
+    g.fillRect (headerArea.withTop (headerArea.getBottom() - 1));
+
+    // Four bars at four heights, one per lane accent -- the mark is the four lanes. Drawn
+    // rather than shipped as an image so it follows theme::laneAccent instead of quietly
+    // disagreeing with it.
+    theme::drawLogoMark (g, markArea.toFloat());
+
+    g.setFont (theme::wordmarkFont());
+    g.setColour (theme::textBright);
+    g.drawText ("Ravel", wordmarkArea, juce::Justification::centredLeft, false);
+
+    // Separates the identity from the controls. The header runs left to right from what this
+    // plugin *is*, through what the patch is, to where its output goes -- and this is the only
+    // one of those joins that needs marking, because the other two are separated by space.
+    g.setColour (theme::outline);
+    g.fillRect (dividerArea);
 }
 
 //==============================================================================
@@ -78,12 +102,6 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
 
     setConstrainer (&sizeConstrainer);
     setResizable (true, true);
-
-    titleLabel.setText ("RAVEL", juce::dontSendNotification);
-    titleLabel.setFont (theme::titleFont());
-    titleLabel.setColour (juce::Label::textColourId, theme::text);
-    titleLabel.setInterceptsMouseClicks (false, false);
-    content.addAndMakeVisible (titleLabel);
 
     // The same two entry points the keyboard shortcuts use, so a click and a Ctrl+Z are the
     // same operation. Refreshed straight afterwards rather than left to the timer, so the
@@ -127,7 +145,7 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
 
     addNoteLaneButton.setTooltip ("Add a lane at the bottom of the stack. Each lane carries "
                                   "its own Remove button");
-    theme::styleActionButton (addNoteLaneButton);
+    theme::setRole (addNoteLaneButton, theme::Role::addLane);
     addNoteLaneButton.onClick = [this] { setNoteLaneCount (noteLaneCount + 1); };
     notesWorkspace.addChildComponent (addNoteLaneButton);
 
@@ -144,7 +162,7 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
 
     addCcLaneButton.setTooltip ("Add a lane at the bottom of the stack. Each lane carries "
                                 "its own Remove button");
-    theme::styleActionButton (addCcLaneButton);
+    theme::setRole (addCcLaneButton, theme::Role::addLane);
     addCcLaneButton.onClick = [this] { setCcLaneCount (ccLaneCount + 1); };
     ccWorkspace.addChildComponent (addCcLaneButton);
 
@@ -206,11 +224,8 @@ RavelAudioProcessorEditor::~RavelAudioProcessorEditor()
 //==============================================================================
 void RavelAudioProcessorEditor::buildWorkspaces()
 {
-    // No sub-tab strip under either page any more: the top-level Notes/CC split already
-    // separates what Pitch/Timing/Routing used to, so what is left under each tab is short
-    // enough to lay out as one flat row of columns.
-    auto& pitch = notesSettingsPage.addColumn ("Pitch");
-    pitch.add (params::rootNoteId,   "Root");
+    auto& pitch = notesSettingsPage.addColumn ("Pitch", settingsColumn);
+    pitch.add (params::rootNoteId, "Root");
     scaleRow = pitch.add (params::scaleId, "Scale");
     scaleRow->setTooltip ("Scales named 19, 23, 31, 41 or 53 divide the octave into that many "
                           "equal steps. Their degrees land between the keys, so they play as a "
@@ -220,32 +235,35 @@ void RavelAudioProcessorEditor::buildWorkspaces()
          ->setTooltip ("On: pitch snaps to the selected scale. Off: continuous microtonal "
                        "pitch, sent as a note plus pitch bend");
 
-    auto& output = notesSettingsPage.addColumn ("Output");
+    auto& output = notesSettingsPage.addColumn ("Output", settingsColumn);
     bendRangeRow = output.add (params::bendRangeId, "Bend range");
     bendRangeRow->setTooltip ("This property has to match your instrument's pitch bend range value");
-    output.add (params::noteOffsetId, "Offset")
+
+    // Whole octaves, -3 to +3: seven positions rather than a continuum, so it gets seven cells
+    // lighting out from a marked centre instead of a track. See RowStyle::octaves.
+    output.add (params::noteOffsetId, "Offset", RowStyle::octaves)
           ->setTooltip ("Transposes every note by whole octaves, after Root, Range and the "
-                        "scale have resolved the pitch -- the pattern keeps its shape and "
-                        "its scale degrees, it just moves. Notes clamp to the MIDI range");
+                        "scale have resolved the pitch -- the pattern keeps its shape and its "
+                        "scale degrees, it just moves. Notes clamp to the MIDI range");
+
     output.add (params::mpeEnabledId, "MPE")
           ->setTooltip ("Gives every simultaneously-sounding note its own MIDI channel -- a "
                         "standard MPE zone, master channel 1 plus member channels 2-16 -- so "
                         "overlapping notes bend independently instead of sharing one wheel. "
                         "Channel is unused while this is on");
     noteChannelRow = output.add (params::midiChannelId, "Channel");
-    noteChannelRow->setTooltip ("The single channel every note goes out on with MPE off. An "
-                               "MPE zone fixes its own channels, so this does nothing while "
-                               "MPE is on");
+    noteChannelRow->setTooltip ("The single channel every note goes out on with MPE off. An MPE "
+                               "zone fixes its own channels, so this does nothing while MPE is on");
 
-    auto& voice = notesSettingsPage.addColumn ("Voice");
+    auto& voice = notesSettingsPage.addColumn ("Voice", settingsColumn);
     voice.add (params::voiceCountId, "Voices");
     voice.add (params::polyModeId, "Poly")
          ->setTooltip ("In Poly mode each lane outputs its own independent note");
 
-    auto& clock = notesSettingsPage.addColumn ("Clock");
-    clock.add (params::swingId,   "Swing")
-         ->setTooltip ("Delays every other step of the grid. Shared with the CC stack -- "
-                       "both fold off the same host clock");
+    auto& clock = notesSettingsPage.addColumn ("Clock", settingsColumnWide);
+    clock.add (params::swingId, "Swing", RowStyle::slider)
+         ->setTooltip ("Delays every other step of the grid. Shared with the CC stack -- both "
+                       "fold off the same host clock");
     clock.add (params::freeRunId, "Free run");
     triggerRow = clock.add (params::noteTriggerSrcId, "Trigger");
 
@@ -253,20 +271,44 @@ void RavelAudioProcessorEditor::buildWorkspaces()
 
     //--------------------------------------------------------------------------
     // The CC tab's own Mix destination: the CC-lane fold's output, same idea as pitch is the
-    // Note-lane fold's output. Each CC lane's own destination lives on its own strip instead
-    // of here -- see LaneComponent.
-    auto& ccOutput = ccSettingsPage.addColumn ("Output");
-    ccOutput.add (params::ccOnId,      "Send")
-            ->setTooltip ("Turns the Mix CC on or off. Each CC lane's own Send is unaffected");
-    ccOutput.add (params::ccNumberId,  "Number");
-    ccOutput.add (params::ccChannelId, "Channel");
-    ccOutput.add (params::ccOffsetId,  "Offset");
-    ccOutput.add (params::slewId, "Slew")
-            ->setTooltip ("Smooths the Mix CC and every CC lane's own tap. Never touches "
-                         "pitch");
+    // Note-lane fold's output.
+    auto& ccMix = ccSettingsPage.addColumn ("Mix CC", ccMixColumn);
+    ccMix.add (params::ccOnId, "Send")
+         ->setTooltip ("Turns the Mix CC on or off. Each CC lane's own Send is unaffected");
+    ccMix.add (params::ccNumberId,  "Number");
+    ccMix.add (params::ccChannelId, "Channel");
+    ccMix.add (params::ccOffsetId,  "Offset", RowStyle::slider);
 
-    // No Clock column here: Swing is shared with the Notes page, which is where it lives,
-    // and Free run and Trigger were never CC concepts.
+    // Slew is not the Mix CC's -- it smooths every CC this plugin sends, including each lane's
+    // own tap -- so it is separated from the four rows above rather than reading as a fifth
+    // field of the same destination.
+    ccMix.addGroupBreak ("Every CC stream");
+    ccMix.add (params::slewId, "Slew", RowStyle::slider)
+         ->setTooltip ("Smooths the Mix CC and every CC lane's own tap. Never touches pitch");
+
+    // One column per CC lane, carrying the destination that used to sit on the lane strip. See
+    // ccLaneColumns in the header for why it moved.
+    for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
+    {
+        auto& column = ccSettingsPage.addColumn ("Lane " + juce::String (laneIndex + 1), ccLaneColumn);
+
+        // The same accent the lane's rail and step bars carry, which is what ties a column at
+        // the bottom of the window to a strip at the top without either repeating the other.
+        column.setHeadingAccent (theme::laneAccent (laneIndex));
+
+        column.add (params::laneCcOnId (laneIndex), "Send")
+              ->setTooltip ("Send this lane's own value as its own CC, independent of the Mix CC");
+        column.add (params::laneCcNumId (laneIndex),  "Number");
+        column.add (params::laneCcChanId (laneIndex), "Channel");
+        column.add (params::laneCcOffsetId (laneIndex), "Offset", RowStyle::narrowSlider)
+              ->setTooltip ("Shifts this lane's own tap. Independent of the Mix CC's Offset, "
+                            "which shifts the fold instead");
+
+        ccLaneColumns[laneIndex] = &column;
+    }
+
+    // No Clock column here: Swing is shared with the Notes page, which is where it lives, and
+    // Free run and Trigger were never CC concepts.
     ccWorkspace.addAndMakeVisible (ccSettingsPage);
 }
 
@@ -380,6 +422,20 @@ void RavelAudioProcessorEditor::applyCcLaneCount (int newCount)
 
     addCcLaneButton.setVisible (ccLaneCount < params::numLanes);
 
+    // The footer keeps a column for every lane the plugin *could* have, and greys the ones this
+    // instance does not currently have rather than taking them away. Their parameters still
+    // exist -- a VST3 cannot add parameters later, so all four are always there -- and a column
+    // that vanishes and reappears as the lane count changes is harder to read than one that
+    // dims in place, because everything to its right would shuffle sideways each time.
+    if (appliedCcLaneColumns != ccLaneCount)
+    {
+        appliedCcLaneColumns = ccLaneCount;
+
+        for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
+            if (ccLaneColumns[laneIndex] != nullptr)
+                ccLaneColumns[laneIndex]->setDimmed (laneIndex >= ccLaneCount);
+    }
+
     if (outputTabs.getSelectedIndex() == 1)
         updateSizeConstraints();
 }
@@ -425,8 +481,10 @@ void RavelAudioProcessorEditor::updateSizeConstraints()
                                     : 1.0;
 
     nativeContentHeight = outputTabs.getSelectedIndex() == 0
-        ? windowHeightForWorkspace (noteLaneCount, laneHeight, settingsPanelHeightFor (notesSettingsPage))
-        : windowHeightForWorkspace (ccLaneCount, laneHeight, settingsPanelHeightFor (ccSettingsPage));
+        ? windowHeightForWorkspace (noteLaneCount, params::LaneKind::note,
+                                     addNoteLaneButton.isVisible(), notesSettingsPage.getPreferredHeight())
+        : windowHeightForWorkspace (ccLaneCount, params::LaneKind::cc,
+                                     addCcLaneButton.isVisible(), ccSettingsPage.getPreferredHeight());
 
     // Locked so a drag-resize zooms uniformly rather than stretching bars into ellipses.
     sizeConstrainer.setFixedAspectRatio ((double) nativeContentWidth / (double) nativeContentHeight);
@@ -472,66 +530,70 @@ void RavelAudioProcessorEditor::storeEditorSize()
 
 namespace
 {
-    /** The lane-stack-plus-add-button-plus-footer layout, run once per workspace against
-        that workspace's own bounds. Both get this same shape -- only the lane kind, lane
-        height and settings page differ -- so it is written once rather than duplicated for
-        Notes and for CC.
+    /** The lane-stack-plus-add-button-plus-footer layout, run once per workspace against that
+        workspace's own bounds. Both get this same shape -- only the lane kind and the settings
+        page differ -- so it is written once rather than duplicated for Notes and for CC.
 
         A template only because WorkspaceComponent is private to the editor and this lives
         outside it; there is one instantiation, and it is the same code either way.
     */
     template <typename WorkspaceType>
-    void layoutWorkspace (WorkspaceType& workspace, int activeLaneCount, int laneHeightForKind,
-                         juce::OwnedArray<LaneComponent>& lanesArray, juce::TextButton& addButton,
-                         TabPage& settingsPage)
+    void layoutWorkspace (WorkspaceType& workspace, int activeLaneCount, params::LaneKind kind,
+                          juce::OwnedArray<LaneComponent>& lanesArray, juce::TextButton& addButton,
+                          TabPage& settingsPage)
     {
-        // The workspace itself is full window width and runs to the window's bottom edge
-        // (see layoutContent) so that the footer below can span edge to edge and sit flush
-        // against the bottom -- a bar, not a card floating inside the outer margin. The lane
-        // stack and add-lane bar are not the footer, so they get that margin back here,
-        // horizontally, to stay aligned under the header and tab strip above them.
-        auto r = workspace.getLocalBounds().reduced (margin, 0);
+        // Full width, no outer margin: a lane is a row of a list that runs edge to edge, and it
+        // carries its own padding and its own bottom hairline. See LaneComponent::paint().
+        auto r = workspace.getLocalBounds();
 
-        for (int lane = 0; lane < juce::jmin (activeLaneCount, lanesArray.size()); ++lane)
-        {
-            lanesArray[lane]->setBounds (r.removeFromTop (laneHeightForKind));
-            r.removeFromTop (gap);
-        }
+        const int laneHeight = lane::heightFor (kind);
+
+        for (int laneIndex = 0; laneIndex < juce::jmin (activeLaneCount, lanesArray.size()); ++laneIndex)
+            lanesArray[laneIndex]->setBounds (r.removeFromTop (laneHeight));
 
         // Add sits where the next lane would go, so the button that makes a lane appear is
-        // already standing in its place. Removing is a per-lane button, inside the lane it
-        // takes out, so nothing else shares this bar.
-        auto laneBar = r.removeFromTop (laneBarHeight);
-        addButton.setBounds (laneBar.removeFromLeft (86));
+        // already standing in its place -- and spans the full width, because that is the shape
+        // of the thing it adds. Removing is a per-lane button inside the lane it takes out, so
+        // nothing else shares this bar.
+        if (addButton.isVisible())
+            addButton.setBounds (r.removeFromTop (addLaneHeight));
 
-        r.removeFromTop (gap);
-
-        // The footer: full workspace width (not r's margin-inset width) and down to the
-        // workspace's own bottom edge, which is the window's bottom edge. See
-        // WorkspaceComponent::paint(). Its fill goes edge to edge, but the settings page
-        // inside it is inset by the same margin the lane stack and Add lane button use
-        // above -- reduced(margin, ...) rather than r's own bounds, since r is already
-        // margin-inset and reducing it again would double up -- so the Pitch/Output/Voice/
-        // Clock columns line up with the lane cards and the button, not with the bar's own
-        // wider edges.
-        workspace.settingsArea = juce::Rectangle<int> (0, r.getY(),
-                                                        workspace.getWidth(), workspace.getHeight() - r.getY());
-        settingsPage.setBounds (workspace.settingsArea.reduced (margin, 8));
+        // The footer: full workspace width and down to the workspace's own bottom edge, which
+        // is the window's bottom edge. Its band goes edge to edge (see
+        // WorkspaceComponent::paint) while the columns inside it carry their own padding.
+        workspace.settingsArea = r;
+        settingsPage.setBounds (r);
     }
 }
 
 void RavelAudioProcessorEditor::layoutContent()
 {
-    auto r = content.getLocalBounds().reduced (margin);
+    auto r = content.getLocalBounds();
 
     //--------------------------------------------------------------------------
-    auto header = r.removeFromTop (headerHeight);
+    // The header band runs edge to edge; its contents are inset from it.
+    content.headerArea = r.removeFromTop (headerHeight);
 
-    titleLabel.setBounds (header.removeFromLeft (92));
-    header.removeFromLeft (12);
+    auto header = content.headerArea.withTrimmedBottom (1).reduced (headerPadX, 0);
 
-    // Grouped with the title rather than with the mode switches: undo acts on the whole
-    // editor, and putting it in the row of parameters would read as one more parameter.
+    // The mark and the wordmark together are the identity: drawn by content, not laid out as
+    // components, because neither of them is clickable.
+    content.markArea = header.removeFromLeft ((int) theme::logoMarkWidth)
+                             .withSizeKeepingCentre ((int) theme::logoMarkWidth, 17);
+    header.removeFromLeft (8);
+
+    const int wordmarkWidth = (int) std::ceil (
+        juce::GlyphArrangement::getStringWidth (theme::wordmarkFont(), "Ravel"));
+
+    content.wordmarkArea = header.removeFromLeft (wordmarkWidth);
+    header.removeFromLeft (headerGap);
+
+    content.dividerArea = header.removeFromLeft (1).withSizeKeepingCentre (1, 20);
+    header.removeFromLeft (headerGap);
+
+    //--------------------------------------------------------------------------
+    // Grouped with the identity rather than with the patch controls: undo acts on the whole
+    // editor, and putting it beside Save would read as one more preset action.
     auto history = header.removeFromLeft (historyButton * 2 + 4)
                          .withSizeKeepingCentre (historyButton * 2 + 4, historyButton);
 
@@ -539,42 +601,31 @@ void RavelAudioProcessorEditor::layoutContent()
     history.removeFromLeft (4);
     redoButton.setBounds (history.removeFromLeft (historyButton));
 
-    //--------------------------------------------------------------------------
-    // On its own raised pill, the same as the MIDI output control opposite: that is this
-    // header's established mark for something global that is not part of the patch's
-    // parameter grid. Fixed width and left-aligned rather than stretched to fill what the
-    // title leaves over -- the empty surface between this and the MIDI pill is what keeps
-    // the header's two groups reading as two groups.
-    header.removeFromLeft (12);
+    header.removeFromLeft (headerGap);
 
+    //--------------------------------------------------------------------------
+    // Fixed width and left-aligned rather than stretched to fill what the wordmark leaves over
+    // -- the empty header between this and the MIDI chooser is what keeps the header's two
+    // groups reading as two groups.
     presetBar.setBounds (header.removeFromLeft (PresetBar::preferredWidth()));
 
-    //--------------------------------------------------------------------------
-    // Opposite the logo, flush against the header's right edge, on a raised pill rather than
-    // flat on the surface -- see ContentComponent::paint(). Global rather than
+    // Opposite the mark, flush against the header's right edge. Global rather than
     // per-workspace, so the header is where it belongs: it routes both Note and CC output
     // alike, not something either tab owns.
-    // Full header height, not the row height: the pill is the raised ground, and its contents
-    // are centred inside it by the selector's own resized().
     externalMidiSelector.setBounds (header.removeFromRight (ExternalMidiSelector::preferredWidth()));
-
-    r.removeFromTop (gap);
 
     //--------------------------------------------------------------------------
     outputTabs.setBounds (r.removeFromTop (TabStrip::height));
-    r.removeFromTop (gap);
 
-    // Full window width rather than r's margin-inset width, and down to content's own
-    // bottom edge rather than stopping at r's bottom -- the workspace needs both so the
-    // footer it lays out (see layoutWorkspace) can span edge to edge and sit flush against
-    // the window's bottom. Both workspaces get the same bounds; the tab strip decides which
-    // one is visible.
-    juce::Rectangle<int> workspaceBounds (0, r.getY(), nativeContentWidth, nativeContentHeight - r.getY());
-    notesWorkspace.setBounds (workspaceBounds);
-    ccWorkspace.setBounds (workspaceBounds);
+    // Both workspaces get the same bounds -- everything left under the tab strip, down to the
+    // window's bottom edge. The tab strip decides which one is visible.
+    notesWorkspace.setBounds (r);
+    ccWorkspace.setBounds (r);
 
-    layoutWorkspace (notesWorkspace, noteLaneCount, laneHeight, noteLanes, addNoteLaneButton, notesSettingsPage);
-    layoutWorkspace (ccWorkspace, ccLaneCount, laneHeight, ccLanes, addCcLaneButton, ccSettingsPage);
+    layoutWorkspace (notesWorkspace, noteLaneCount, params::LaneKind::note,
+                     noteLanes, addNoteLaneButton, notesSettingsPage);
+    layoutWorkspace (ccWorkspace, ccLaneCount, params::LaneKind::cc,
+                     ccLanes, addCcLaneButton, ccSettingsPage);
 }
 
 //==============================================================================

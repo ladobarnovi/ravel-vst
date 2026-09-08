@@ -43,14 +43,13 @@ parameter count from doubling for nothing.
 | Lane toggle | on/off | Mutes the whole lane: transparent for the mix, triggers nothing |
 | Length | 1–16 | Shorter lanes phase against longer ones. Steps past the length grey out, and stay editable |
 | Rate | 1/1 … 1/32, incl. triplets | Independent per lane — this is where the polyrhythm comes from |
-| Depth | −100 % … +100 % | How much this lane contributes to its stack's fold |
+| Mix amount | −100 % … +100 % | How much this lane contributes to its stack's fold. Signed, and drawn filling out from a marked centre |
 | 16 velocity bars | 0–100 % | *Note lanes only.* Per-step accent, as a trim on the fixed master velocity of 100 (100 % is unity, so a bar only ever pulls a step below it) |
 | 16 gate bars | 5–200 % | *Note lanes only.* How long each step's note is held, as % of the step. Above 100 % overlaps into the next step (see Polyphony) |
 | 16 chance bars | 0–100 % | Per-step probability of firing |
 | Direction | Forward, Reverse, Ping-Pong, Random | *Note lanes only* |
-| Send / Number / Channel / Offset | on/off, 0–127, 1–16, 0–100 % | *CC lanes only.* This lane's own CC destination |
 | RND / CLR / ⋯ | — | Pattern actions |
-| Remove | — | Takes this lane out. The lanes below it move up to close the gap |
+| ✕ | — | Takes this lane out. The lanes below it move up to close the gap |
 
 On a **Note lane** the sixteen tall bars edit one of four per-step rows at a time, picked with
 the **Value / Velocity / Prob / Gate** selector down the left of the lane. The three that are
@@ -58,9 +57,18 @@ not selected show as faint ticks across the bars, and only where they are away f
 default, so an untouched lane stays clean.
 
 A **CC lane** has no selector — its bars always edit Value, and the column is left blank rather
-than filled with four buttons that would do nothing. Its per-step Chance still exists and still
-works (it decides whether a step reaches the fold, and the fold is what the CC output follows),
-and its tick is still drawn, but it is reachable only through host automation.
+than filled with four chips that would do nothing. The column itself stays, so the step grid
+lines up in the same place on both tabs.
+
+Two of a CC lane's parameters exist without a control on the strip, and both behave the same way:
+they still work, they are still saved and recalled, and they are reachable only through host
+automation. **Chance** decides whether a step reaches the fold, and its tick is still drawn on the
+bars. **Direction** traverses the lane's steps exactly as a Note lane's does, but a CC lane's
+strip has no row for it, so it stays Forward unless something else moves it.
+
+A CC lane's own **Send / Number / Channel / Offset** are not on the strip either — they are a
+destination rather than a pattern, set once and then left, so they live in the CC tab's footer,
+one column per lane. See [CC outputs](#cc-outputs).
 
 ### Probability
 
@@ -90,11 +98,17 @@ a test asserting that.
 
 There are two kinds, and they are independent:
 
-- **The Mix CC** (CC tab → Output) is the CC stack's fold, exactly as pitch is the Note stack's
-  fold. Its **Send** switch, **Number**, **Channel** and **Offset** live on the CC tab.
-- **Each CC lane's own tap** follows that lane's raw step value and **ignores Depth**, since
-  Depth governs the lane's share of the fold, not its own output. Its Send, Number, Channel and
-  Offset live on the lane's own strip. Defaults are CC 20, 21, 22 and 23 for lanes 1–4.
+- **The Mix CC** (CC tab → *Mix CC*) is the CC stack's fold, exactly as pitch is the Note
+  stack's fold. Its **Send** switch, **Number**, **Channel** and **Offset** are the first column
+  of the CC tab's footer.
+- **Each CC lane's own tap** follows that lane's raw step value and **ignores Mix amount**, since
+  Mix amount governs the lane's share of the fold, not its own output. Its Send, Number, Channel
+  and Offset are that lane's own column in the same footer, headed *Lane 1* … *Lane 4* and marked
+  with the lane's accent. Defaults are CC 20, 21, 22 and 23 for lanes 1–4.
+
+A column for a lane the instance does not currently have is greyed rather than taken away: all
+four lanes' parameters exist from the moment the plugin loads, and a column that vanished and
+reappeared as the lane count changed would shuffle everything to its right each time.
 
 The two Offsets never cross: the CC tab's Offset shifts the Mix CC, and a lane's Offset shifts
 only that lane's tap, so one lane can be recentred without moving the rest. Inactive steps latch
@@ -204,10 +218,14 @@ shown, which is what makes them automatable and undoable like any other control.
 
 ### The tabs
 
-The header carries the title, the two undo arrows, and — opposite the logo — the **MIDI output**
-pill, which routes both stacks alike and so belongs to neither tab (see
-[MPE into Live](#mpe-into-live-the-virtual-port-route)). Everything else global sits under
-whichever of the two top-level tabs it belongs to, laid out as a flat row of columns:
+The header runs left to right from what the plugin *is* to where its output goes: the mark and
+wordmark, the two history arrows, then the **preset pill** — steppers either side of the loaded
+patch's name, with **Save** and **Init** beside it — and, hard against the right edge, the **MIDI
+output** chooser and **Rescan**. The MIDI output routes both stacks alike and so belongs to
+neither tab (see [MPE into Live](#mpe-into-live-the-virtual-port-route)).
+
+Everything else global sits under whichever of the two top-level tabs it belongs to, in the
+footer below that tab's lane stack, laid out as a row of headed columns:
 
 **Notes**
 
@@ -222,7 +240,12 @@ whichever of the two top-level tabs it belongs to, laid out as a flat row of col
 
 | Column | Controls |
 |---|---|
-| Output | Send, Number, Channel, Offset, Slew |
+| Mix CC | Send, Number, Channel, Offset, then — under a rule reading *Every CC stream* — Slew |
+| Lane 1 … Lane 4 | Send, Number, Channel, Offset — that lane's own tap |
+
+Slew sits under its own rule because it is not the Mix CC's: it smooths every CC this plugin
+sends, that lane taps included, and without the break it reads as a fifth field of the
+destination above it.
 
 Swing is not repeated here — it is shared, and lives on the Notes page.
 
@@ -479,6 +502,26 @@ lengths alternated between 5999 and 6001 samples. Fixed with a boundary epsilon 
 `SequencerEngine::process`, sized ~1000× smaller than one sample's worth of PPQ so it can
 only ever snap a value already inside rounding noise.
 
+### Looking at the UI
+
+The editor is a `juce::Component`, and a Component can paint itself into an image without ever
+reaching a desktop window — so the whole window can be rendered to a PNG from a build step
+rather than by loading the VST3 into a DAW and taking a screenshot by hand. Layout constants are
+the kind of thing that stays wrong by four pixels until someone actually looks at it.
+
+Off unless asked for, because it builds a second copy of the editor:
+
+```powershell
+cmake -S . -B build -DRAVEL_SNAPSHOT_SOURCE=Tests/Snapshot.cpp
+cmake --build build --target RavelSnapshot --config Debug
+.\build\RavelSnapshot_artefacts\Debug\RavelSnapshot.exe out.png notes 3
+```
+
+The arguments are the output file, which tab (`notes` or `cc`) and how many lanes. It dials in a
+fixed patch first — odd lane lengths, a muted lane, some steps switched off, some probability and
+gate away from default — because at its defaults the window shows none of the states worth
+checking: no wrap marker, no out-of-cycle steps, no ghost ticks, no negative Mix amount.
+
 ---
 
 ## Using it in Live 12
@@ -606,17 +649,20 @@ already includes M4L, and its modulation API can target any parameter directly.
 | `Source/SequencerEngine.*` | The sequencer core and MIDI generation |
 | `Source/PluginProcessor.*` | Plugin plumbing, playhead handling, state save/load |
 | `Source/PluginEditor.*` | Window layout, the header, and the Notes/CC workspaces |
-| `Source/PresetBar.*` | The header's preset pill: browser menu, name prompt, edited marker |
-| `Source/ExternalMidiSelector.*` | The header's MIDI-output pill: port list and Rescan |
+| `Source/PresetBar.*` | The header's preset pill, Save and Init: browser menu, name prompt, edited marker |
+| `Source/ExternalMidiSelector.*` | The header's MIDI-output chooser: port list and Rescan |
 | `Source/LaneComponent.*` | One lane: 16 steps plus its controls, in either kind |
 | `Source/Controls.*` | Shared row/column/tab building blocks the editor and lanes are built from |
 | `Source/PresetManager.*` | Saving, loading and browsing patches |
 | `Source/UndoHistory.*` | The edit history behind the arrows and Ctrl+Z |
 | `Source/ExternalMidiOutput.*` | Mirrors output to a system MIDI port, off the audio thread |
-| `Source/Theme.h` | Colours, metrics and the small drawing helpers |
+| `Source/Theme.h` | Colours, metrics, widget roles and the small drawing helpers |
+| `Source/Theme.cpp` | The two embedded Archivo faces, created once and cached |
 | `Source/RavelLookAndFeel.*` | Draws every custom widget, dispatching on `theme::roleOf()` |
+| `Assets/*.ttf` | Archivo Regular and SemiBold, compiled in by the `RavelFonts` target |
 | `Tests/EngineTests.cpp` | Engine tests, run as a standalone console app |
 | `Tests/ProcessorTests.cpp` | Processor tests, driven through a mock playhead |
+| `Tests/Snapshot.cpp` | Renders the editor to a PNG with no host — see [Looking at the UI](#looking-at-the-ui) |
 
 Both lane kinds are the same `LaneComponent`, told at construction which `params::LaneKind` it
 is; the same goes for the pattern actions and the engine's lane fold. That is what keeps the two

@@ -72,7 +72,30 @@ namespace
 
     juce::String percentText (float value, int)
     {
-        return juce::String (juce::roundToInt (value * 100.0f)) + " %";
+        return juce::String (juce::roundToInt (value * 100.0f)) + "%";
+    }
+
+    /** The same, but always carrying its sign.
+
+        Only the bipolar parameters use this -- a lane's Mix amount, which runs -100 to +100
+        and rests at zero. Those are drawn as a bar filling out from a marked centre, and a
+        read-out of "38%" beside a bar filling to the left of centre disagrees with it.
+
+        U+2212 MINUS SIGN rather than an ASCII hyphen, because it is drawn the same width as a
+        digit -- so the number does not jump sideways as the sign appears and disappears under
+        a drag. Written as a code point rather than as a string literal so this file stays pure
+        ASCII: a UTF-8 literal here is one careless re-save or patch away from being
+        double-encoded, and the symptom is a garbled read-out rather than a build error.
+    */
+    juce::String signedPercentText (float value, int)
+    {
+        const int percent = juce::roundToInt (value * 100.0f);
+
+        const auto sign = percent > 0 ? juce::String ("+")
+                        : percent < 0 ? juce::String::charToString (0x2212)
+                                      : juce::String();
+
+        return sign + juce::String (std::abs (percent)) + "%";
     }
 
     juce::String noteNameText (int midiNote)
@@ -170,7 +193,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
                 laneName + "Depth",
                 juce::NormalisableRange<float> (-1.0f, 1.0f, 0.001f),
                 defaultDepth[lane],
-                juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
+                juce::AudioParameterFloatAttributes().withStringFromValueFunction (signedPercentText)));
 
             // A CC lane's own steps traverse the same way a Note lane's do -- Forward,
             // Reverse, Ping-Pong or Random -- so both kinds get this parameter.
@@ -189,7 +212,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
             // Sensible unused defaults: CC 20, 21, 22, 23 for lanes 1-4.
             layout.add (std::make_unique<juce::AudioParameterInt> (
                 juce::ParameterID { laneCcNumId (lane), versionHint },
-                laneName + "Number", 0, 127, 20 + lane));
+                laneName + "Number", 0, 127, 20 + lane,
+                juce::AudioParameterIntAttributes().withStringFromValueFunction (
+                    [] (int v, int) { return "CC " + juce::String (v); })));
 
             layout.add (std::make_unique<juce::AudioParameterInt> (
                 juce::ParameterID { laneCcChanId (lane), versionHint },
@@ -228,7 +253,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     layout.add (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { bendRangeId, versionHint }, "Bend Range", 1, 48, 2,
         juce::AudioParameterIntAttributes().withStringFromValueFunction (
-            [] (int v, int) { return juce::String (v) + " st"; })));
+            [] (int v, int) { return juce::String::charToString (0x00b1) + juce::String (v); })));
 
     // 24 is C0. Low, deliberately: Range climbs from Root, so a low root leaves the whole
     // MIDI span above it reachable instead of clipping at the top of a large Range.
@@ -262,7 +287,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         juce::ParameterID { ccOnId, versionHint }, "CC Send", true));
 
     layout.add (std::make_unique<juce::AudioParameterInt> (
-        juce::ParameterID { ccNumberId, versionHint }, "CC Number", 0, 127, 1));
+        juce::ParameterID { ccNumberId, versionHint }, "CC Number", 0, 127, 1,
+        juce::AudioParameterIntAttributes().withStringFromValueFunction (
+            [] (int v, int) { return "CC " + juce::String (v); })));
 
     layout.add (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { ccChannelId, versionHint }, "CC Channel", 1, 16, 1));
