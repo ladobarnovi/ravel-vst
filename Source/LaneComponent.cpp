@@ -21,14 +21,14 @@ namespace
 
 namespace
 {
-    /** How long a layer switch takes to slide, and how it is paced.
+    /** How long a slide takes, and how it is paced.
 
         Short enough to feel like a state change rather than an animation you wait through --
         the point is to show that the bars moved rather than were replaced, and that reads in
         well under a fifth of a second. Eased out, so it leaves immediately on the click and
         settles into the new heights rather than arriving at speed.
     */
-    constexpr double layerTransitionMs = 140.0;
+    constexpr double valueSlideMs = 140.0;
 
     float easeOut (float t) noexcept
     {
@@ -187,12 +187,12 @@ float StepSlot::drawnProportion() const
                               : proportionOf (const_cast<StepSlot*> (this)->sliderFor (currentLayer));
 }
 
-void StepSlot::beginLayerTransition()
+void StepSlot::beginValueSlide()
 {
     transitionFrom = drawnProportion();
 }
 
-void StepSlot::setLayerTransitionProgress (float progress)
+void StepSlot::setValueSlideProgress (float progress)
 {
     if (transitionFrom < 0.0f)
         return;
@@ -501,12 +501,18 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
     //--------------------------------------------------------------------------
     randomiseButton.setTooltip ("Randomize this lane's sixteen step values");
     theme::setRole (randomiseButton, theme::Role::laneAction);
-    randomiseButton.onClick = [this, kind] { params::randomiseLaneValues (apvts, lane, random, kind); };
+    randomiseButton.onClick = [this, kind]
+    {
+        slideThrough ([this, kind] { params::randomiseLaneValues (apvts, lane, random, kind); });
+    };
     addAndMakeVisible (randomiseButton);
 
     clearButton.setTooltip ("Zero this lane's sixteen step values");
     theme::setRole (clearButton, theme::Role::laneAction);
-    clearButton.onClick = [this, kind] { params::clearLaneValues (apvts, lane, kind); };
+    clearButton.onClick = [this, kind]
+    {
+        slideThrough ([this, kind] { params::clearLaneValues (apvts, lane, kind); });
+    };
     addAndMakeVisible (clearButton);
 
     menuButton.setTooltip ("Rotate, invert, copy and paste this lane's pattern");
@@ -747,7 +753,7 @@ void LaneComponent::setLayer (StepLayer layer)
     // succession.
     if (changed)
         for (auto* slot : slots)
-            slot->beginLayerTransition();
+            slot->beginValueSlide();
 
     currentLayer = layer;
 
@@ -757,32 +763,48 @@ void LaneComponent::setLayer (StepLayer layer)
     for (auto* slot : slots)
         slot->setLayer (layer);
 
-    if (! changed)
-        return;
+    if (changed)
+        startValueSlide();
+}
 
-    layerTransitionStartMs = juce::Time::getMillisecondCounterHiRes();
+void LaneComponent::startValueSlide()
+{
+    valueSlideStartMs = juce::Time::getMillisecondCounterHiRes();
 
     // Applied at zero straight away rather than left to the first timer callback, so the new
-    // layer's heights never show for the frame between the click and that callback.
-    applyLayerTransition (0.0f);
+    // heights never show for the frame between the click and that callback.
+    applyValueSlide (0.0f);
 
     startTimerHz (60);
 }
 
-void LaneComponent::applyLayerTransition (float progress)
+void LaneComponent::slideThrough (const std::function<void()>& edit)
+{
+    // Before the edit, because writing the parameters moves the sliders under us: the
+    // attachments apply a message-thread parameter change synchronously, so by the time edit()
+    // returns the bars already hold their new heights and there is nothing left to capture.
+    for (auto* slot : slots)
+        slot->beginValueSlide();
+
+    edit();
+
+    startValueSlide();
+}
+
+void LaneComponent::applyValueSlide (float progress)
 {
     const float eased = progress >= 1.0f ? 1.0f : easeOut (progress);
 
     for (auto* slot : slots)
-        slot->setLayerTransitionProgress (eased);
+        slot->setValueSlideProgress (eased);
 }
 
 void LaneComponent::timerCallback()
 {
-    const double elapsed = juce::Time::getMillisecondCounterHiRes() - layerTransitionStartMs;
-    const float progress = (float) juce::jlimit (0.0, 1.0, elapsed / layerTransitionMs);
+    const double elapsed = juce::Time::getMillisecondCounterHiRes() - valueSlideStartMs;
+    const float progress = (float) juce::jlimit (0.0, 1.0, elapsed / valueSlideMs);
 
-    applyLayerTransition (progress);
+    applyValueSlide (progress);
 
     if (progress >= 1.0f)
         stopTimer();
@@ -814,15 +836,25 @@ void LaneComponent::showActionsMenu()
                             const int laneIndex = safeThis->lane;
                             const auto laneKind = safeThis->kind;
 
-                            switch (result)
+                            // Copy is the one entry that changes nothing on screen, so it is
+                            // the one that does not slide.
+                            if (result == 4)
                             {
-                                case 1: params::rotateLane (state, laneIndex, -1, laneKind); break;
-                                case 2: params::rotateLane (state, laneIndex, 1, laneKind); break;
-                                case 3: params::invertLaneValues (state, laneIndex, laneKind); break;
-                                case 4: safeThis->clipboard = params::copyLane (state, laneIndex, laneKind); break;
-                                case 5: params::pasteLane (state, laneIndex, safeThis->clipboard, laneKind); break;
-                                default: break;
+                                safeThis->clipboard = params::copyLane (state, laneIndex, laneKind);
+                                return;
                             }
+
+                            safeThis->slideThrough ([&]
+                            {
+                                switch (result)
+                                {
+                                    case 1: params::rotateLane (state, laneIndex, -1, laneKind); break;
+                                    case 2: params::rotateLane (state, laneIndex, 1, laneKind); break;
+                                    case 3: params::invertLaneValues (state, laneIndex, laneKind); break;
+                                    case 5: params::pasteLane (state, laneIndex, safeThis->clipboard, laneKind); break;
+                                    default: break;
+                                }
+                            });
                         });
 }
 

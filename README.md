@@ -62,8 +62,17 @@ you are actually editing.
 Switching rows **slides** the bars from the heights they were at to the heights they are going
 to, over about 140 ms, eased out. Sixteen bars changing height at once otherwise reads as the
 grid being replaced; sliding them says the pattern stayed where it was and you changed which of
-its rows you are looking at. The slide only ever borrows the height a bar draws to — it never
-touches the parameter, so nothing reaches the host or the undo history.
+its rows you are looking at.
+
+The same slide runs for every **pattern action that rewrites the values** — RND, CLR, Rotate,
+Invert and Paste — for the same reason, and it is the same code: the slide reads its destination
+live rather than capturing it, so it does not care whether the bars moved because a different
+slider is being read or because that slider's value changed. Copy is the one entry that does not
+slide, because it changes nothing on screen.
+
+The slide only ever borrows the height a bar draws to — it never touches the parameter, so
+nothing reaches the host or the undo history, and a pattern action is still exactly one undo
+step.
 
 A **CC lane** gets the same selector with one chip in it: **Value**, latched, because that is
 the only layer its bars have. Velocity and Gate are only ever arguments to *start a note* and a
@@ -527,9 +536,9 @@ cmake --build build --target RavelSnapshot --config Debug
 .\build\RavelSnapshot_artefacts\Debug\RavelSnapshot.exe out.png notes 3
 ```
 
-A fourth argument — `Val`, `Vel`, `Prob` or `Gate` — clicks that layer chip on every lane and
-writes one numbered frame per sample point across the slide that follows, so the animation can be
-reviewed from stills. Build the tool `--config Release` for that: a Debug paint of the window
+A fourth argument — the label of a chip on the lane strips, so `Val`, `Vel`, `Prob`, `Gate`,
+`RND` or `CLR` — clicks that chip on every lane and writes one numbered frame per sample point
+across the slide that follows, so the animation can be reviewed from stills. Build the tool `--config Release` for that: a Debug paint of the window
 costs more wall clock than the slide lasts, so every frame would show it already finished.
 
 The first three arguments are the output file, which tab (`notes` or `cc`) and how many lanes. It dials in a

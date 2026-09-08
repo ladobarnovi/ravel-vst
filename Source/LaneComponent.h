@@ -160,24 +160,28 @@ public:
     void setLayer (StepLayer layer);
 
     //==========================================================================
-    // Sliding the bar from the outgoing layer's height to the incoming one's, driven by the
-    // lane -- it owns the clock, because all sixteen slots have to move together.
+    // Sliding the bar from the height it is drawn at to the height it is about to have,
+    // driven by the lane -- it owns the clock, because all sixteen slots have to move
+    // together. Used for both things that change every bar at once: switching which layer the
+    // bars show, and a pattern action rewriting the values under them.
 
-    /** Remembers where this bar is drawn right now, before the layer under it changes.
+    /** Remembers where this bar is drawn right now, before whatever is about to change it.
 
-        Taken from what is on screen rather than from the outgoing layer's value, so that
-        switching again mid-slide continues from where the bar actually is instead of snapping
-        back to a height it had already left.
+        Taken from what is on screen rather than from the parameter, so that a second switch or
+        a second Randomize mid-slide continues from where the bar actually is instead of
+        snapping back to a height it had already left.
     */
-    void beginLayerTransition();
+    void beginValueSlide();
 
-    /** Moves the bar that far from the remembered height toward the new layer's own, 0 to 1.
+    /** Moves the bar that far from the remembered height toward its current one, 0 to 1.
 
-        The destination is read live rather than captured, so a value that moves during the
-        slide -- from the host, or from an undo -- is animated toward rather than ignored.
+        The destination is read live rather than captured, which is what lets one mechanism
+        serve both callers: a layer switch changes which slider is read, a pattern action
+        changes what that slider holds, and neither has to tell this where it is going. It also
+        means a value that moves mid-slide is animated toward rather than ignored.
         At 1 the override is dropped and the bar goes back to drawing its own value.
     */
-    void setLayerTransitionProgress (float progress);
+    void setValueSlideProgress (float progress);
 
     /** Dims the whole slot while its lane is muted, so a muted lane still shows its pattern
         and its playhead but never competes with the lanes that are actually sounding. */
@@ -355,18 +359,27 @@ private:
     void setLayer (StepLayer);
 
     //--------------------------------------------------------------------------
-    /** Slides every bar from the layer that was showing to the one now selected.
+    /** Runs a pattern edit with the bars sliding to their new heights rather than jumping.
 
-        Driven from here rather than from the slots because the sixteen of them have to move
-        as one: a timer each would let them drift apart by a frame, which is exactly the thing
-        the slide exists to avoid. The timer only runs while a slide is in flight.
+        The edit writes parameters, and the sliders follow those synchronously on the message
+        thread -- so the bars' new positions are already in place by the time this returns.
+        That is why the slide has to capture where they were *first*, and why every caller has
+        to come through here rather than calling the params:: function directly.
     */
+    void slideThrough (const std::function<void()>& edit);
+
+    /** Starts the clock, having already captured where the bars are. */
+    void startValueSlide();
+
+    /** Driven from here rather than from the slots because the sixteen of them have to move as
+        one: a timer each would let them drift apart by a frame, which is exactly the thing the
+        slide exists to avoid. Only runs while a slide is in flight. */
     void timerCallback() override;
 
     /** Pushes one frame of the slide out to the slots, easing on the way. */
-    void applyLayerTransition (float progress);
+    void applyValueSlide (float progress);
 
-    double layerTransitionStartMs = 0.0;
+    double valueSlideStartMs = 0.0;
 
     /** Pushes the mute through to the slots and the lane's own accents. Tracks the last state
         it applied because Button::onStateChange also fires on hover, and repainting sixteen

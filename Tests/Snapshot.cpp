@@ -10,11 +10,12 @@
     Not part of the plugin, and not built by default -- CMake only creates the target when
     RAVEL_SNAPSHOT_SOURCE points at this file.
 
-    Usage:  RavelSnapshot <out.png> [notes|cc] [laneCount] [layerToSwitchTo]
+    Usage:  RavelSnapshot <out.png> [notes|cc] [laneCount] [chipToClick]
 
-    Given a fourth argument -- Val, Vel, Prob or Gate -- it clicks that layer chip on every
-    lane and writes a numbered frame per sample point across the slide that follows, so an
-    animation can be reviewed from stills. Without it, one still of the window.
+    Given a fourth argument -- the label of a chip on the lane strips, so Val, Vel, Prob, Gate,
+    RND or CLR -- it clicks that chip on every lane and writes a numbered frame per sample
+    point across the slide that follows, so an animation can be reviewed from stills. Without
+    it, one still of the window.
 */
 
 #include "PluginEditor.h"
@@ -221,7 +222,7 @@ int main (int argc, char** argv)
             pump (1);
         }
 
-        // The layer chips belong to LaneComponent and are not exposed, so they are found by
+        // The lane's chips belong to LaneComponent and are not exposed, so they are found by
         // their label rather than by widening that class's interface for a debug tool.
         std::vector<juce::TextButton*> buttons;
         collectDescendants<juce::TextButton> (*editor, buttons);
@@ -237,7 +238,7 @@ int main (int argc, char** argv)
 
         if (clicked == 0)
         {
-            std::fprintf (stderr, "no visible layer chip labelled '%s'\n", switchTo.toRawUTF8());
+            std::fprintf (stderr, "no visible lane chip labelled '%s'\n", switchTo.toRawUTF8());
             return 1;
         }
 
