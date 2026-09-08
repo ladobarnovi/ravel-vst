@@ -38,7 +38,13 @@ namespace lane
     //--------------------------------------------------------------------------
     // The step area.
     inline constexpr int stepBarWidth = 48;
-    inline constexpr int stepGap      = 4;   ///< Between one step slot and the next.
+    /** Between one step slot and the next.
+
+        Tight, because the sixteen bars are one pattern rather than sixteen separate controls
+        and should read across as a shape. It does not go to zero: the trig strips under the
+        bars are full slot width, and with no gap at all they join into a single line ruled
+        under the whole step area instead of sixteen marks you can aim at. */
+    inline constexpr int stepGap      = 2;
     inline constexpr int wellPadX      = 8;
     inline constexpr int wellPadTop    = 7;
     inline constexpr int wellPadBottom = 6;
