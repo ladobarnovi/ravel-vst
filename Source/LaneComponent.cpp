@@ -19,6 +19,24 @@ namespace
 
 }
 
+namespace
+{
+    /** How long a layer switch takes to slide, and how it is paced.
+
+        Short enough to feel like a state change rather than an animation you wait through --
+        the point is to show that the bars moved rather than were replaced, and that reads in
+        well under a fifth of a second. Eased out, so it leaves immediately on the click and
+        settles into the new heights rather than arriving at speed.
+    */
+    constexpr double layerTransitionMs = 140.0;
+
+    float easeOut (float t) noexcept
+    {
+        const float inverse = 1.0f - t;
+        return 1.0f - inverse * inverse * inverse;
+    }
+}
+
 //==============================================================================
 int lane::height()
 {
@@ -139,6 +157,10 @@ juce::Slider& StepSlot::sliderFor (StepLayer layer) noexcept
 
 void StepSlot::setLayer (StepLayer layer)
 {
+    // The bar being hidden must not keep an override from a slide it was part of, or it would
+    // come back at that height the next time this layer is selected.
+    theme::clearDrawProportion (sliderFor (currentLayer));
+
     currentLayer = layer;
 
     for (auto l : { StepLayer::value, StepLayer::velocity, StepLayer::chance, StepLayer::gate })
@@ -146,6 +168,49 @@ void StepSlot::setLayer (StepLayer layer)
 
     applyTrigState();
     repaint();
+}
+
+float StepSlot::proportionOf (const juce::Slider& slider)
+{
+    const auto range = slider.getRange();
+
+    return range.getLength() > 0.0
+             ? (float) juce::jlimit (0.0, 1.0, (slider.getValue() - range.getStart()) / range.getLength())
+             : 0.0f;
+}
+
+float StepSlot::drawnProportion() const
+{
+    const float overridden = theme::drawProportionOf (const_cast<StepSlot*> (this)->sliderFor (currentLayer));
+
+    return overridden >= 0.0f ? overridden
+                              : proportionOf (const_cast<StepSlot*> (this)->sliderFor (currentLayer));
+}
+
+void StepSlot::beginLayerTransition()
+{
+    transitionFrom = drawnProportion();
+}
+
+void StepSlot::setLayerTransitionProgress (float progress)
+{
+    if (transitionFrom < 0.0f)
+        return;
+
+    auto& bar = sliderFor (currentLayer);
+
+    if (progress >= 1.0f)
+    {
+        transitionFrom = -1.0f;
+        theme::clearDrawProportion (bar);
+    }
+    else
+    {
+        theme::setDrawProportion (bar, transitionFrom
+                                         + (proportionOf (bar) - transitionFrom) * progress);
+    }
+
+    bar.repaint();
 }
 
 void StepSlot::setLaneActive (bool laneIsActive)
@@ -673,6 +738,17 @@ void LaneComponent::applyLaneState()
 
 void LaneComponent::setLayer (StepLayer layer)
 {
+    // False on the constructor's own call, which sets the layer the lane opens on -- there is
+    // nothing on screen yet to slide away from.
+    const bool changed = layer != currentLayer;
+
+    // Captured before the layer changes under them, because each slot records where its bar is
+    // drawn *now* -- including mid-slide, if the selector is clicked twice in quick
+    // succession.
+    if (changed)
+        for (auto* slot : slots)
+            slot->beginLayerTransition();
+
     currentLayer = layer;
 
     for (int i = 0; i < numStepLayers; ++i)
@@ -680,6 +756,36 @@ void LaneComponent::setLayer (StepLayer layer)
 
     for (auto* slot : slots)
         slot->setLayer (layer);
+
+    if (! changed)
+        return;
+
+    layerTransitionStartMs = juce::Time::getMillisecondCounterHiRes();
+
+    // Applied at zero straight away rather than left to the first timer callback, so the new
+    // layer's heights never show for the frame between the click and that callback.
+    applyLayerTransition (0.0f);
+
+    startTimerHz (60);
+}
+
+void LaneComponent::applyLayerTransition (float progress)
+{
+    const float eased = progress >= 1.0f ? 1.0f : easeOut (progress);
+
+    for (auto* slot : slots)
+        slot->setLayerTransitionProgress (eased);
+}
+
+void LaneComponent::timerCallback()
+{
+    const double elapsed = juce::Time::getMillisecondCounterHiRes() - layerTransitionStartMs;
+    const float progress = (float) juce::jlimit (0.0, 1.0, elapsed / layerTransitionMs);
+
+    applyLayerTransition (progress);
+
+    if (progress >= 1.0f)
+        stopTimer();
 }
 
 //==============================================================================

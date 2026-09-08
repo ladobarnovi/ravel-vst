@@ -264,6 +264,40 @@ namespace theme
         return (bool) component.getProperties().getWithDefault (stepOffProperty, false);
     }
 
+    /** Overrides the height a step bar draws its fill to, as a proportion of the bar, while a
+        layer switch is animating.
+
+        Switching a lane from Value to Prob replaces every bar's height at once, and sixteen
+        bars jumping together reads as the grid being replaced rather than as the same grid
+        showing a different row of itself. Sliding them across says the pattern stayed put and
+        you changed what you are looking at.
+
+        An override rather than driving the Slider's own value, because the value belongs to
+        the parameter: writing to it to animate would send sixteen bogus gestures to the host
+        and land in the undo history. The bar keeps drawing itself, its colours and its off
+        ring; only the one number it draws to is borrowed.
+
+        Negative (the default) means "draw your own value", which is the state outside a
+        transition.
+    */
+    const juce::Identifier drawProportionProperty { "ravelDrawProportion" };
+
+    inline void setDrawProportion (juce::Component& component, float proportion)
+    {
+        component.getProperties().set (drawProportionProperty, (double) proportion);
+    }
+
+    inline void clearDrawProportion (juce::Component& component)
+    {
+        component.getProperties().remove (drawProportionProperty);
+    }
+
+    inline float drawProportionOf (const juce::Component& component)
+    {
+        return (float) (double) component.getProperties()
+                   .getWithDefault (drawProportionProperty, -1.0);
+    }
+
     /** The accent a widget draws itself in, where that is the lane's colour rather than one of
         the ramp's. Stamped rather than passed, so a step bar, a length bar and a layer chip
         can all be stock JUCE controls that the one shared LookAndFeel colours correctly.

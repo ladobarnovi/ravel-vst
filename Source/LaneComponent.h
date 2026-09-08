@@ -159,6 +159,26 @@ public:
     void setPlaying (bool shouldBePlaying);
     void setLayer (StepLayer layer);
 
+    //==========================================================================
+    // Sliding the bar from the outgoing layer's height to the incoming one's, driven by the
+    // lane -- it owns the clock, because all sixteen slots have to move together.
+
+    /** Remembers where this bar is drawn right now, before the layer under it changes.
+
+        Taken from what is on screen rather than from the outgoing layer's value, so that
+        switching again mid-slide continues from where the bar actually is instead of snapping
+        back to a height it had already left.
+    */
+    void beginLayerTransition();
+
+    /** Moves the bar that far from the remembered height toward the new layer's own, 0 to 1.
+
+        The destination is read live rather than captured, so a value that moves during the
+        slide -- from the host, or from an undo -- is animated toward rather than ignored.
+        At 1 the override is dropped and the bar goes back to drawing its own value.
+    */
+    void setLayerTransitionProgress (float progress);
+
     /** Dims the whole slot while its lane is muted, so a muted lane still shows its pattern
         and its playhead but never competes with the lanes that are actually sounding. */
     void setLaneActive (bool laneIsActive);
@@ -191,9 +211,23 @@ private:
                                                                          gateAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> onAttachment;
 
+    /** Where the visible bar is drawn at this instant, as a proportion of the bar: the
+        in-flight height while a layer switch is animating, and the visible slider's own
+        position otherwise. */
+    float drawnProportion() const;
+
+    /** The visible slider's value as a proportion of its own range. Each layer has its own
+        range -- gate runs 5..200 where value runs 0..1 -- so proportions are what can be
+        interpolated between two of them, not the raw values. */
+    static float proportionOf (const juce::Slider&);
+
     juce::Colour accent;
     bool playing = false;
     bool laneActive = true;
+
+    // Where the bar was when the layer changed, and whether a slide is in flight at all.
+    // -1 when not.
+    float transitionFrom = -1.0f;
 
     // The toggle state the colours on screen were last built for. Tri-state so the first pass
     // always runs; see the onStateChange guard in the constructor.
@@ -229,7 +263,8 @@ private:
     rather than of the pattern in it, and putting them on the strip made a CC lane twice the
     parameter block of a Note lane for something the user sets once.
 */
-class LaneComponent final : public juce::Component
+class LaneComponent final : public juce::Component,
+                            private juce::Timer
 {
 public:
     LaneComponent (juce::AudioProcessorValueTreeState& state, int laneIndex,
@@ -318,6 +353,20 @@ private:
     StepLayer currentLayer = StepLayer::value;
 
     void setLayer (StepLayer);
+
+    //--------------------------------------------------------------------------
+    /** Slides every bar from the layer that was showing to the one now selected.
+
+        Driven from here rather than from the slots because the sixteen of them have to move
+        as one: a timer each would let them drift apart by a frame, which is exactly the thing
+        the slide exists to avoid. The timer only runs while a slide is in flight.
+    */
+    void timerCallback() override;
+
+    /** Pushes one frame of the slide out to the slots, easing on the way. */
+    void applyLayerTransition (float progress);
+
+    double layerTransitionStartMs = 0.0;
 
     /** Pushes the mute through to the slots and the lane's own accents. Tracks the last state
         it applied because Button::onStateChange also fires on hover, and repainting sixteen

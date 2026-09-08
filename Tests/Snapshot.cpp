@@ -10,7 +10,11 @@
     Not part of the plugin, and not built by default -- CMake only creates the target when
     RAVEL_SNAPSHOT_SOURCE points at this file.
 
-    Usage:  RavelSnapshot <out.png> [notes|cc] [laneCount]
+    Usage:  RavelSnapshot <out.png> [notes|cc] [laneCount] [layerToSwitchTo]
+
+    Given a fourth argument -- Val, Vel, Prob or Gate -- it clicks that layer chip on every
+    lane and writes a numbered frame per sample point across the slide that follows, so an
+    animation can be reviewed from stills. Without it, one still of the window.
 */
 
 #include "PluginEditor.h"
@@ -37,6 +41,19 @@ namespace
         }
 
         return nullptr;
+    }
+
+    /** Every component of this type under `root`, in tree order. */
+    template <typename ComponentType>
+    void collectDescendants (juce::Component& root, std::vector<ComponentType*>& found)
+    {
+        for (auto* child : root.getChildren())
+        {
+            if (auto* match = dynamic_cast<ComponentType*> (child))
+                found.push_back (match);
+
+            collectDescendants<ComponentType> (*child, found);
+        }
     }
 
     void setParameter (juce::AudioProcessorValueTreeState& state, const juce::String& id, float plainValue)
@@ -113,6 +130,43 @@ namespace
     {
         juce::MessageManager::getInstance()->runDispatchLoopUntil (milliseconds);
     }
+
+    /** Paints the editor into an image and writes it out. */
+    bool writeSnapshot (juce::Component& editor, const juce::String& path)
+    {
+        juce::Image image (juce::Image::ARGB, editor.getWidth(), editor.getHeight(), true);
+
+        {
+            juce::Graphics g (image);
+
+            // true: paint the children too. Without it this is the editor's own fillAll and
+            // nothing else.
+            editor.paintEntireComponent (g, true);
+        }
+
+        juce::File outputFile (juce::File::getCurrentWorkingDirectory().getChildFile (path));
+        outputFile.deleteFile();
+
+        juce::FileOutputStream stream (outputFile);
+
+        if (! stream.openedOk())
+        {
+            std::fprintf (stderr, "could not open %s for writing\n", outputFile.getFullPathName().toRawUTF8());
+            return false;
+        }
+
+        juce::PNGImageFormat png;
+
+        if (! png.writeImageToStream (image, stream))
+        {
+            std::fprintf (stderr, "PNG encode failed\n");
+            return false;
+        }
+
+        std::printf ("%s  %dx%d\n", outputFile.getFullPathName().toRawUTF8(),
+                     image.getWidth(), image.getHeight());
+        return true;
+    }
 }
 
 int main (int argc, char** argv)
@@ -123,6 +177,7 @@ int main (int argc, char** argv)
     const juce::String outputPath = argc > 1 ? juce::String (argv[1]) : juce::String ("snapshot.png");
     const juce::String workspace  = argc > 2 ? juce::String (argv[2]).toLowerCase() : juce::String ("notes");
     const int laneCount           = argc > 3 ? juce::String (argv[3]).getIntValue() : 3;
+    const juce::String switchTo   = argc > 4 ? juce::String (argv[4]) : juce::String();
 
     RavelAudioProcessor processor;
 
@@ -151,36 +206,99 @@ int main (int argc, char** argv)
 
     editor->setVisible (true);
 
-    juce::Image image (juce::Image::ARGB, editor->getWidth(), editor->getHeight(), true);
-
+    if (switchTo.isNotEmpty())
     {
-        juce::Graphics g (image);
+        // Throwaway paints before anything is timed. The first paints of the window are far
+        // more expensive than the rest -- every typeface still has to be rasterised and every
+        // cached path built -- and on a slide this short that one-off cost would otherwise be
+        // most of the animation, so the first captured frame would already show it finished.
+        // Twice, because one pass does not warm everything the second still pays for.
+        for (int warm = 0; warm < 3; ++warm)
+        {
+            juce::Image warmUp (juce::Image::ARGB, editor->getWidth(), editor->getHeight(), true);
+            juce::Graphics g (warmUp);
+            editor->paintEntireComponent (g, true);
+            pump (1);
+        }
 
-        // true: paint the children too. Without it this is the editor's own fillAll and
-        // nothing else.
-        editor->paintEntireComponent (g, true);
+        // The layer chips belong to LaneComponent and are not exposed, so they are found by
+        // their label rather than by widening that class's interface for a debug tool.
+        std::vector<juce::TextButton*> buttons;
+        collectDescendants<juce::TextButton> (*editor, buttons);
+
+        int clicked = 0;
+
+        for (auto* button : buttons)
+            if (button->getButtonText().equalsIgnoreCase (switchTo) && button->isVisible())
+            {
+                button->triggerClick();
+                ++clicked;
+            }
+
+        if (clicked == 0)
+        {
+            std::fprintf (stderr, "no visible layer chip labelled '%s'\n", switchTo.toRawUTF8());
+            return 1;
+        }
+
+        // triggerClick() posts the callback, so the slide has not started until the queue has
+        // been turned over once.
+        pump (1);
+
+        // Sampled across a little more than the slide's own length, so the last frame shows it
+        // settled rather than leaving the reader guessing whether it ever arrived.
+        // No deliberate gap: painting a frame already costs more than one tick of the slide's
+        // own 60Hz timer, so the capture paces itself. The pump is only there to let that
+        // timer actually run between frames.
+        constexpr int frameCount = 8;
+        constexpr int frameGapMs = 2;
+
+        const auto base = outputPath.upToLastOccurrenceOf (".", false, false);
+
+        // Painted into memory first and written afterwards, because a PNG encode per frame
+        // costs more wall clock than the slide being sampled lasts -- the capture would pace
+        // the animation instead of observing it.
+        std::vector<juce::Image> frames;
+        const double captureStart = juce::Time::getMillisecondCounterHiRes();
+
+        for (int frame = 0; frame < frameCount; ++frame)
+        {
+            juce::Image shot (juce::Image::ARGB, editor->getWidth(), editor->getHeight(), true);
+
+            {
+                juce::Graphics g (shot);
+                editor->paintEntireComponent (g, true);
+            }
+
+            frames.push_back (shot);
+            std::printf ("frame %d at %.0f ms\n", frame,
+                         juce::Time::getMillisecondCounterHiRes() - captureStart);
+
+            pump (frameGapMs);
+        }
+
+        for (int frame = 0; frame < (int) frames.size(); ++frame)
+        {
+            const auto path = base + "-" + juce::String (frame) + ".png";
+            juce::File file (juce::File::getCurrentWorkingDirectory().getChildFile (path));
+            file.deleteFile();
+
+            juce::FileOutputStream out (file);
+            juce::PNGImageFormat png;
+
+            if (! out.openedOk() || ! png.writeImageToStream (frames[(size_t) frame], out))
+            {
+                std::fprintf (stderr, "could not write %s\n", path.toRawUTF8());
+                return 1;
+            }
+        }
+
+        editor.reset();
+        return 0;
     }
 
-    juce::File outputFile (juce::File::getCurrentWorkingDirectory().getChildFile (outputPath));
-    outputFile.deleteFile();
-
-    juce::FileOutputStream stream (outputFile);
-
-    if (! stream.openedOk())
-    {
-        std::fprintf (stderr, "could not open %s for writing\n", outputFile.getFullPathName().toRawUTF8());
+    if (! writeSnapshot (*editor, outputPath))
         return 1;
-    }
-
-    juce::PNGImageFormat png;
-
-    if (! png.writeImageToStream (image, stream))
-    {
-        std::fprintf (stderr, "PNG encode failed\n");
-        return 1;
-    }
-
-    std::printf ("%s  %dx%d\n", outputFile.getFullPathName().toRawUTF8(), image.getWidth(), image.getHeight());
 
     // The editor has to go before the ScopedJuceInitialiser_GUI does, or its LookAndFeel and
     // its timer outlive the message manager they are registered with.

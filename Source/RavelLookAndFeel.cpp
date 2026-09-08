@@ -552,8 +552,16 @@ void RavelLookAndFeel::drawStepBar (juce::Graphics& g, juce::Rectangle<float> bo
     g.setColour (slider.findColour (juce::Slider::backgroundColourId));
     g.fillRoundedRectangle (bounds, cellCorner);
 
-    // sliderPos is the y coordinate of the top of the filled portion.
-    const auto fill = bounds.withTop (juce::jlimit (bounds.getY(), bounds.getBottom(), sliderPos));
+    // sliderPos is the y coordinate of the top of the filled portion -- except while a layer
+    // switch is animating, when the slot hands us the height to draw instead. See
+    // theme::setDrawProportion.
+    const float overridden = theme::drawProportionOf (slider);
+
+    const float top = overridden < 0.0f
+                        ? sliderPos
+                        : bounds.getBottom() - bounds.getHeight() * overridden;
+
+    const auto fill = bounds.withTop (juce::jlimit (bounds.getY(), bounds.getBottom(), top));
 
     if (fill.getHeight() > 0.5f)
     {
