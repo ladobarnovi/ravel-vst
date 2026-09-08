@@ -53,10 +53,20 @@ namespace
     // make the second lane you add sound like it came with an opinion.
     constexpr float defaultValues[numLanes][numSteps] {};
 
-    // Note lanes start with a touch of pitch on every step instead of sitting dead on the
-    // root, so a freshly added lane is audibly pitched right away rather than silent-looking
-    // zero until it's drawn on.
+    // The first Note lane starts with a touch of pitch on every step rather than sitting dead
+    // on the root, so a freshly loaded instance is audibly doing something instead of looking
+    // broken until it has been drawn on.
+    //
+    // Only the first. Every lane after it starts flat, the same way every CC lane does: a lane
+    // you added is a blank sheet to draw on, and one that arrives already pitched is a demo to
+    // clear away first. It also means the pattern you add is silent until you draw it, which is
+    // what you want when the other lanes are already running.
     constexpr float defaultNoteValue = 0.25f;
+
+    constexpr float defaultNoteValueFor (int lane) noexcept
+    {
+        return lane == 0 ? defaultNoteValue : 0.0f;
+    }
 
     constexpr int   defaultLength[numLanes]   { numSteps, numSteps, numSteps, numSteps };
 
@@ -72,7 +82,30 @@ namespace
 
     juce::String percentText (float value, int)
     {
-        return juce::String (juce::roundToInt (value * 100.0f)) + " %";
+        return juce::String (juce::roundToInt (value * 100.0f)) + "%";
+    }
+
+    /** The same, but always carrying its sign.
+
+        Only the bipolar parameters use this -- a lane's Mix amount, which runs -100 to +100
+        and rests at zero. Those are drawn as a bar filling out from a marked centre, and a
+        read-out of "38%" beside a bar filling to the left of centre disagrees with it.
+
+        U+2212 MINUS SIGN rather than an ASCII hyphen, because it is drawn the same width as a
+        digit -- so the number does not jump sideways as the sign appears and disappears under
+        a drag. Written as a code point rather than as a string literal so this file stays pure
+        ASCII: a UTF-8 literal here is one careless re-save or patch away from being
+        double-encoded, and the symptom is a garbled read-out rather than a build error.
+    */
+    juce::String signedPercentText (float value, int)
+    {
+        const int percent = juce::roundToInt (value * 100.0f);
+
+        const auto sign = percent > 0 ? juce::String ("+")
+                        : percent < 0 ? juce::String::charToString (0x2212)
+                                      : juce::String();
+
+        return sign + juce::String (std::abs (percent)) + "%";
     }
 
     juce::String noteNameText (int midiNote)
@@ -101,7 +134,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
                     juce::ParameterID { stepValueId (lane, step, kind), versionHint },
                     stepName,
                     juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f),
-                    isCc ? defaultValues[lane][step] : defaultNoteValue,
+                    isCc ? defaultValues[lane][step] : defaultNoteValueFor (lane),
                     juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
 
                 layout.add (std::make_unique<juce::AudioParameterBool> (
@@ -170,7 +203,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
                 laneName + "Depth",
                 juce::NormalisableRange<float> (-1.0f, 1.0f, 0.001f),
                 defaultDepth[lane],
-                juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
+                juce::AudioParameterFloatAttributes().withStringFromValueFunction (signedPercentText)));
 
             // A CC lane's own steps traverse the same way a Note lane's do -- Forward,
             // Reverse, Ping-Pong or Random -- so both kinds get this parameter.
@@ -189,7 +222,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
             // Sensible unused defaults: CC 20, 21, 22, 23 for lanes 1-4.
             layout.add (std::make_unique<juce::AudioParameterInt> (
                 juce::ParameterID { laneCcNumId (lane), versionHint },
-                laneName + "Number", 0, 127, 20 + lane));
+                laneName + "Number", 0, 127, 20 + lane,
+                juce::AudioParameterIntAttributes().withStringFromValueFunction (
+                    [] (int v, int) { return "CC " + juce::String (v); })));
 
             layout.add (std::make_unique<juce::AudioParameterInt> (
                 juce::ParameterID { laneCcChanId (lane), versionHint },
@@ -228,7 +263,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     layout.add (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { bendRangeId, versionHint }, "Bend Range", 1, 48, 2,
         juce::AudioParameterIntAttributes().withStringFromValueFunction (
-            [] (int v, int) { return juce::String (v) + " st"; })));
+            [] (int v, int) { return juce::String::charToString (0x00b1) + juce::String (v); })));
 
     // 24 is C0. Low, deliberately: Range climbs from Root, so a low root leaves the whole
     // MIDI span above it reachable instead of clipping at the top of a large Range.
@@ -262,7 +297,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
         juce::ParameterID { ccOnId, versionHint }, "CC Send", true));
 
     layout.add (std::make_unique<juce::AudioParameterInt> (
-        juce::ParameterID { ccNumberId, versionHint }, "CC Number", 0, 127, 1));
+        juce::ParameterID { ccNumberId, versionHint }, "CC Number", 0, 127, 1,
+        juce::AudioParameterIntAttributes().withStringFromValueFunction (
+            [] (int v, int) { return "CC " + juce::String (v); })));
 
     layout.add (std::make_unique<juce::AudioParameterInt> (
         juce::ParameterID { ccChannelId, versionHint }, "CC Channel", 1, 16, 1));
@@ -344,26 +381,103 @@ namespace
 
         return 0.0f;
     }
+
+    // The normalised pair. Rows have unlike ranges -- Gate runs 5..200 where Value runs 0..1 --
+    // so an action that has to work on any of them spreads and mirrors in 0..1 and lets each
+    // parameter map that onto its own range.
+    void setParamNormalised (juce::AudioProcessorValueTreeState& state, const juce::String& paramID,
+                             float normalised)
+    {
+        if (auto* parameter = state.getParameter (paramID))
+        {
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, normalised));
+            parameter->endChangeGesture();
+        }
+    }
+
+    float getParamNormalised (juce::AudioProcessorValueTreeState& state, const juce::String& paramID)
+    {
+        if (auto* parameter = state.getParameter (paramID))
+            return parameter->getValue();
+
+        return 0.0f;
+    }
 }
 
-void randomiseLaneValues (juce::AudioProcessorValueTreeState& state, int lane, juce::Random& random,
-                          LaneKind kind)
+//==============================================================================
+juce::String stepLayerId (int lane, int step, StepLayer layer, LaneKind kind)
 {
-    for (int step = 0; step < numSteps; ++step)
-        setParam (state, stepValueId (lane, step, kind), random.nextFloat());
+    const bool isCc = kind == LaneKind::cc;
+
+    switch (layer)
+    {
+        case StepLayer::velocity: return isCc ? juce::String() : stepVelocityId (lane, step);
+        case StepLayer::gate:     return isCc ? juce::String() : stepGateId (lane, step);
+        case StepLayer::chance:   return stepChanceId (lane, step, kind);
+        case StepLayer::value:
+        default:                  return stepValueId (lane, step, kind);
+    }
 }
 
-void clearLaneValues (juce::AudioProcessorValueTreeState& state, int lane, LaneKind kind)
+float stepLayerNeutral (StepLayer layer) noexcept
 {
-    for (int step = 0; step < numSteps; ++step)
-        setParam (state, stepValueId (lane, step, kind), 0.0f);
+    switch (layer)
+    {
+        case StepLayer::velocity: return 1.0f;    // unity: the trim takes nothing off
+        case StepLayer::chance:   return 1.0f;    // always fires
+        case StepLayer::gate:     return 60.0f;   // a normal note length, as % of the step
+        case StepLayer::value:
+        default:                  return 0.0f;
+    }
 }
 
-void invertLaneValues (juce::AudioProcessorValueTreeState& state, int lane, LaneKind kind)
+juce::String stepLayerName (StepLayer layer, LaneKind kind)
+{
+    switch (layer)
+    {
+        case StepLayer::velocity: return "Velocity";
+        case StepLayer::chance:   return "Prob";
+        case StepLayer::gate:     return "Gate";
+        case StepLayer::value:
+        default:                  return kind == LaneKind::note ? "Pitch" : "Value";
+    }
+}
+
+juce::String stepLayerShortName (StepLayer layer, LaneKind kind)
+{
+    switch (layer)
+    {
+        case StepLayer::velocity: return "Vel";
+        case StepLayer::chance:   return "Prob";
+        case StepLayer::gate:     return "Gate";
+        case StepLayer::value:
+        default:                  return kind == LaneKind::note ? "Pitch" : "Val";
+    }
+}
+
+void randomiseLaneRow (juce::AudioProcessorValueTreeState& state, int lane, juce::Random& random,
+                       LaneKind kind, StepLayer layer)
 {
     for (int step = 0; step < numSteps; ++step)
-        setParam (state, stepValueId (lane, step, kind),
-                  1.0f - getParam (state, stepValueId (lane, step, kind)));
+        if (const auto id = stepLayerId (lane, step, layer, kind); id.isNotEmpty())
+            setParamNormalised (state, id, random.nextFloat());
+}
+
+void clearLaneRow (juce::AudioProcessorValueTreeState& state, int lane, LaneKind kind, StepLayer layer)
+{
+    const float neutral = stepLayerNeutral (layer);
+
+    for (int step = 0; step < numSteps; ++step)
+        if (const auto id = stepLayerId (lane, step, layer, kind); id.isNotEmpty())
+            setParam (state, id, neutral);
+}
+
+void invertLaneRow (juce::AudioProcessorValueTreeState& state, int lane, LaneKind kind, StepLayer layer)
+{
+    for (int step = 0; step < numSteps; ++step)
+        if (const auto id = stepLayerId (lane, step, layer, kind); id.isNotEmpty())
+            setParamNormalised (state, id, 1.0f - getParamNormalised (state, id));
 }
 
 void rotateLane (juce::AudioProcessorValueTreeState& state, int lane, int direction, LaneKind kind)

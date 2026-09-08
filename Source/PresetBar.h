@@ -71,6 +71,12 @@ private:
         overwrite anything. */
     juce::TextButton saveButton { "Save" };
 
+    /** Resets every parameter to its default. Beside Save rather than only in the browser
+        menu: the two are halves of the same gesture, and an Init that has to be hunted for is
+        what makes people save a blank preset called "Init" and load that instead. Safe on the
+        header because it is undoable -- it only moves parameters. */
+    juce::TextButton initButton { "Init" };
+
     std::unique_ptr<juce::AlertWindow> nameWindow;
 
     /** Filled while the menu is being built; indexed by (item id - firstPresetFileItem). */

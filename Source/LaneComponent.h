@@ -4,42 +4,90 @@
 #include "Parameters.h"
 #include "Theme.h"
 
-/** Fixed horizontal metrics of a lane.
+/** Fixed metrics of a lane.
 
     These live in the header rather than in LaneComponent.cpp because the editor's native
-    window width is the sum of them plus the step area: the window is sized to give the
-    steps the width they want, rather than the steps taking whatever a fixed window leaves
-    over. See nativeContentWidth in PluginEditor.cpp.
+    window width is the sum of them: the window is sized to give the steps the width they
+    want, rather than the steps taking whatever a fixed window leaves over. See
+    nativeContentWidth in PluginEditor.cpp.
 */
 namespace lane
 {
-    inline constexpr int inset       = 10;  ///< Reduction applied to the lane's own bounds.
-    inline constexpr int railWidth   = 3;   ///< The lane's accent stripe down the left edge.
-    inline constexpr int railGap     = 8;
-    inline constexpr int numberWidth = 54;  ///< Number label, and the layer buttons under it.
-    inline constexpr int columnGap   = 10;  ///< That column to the first step.
-    inline constexpr int dividerGap  = 14;  ///< Last step to the parameter block; holds the hairline.
-    inline constexpr int paramWidth  = 280;
+    //--------------------------------------------------------------------------
+    // Across.
+    inline constexpr int railWidth    = 3;   ///< The accent edge, hard against the lane's left.
+    inline constexpr int slotWidth    = 32;  ///< The lane's mute, and the space round it.
 
-    /** Pitch of one step slot: the bar plus the gap before the next slot. */
-    inline constexpr int stepSlotWidth = 40;
+    /** The mute toggle itself. Larger than a step's own trig even though it does the same job
+        one level up, because it is the only control in this column and has no neighbour to be
+        read against -- at a step's size it would look like a stray step that had escaped the
+        grid. */
+    inline constexpr int muteSize     = 18;
+    inline constexpr int selectorWidth = 46; ///< Val / Vel / Prob / Gate -- Val alone on a CC lane.
+    inline constexpr int layerChipHeight = 19;
+    inline constexpr int layerChipGap    = 5;
+    inline constexpr int paramWidth   = 190; ///< Length, Rate, Direction, Mix amount.
+    inline constexpr int columnGap    = 14;
+    inline constexpr int padRight     = 16;
 
-    /** Extra space after every fourth step, so the sixteen steps read as four groups of
-        four instead of one undifferentiated row. On top of stepSlotWidth's own per-step
-        pitch, not in place of it -- see LaneComponent::resized(). */
-    inline constexpr int groupGap = 6;
+    //--------------------------------------------------------------------------
+    // Down.
+    inline constexpr int padTop    = 12;
+    inline constexpr int padBottom = 11;
 
-    /** One of these gaps sits between each pair of groups: three for four groups of four. */
-    inline constexpr int numGroupGaps = params::numSteps / 4 - 1;
+    //--------------------------------------------------------------------------
+    // The step area.
+    inline constexpr int stepBarWidth = 48;
+    /** Between one step slot and the next.
+
+        Tight, because the sixteen bars are one pattern rather than sixteen separate controls
+        and should read across as a shape. It does not go to zero: the trig strips under the
+        bars are full slot width, and with no gap at all they join into a single line ruled
+        under the whole step area instead of sixteen marks you can aim at. */
+    inline constexpr int stepGap      = 2;
+    inline constexpr int wellPadX      = 8;
+    inline constexpr int wellPadTop    = 7;
+    inline constexpr int wellPadBottom = 6;
+
+    inline constexpr int barHeight    = 124; ///< The tall value bar.
+    inline constexpr int stepInnerGap = 5;   ///< Bar to trig, and trig to number.
+    inline constexpr int trigHeight   = 12;  ///< The on/off strip under a bar.
+    inline constexpr int numberHeight = 10;  ///< 1..16 under the trigs.
+
+    /** One step slot, top to bottom. */
+    inline constexpr int slotHeight = barHeight + stepInnerGap + trigHeight
+                                        + stepInnerGap + numberHeight;
+
+    inline constexpr int wellHeight = wellPadTop + slotHeight + wellPadBottom;
+
+    /** Sixteen full-width bars, the gaps between them, and the well's own padding. */
+    inline constexpr int wellWidth = wellPadX * 2 + params::numSteps * stepBarWidth
+                                        + (params::numSteps - 1) * stepGap;
 
     /** Everything in a lane that is not step area. */
-    inline constexpr int chromeWidth = inset * 2 + railWidth + railGap + numberWidth
-                                         + columnGap + dividerGap + paramWidth;
+    inline constexpr int chromeWidth = slotWidth + columnGap + selectorWidth + columnGap
+                                          + columnGap + paramWidth + padRight;
 
-    /** The width a lane wants: its chrome, a full-size slot per step, and the group gaps
-        between them. */
-    inline constexpr int nativeWidth = chromeWidth + params::numSteps * stepSlotWidth
-                                         + numGroupGaps * groupGap;
+    /** The width a lane wants. Both kinds are the same, so switching tabs does not shuffle
+        the step grid sideways under the cursor. */
+    inline constexpr int nativeWidth = chromeWidth + wellWidth;
+
+    //--------------------------------------------------------------------------
+    /** The hairline between one lane and the next, carried inside the lane's own bounds. */
+    inline constexpr int separatorHeight = 1;
+
+    /** Gap above a lane's action chips, and their height. */
+    inline constexpr int actionGap    = 12;
+    inline constexpr int actionHeight = 21;
+
+    /** How tall a lane needs to be: whichever of its two columns wins.
+
+        The step area is a fixed height, and the parameter column's is the sum of the four
+        parameters every lane carries. One height for both kinds -- a CC lane's strip holds
+        the same Length, Rate, Direction and Mix amount a Note lane's does, and the two only
+        differ in how many layers sit behind the step bars.
+    */
+    int height();
 }
 
 /** Which of a step's four continuous parameters the tall bars currently edit.
@@ -47,16 +95,19 @@ namespace lane
     All four are full-height bars stacked in the same rectangle with one visible at a time,
     rather than four smaller bars competing for the slot. Every bar keeps its own parameter
     attachment, since nothing has to be rebound when the selection changes.
+
+    Defined in Parameters.h, because the pattern actions take one -- Randomize acts on the row
+    the bars are showing -- and aliased here so the editor can go on spelling it unqualified.
 */
-enum class StepLayer { value = 0, velocity = 1, chance = 2, gate = 3 };
+using StepLayer = params::StepLayer;
 
 /** How many layers a step has, and how many StepLayer values there are. */
-inline constexpr int numStepLayers = 4;
+inline constexpr int numStepLayers = params::numStepLayers;
 
 class LaneComponent;
 
 //==============================================================================
-/** One step: a tall bar for the selected layer, and a trig strip.
+/** One step: a tall bar for the selected layer, a trig strip, and its own number.
 
     The slot, not the bar inside it, is what takes the mouse. A bar is a Slider, and a Slider
     that is handed a mouse-down keeps every drag event that follows it, wherever the cursor
@@ -75,8 +126,9 @@ public:
         visible at all -- a CC lane never starts a note, so it has no Velocity or Gate
         parameter to bind to in the first place (see Parameters.cpp). */
     StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, int stepIndex,
-             params::LaneKind kind = params::LaneKind::note);
+              params::LaneKind kind = params::LaneKind::note);
 
+    void paint (juce::Graphics&) override;
     void paintOverChildren (juce::Graphics&) override;
     void resized() override;
 
@@ -92,18 +144,17 @@ public:
 
     /** The bar's own tooltip, answered by the slot because the tooltip window can only ask
         whatever is under the mouse -- and the bar never is. Carries the step's current value
-        as well as the layer's description: hovering a bar used to raise the slider's own
-        value bubble, which went the way of its mouse handling. */
+        as well as the layer's description. */
     juce::String getTooltip() override;
 
     /** True if the point, in this slot's coordinates, is in the bar rather than in the trig
-        strip beneath it. */
+        strip or the number beneath it. */
     bool barContains (juce::Point<int> positionInSlot) const;
 
     /** The three stages of a stroke, as they reach this slot's bar. The event may come from
         anywhere -- a stroke that started three steps away is still one drag, and its events
-        arrive in the coordinates of the slot it started in -- so each is rebased onto the
-        bar before being handed over. */
+        arrive in the coordinates of the slot it started in -- so each is rebased onto the bar
+        before being handed over. */
     void beginBarDrag    (const juce::MouseEvent&);
     void continueBarDrag (const juce::MouseEvent&);
     void endBarDrag      (const juce::MouseEvent&);
@@ -111,22 +162,52 @@ public:
     void setPlaying (bool shouldBePlaying);
     void setLayer (StepLayer layer);
 
+    //==========================================================================
+    // Sliding the bar from the height it is drawn at to the height it is about to have,
+    // driven by the lane -- it owns the clock, because all sixteen slots have to move
+    // together. Used for both things that change every bar at once: switching which layer the
+    // bars show, and a pattern action rewriting the values under them.
+
+    /** Remembers where this bar is drawn right now, before whatever is about to change it.
+
+        Taken from what is on screen rather than from the parameter, so that a second switch or
+        a second Randomize mid-slide continues from where the bar actually is instead of
+        snapping back to a height it had already left.
+    */
+    void beginValueSlide();
+
+    /** Moves the bar that far from the remembered height toward its current one, 0 to 1.
+
+        The destination is read live rather than captured, which is what lets one mechanism
+        serve both callers: a layer switch changes which slider is read, a pattern action
+        changes what that slider holds, and neither has to tell this where it is going. It also
+        means a value that moves mid-slide is animated toward rather than ignored.
+        At 1 the override is dropped and the bar goes back to drawing its own value.
+    */
+    void setValueSlideProgress (float progress);
+
     /** Dims the whole slot while its lane is muted, so a muted lane still shows its pattern
         and its playhead but never competes with the lanes that are actually sounding. */
     void setLaneActive (bool laneIsActive);
 
     /** Marks the slot as sitting past the lane's Length, which the sequencer never reaches.
-        The slot recedes into the panel rather than disappearing: it is still editable, so a
-        pattern can be drawn past the end and brought into play by raising Length. */
+        The slot recedes rather than disappearing: it is still editable, so a pattern can be
+        drawn past the end and brought into play by raising Length. */
     void setWithinLength (bool isWithinLength);
 
 private:
-    /** Recolours the visible bar to match the trig, so a muted step reads as muted without
-        needing a separate indicator. */
+    /** Recolours the visible bar for the step's own on/off and for the playhead. */
     void applyTrigState();
 
-    /** The rectangle the bars share, which is the slot minus the trig strip. */
+    /** Fades the whole slot for the two states that are not the step's own: its lane being
+        muted, and it sitting past that lane's Length. Both multiply, so a step past the end of
+        a muted lane is fainter than either on its own. */
+    void applySlotAlpha();
+
+    /** The rectangle the bars share: the slot minus the trig strip and the number. */
     juce::Rectangle<int> barArea() const;
+
+    const int step;
 
     juce::Slider valueSlider, velocitySlider, chanceSlider, gateSlider;
     juce::ToggleButton onButton;
@@ -137,9 +218,23 @@ private:
                                                                          gateAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> onAttachment;
 
+    /** Where the visible bar is drawn at this instant, as a proportion of the bar: the
+        in-flight height while a layer switch is animating, and the visible slider's own
+        position otherwise. */
+    float drawnProportion() const;
+
+    /** The visible slider's value as a proportion of its own range. Each layer has its own
+        range -- gate runs 5..200 where value runs 0..1 -- so proportions are what can be
+        interpolated between two of them, not the raw values. */
+    static float proportionOf (const juce::Slider&);
+
     juce::Colour accent;
     bool playing = false;
     bool laneActive = true;
+
+    // Where the bar was when the layer changed, and whether a slide is in flight at all.
+    // -1 when not.
+    float transitionFrom = -1.0f;
 
     // The toggle state the colours on screen were last built for. Tri-state so the first pass
     // always runs; see the onStateChange guard in the constructor.
@@ -161,19 +256,24 @@ private:
 };
 
 //==============================================================================
-/** A full lane: 16 steps plus the feel parameters worth reaching for while it plays.
+/** A full lane: 16 steps plus the parameters worth reaching for while it plays.
 
-    A Note lane and a CC lane share the same Length/Rate/Depth/Direction. Only a CC lane also
-    carries its own Send/Number/Channel/Offset, since only CC has a per-lane destination
-    independent of that fold. See LaneKind.
+    Both kinds carry the same strip -- Length, Rate, Direction and Mix amount -- because both
+    are the same sequencer with a different destination on the end of it. They differ in one
+    place only: how many layers sit behind the step bars, and so how many chips the selector
+    beside them offers. A Note lane has four (Value, Velocity, Prob, Gate); a CC lane has
+    Value alone, because Velocity and Gate are only ever arguments to starting a note and a CC
+    lane never starts one.
+
+    A CC lane's own Send/Number/Channel/Offset live in the CC page's footer rather than here,
+    one column per lane -- they are a destination, which is a property of where the lane goes
+    rather than of the pattern in it, and putting them on the strip made a CC lane twice the
+    parameter block of a Note lane for something the user sets once.
 */
-class LaneComponent final : public juce::Component
+class LaneComponent final : public juce::Component,
+                            private juce::Timer
 {
 public:
-    /** For a CC-kind lane, no layer selector is ever created -- the bars always edit Value
-        -- and the parameter block goes on to add the lane's own Send/Number/Channel/Offset
-        after Direction: a CC lane still folds into the Mix CC like any lane folds into a mix,
-        and keeps its own direct tap besides. */
     LaneComponent (juce::AudioProcessorValueTreeState& state, int laneIndex,
                    params::LanePattern& sharedClipboard,
                    params::LaneKind kind = params::LaneKind::note);
@@ -189,13 +289,6 @@ public:
     /** Hidden on the last remaining lane, since an instance always has at least one. */
     void setCanRemove (bool canBeRemoved);
 
-    /** Takes the layer selector away while Notes is off, leaving the bars editing Value.
-
-        Velocity and Gate are unread with Notes off -- both are only ever arguments to
-        startNote.
-    */
-    void setLayerSelectionAvailable (bool available);
-
     /** Invoked when this lane's Remove button is clicked. The editor supplies it, because
         removing a lane is a change to the stack rather than to the lane -- the lanes above
         this one move down, and the window resizes. */
@@ -203,16 +296,16 @@ public:
 
     /** Invoked with true as a stroke across the step bars begins and false as it ends. The
         editor supplies it, because what it is for is the undo history, which lives on the
-        processor: a stroke is one thing the user did and should step back in one press,
-        and the history's own rule -- one turn of the message loop is one edit -- would
-        otherwise make a separate step of every drag callback the stroke passes through.
+        processor: a stroke is one thing the user did and should step back in one press, and
+        the history's own rule -- one turn of the message loop is one edit -- would otherwise
+        make a separate step of every drag callback the stroke passes through.
         See UndoHistory::setEditHeldOpen. */
     std::function<void (bool)> onStrokeActive;
 
     //==========================================================================
     // Called by StepSlot, which receives the mouse but does not decide what it means: which
-    // step a moving cursor is editing is the lane's business, since only the lane can see
-    // the other fifteen.
+    // step a moving cursor is editing is the lane's business, since only the lane can see the
+    // other fifteen.
 
     /** Opens a stroke on the slot the mouse went down in. */
     void startStroke (StepSlot& slot, const juce::MouseEvent&);
@@ -231,7 +324,6 @@ private:
     const params::LaneKind kind;
     const juce::Colour accent;
 
-    juce::Label numberLabel;
     juce::ToggleButton onButton;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> onAttachment;
 
@@ -239,48 +331,78 @@ private:
 
     params::LanePattern& clipboard;
 
-    ControlGroup paramGroup;
+    //--------------------------------------------------------------------------
+    // The parameter column. Length and Mix amount are blocks -- a caption and a read-out over
+    // a full-width control -- because neither is legible as a number on the end of a row:
+    // Length is a position in sixteen, and Mix amount is signed.
+    ParamBlock lengthBlock;
+    ControlGroup rateGroup;
+    ParamBlock mixBlock;
 
-    // Spelt out rather than abbreviated: these sit among value rows whose captions are whole
-    // words, and "Clr" next to "Remove" was two controls a keystroke apart meaning "empty
-    // this lane" and "destroy this lane" -- exactly the pair not to leave the reader decoding.
-    // The layout sizes each one to its own label, so the widths differ.
-    juce::TextButton randomiseButton { "Randomize" }, clearButton { "Clear" },
-                     menuButton { "More" };
+    // Labelled from params::stepLayerShortName in the constructor rather than here, because
+    // the first one differs by lane kind: a Note lane's Value drives pitch and says so, a CC
+    // lane's does not. Abbreviated, unlike the settings footer's captions -- these sit in a
+    // 46px column beside the steps, and the tooltips carry the full names.
+    juce::TextButton layerButtons[numStepLayers];
 
-    juce::TextButton removeButton { "Remove" };
+    // Abbreviated for the same reason: the action row has 190px to hold four controls, and
+    // the two destructive ones are glyphs rather than words so they cannot be misread at a
+    // glance as more of the same.
+    juce::TextButton randomiseButton { "RND" }, clearButton { "CLR" };
+    juce::TextButton menuButton { "More" }, removeButton { "Remove" };
 
     juce::Random random;
 
-    // Which per-step parameter the eight bars edit. Per lane rather than global, so one lane
-    // can be shown as accents while another is being dialled in for pitch.
-    juce::TextButton layerButtons[numStepLayers] { juce::TextButton ("Value"),
-                                                   juce::TextButton ("Velocity"),
-                                                   juce::TextButton ("Prob"),
-                                                   juce::TextButton ("Gate") };
-
+    // Which per-step parameter the sixteen bars edit. Per lane rather than global, so one
+    // lane can be shown as accents while another is being dialled in for pitch.
     StepLayer currentLayer = StepLayer::value;
-    bool layerSelectionAvailable = true;
 
     void setLayer (StepLayer);
 
-    /** Pushes the mute through to the slots and the lane's own accents. Tracks the last
-        state it applied because Button::onStateChange also fires on hover, and repainting
-        eight slots every time the mouse crosses the toggle is work for nothing. */
+    /** Re-words RND, CLR and the pattern menu for whichever row is now selected. */
+    void updateActionTooltips();
+
+    //--------------------------------------------------------------------------
+    /** Runs a pattern edit with the bars sliding to their new heights rather than jumping.
+
+        The edit writes parameters, and the sliders follow those synchronously on the message
+        thread -- so the bars' new positions are already in place by the time this returns.
+        That is why the slide has to capture where they were *first*, and why every caller has
+        to come through here rather than calling the params:: function directly.
+    */
+    void slideThrough (const std::function<void()>& edit);
+
+    /** Starts the clock, having already captured where the bars are. */
+    void startValueSlide();
+
+    /** Driven from here rather than from the slots because the sixteen of them have to move as
+        one: a timer each would let them drift apart by a frame, which is exactly the thing the
+        slide exists to avoid. Only runs while a slide is in flight. */
+    void timerCallback() override;
+
+    /** Pushes one frame of the slide out to the slots, easing on the way. */
+    void applyValueSlide (float progress);
+
+    double valueSlideStartMs = 0.0;
+
+    /** Pushes the mute through to the slots and the lane's own accents. Tracks the last state
+        it applied because Button::onStateChange also fires on hover, and repainting sixteen
+        slots every time the mouse crosses the toggle is work for nothing. */
     void applyLaneState();
 
     int appliedLaneActive = -1;
 
-    /** Greys the steps the lane's Length leaves out of the cycle. */
+    /** Greys the steps the lane's Length leaves out of the cycle, and moves the wrap mark. */
     void applyLength();
 
-    // The Length row's own widget, watched so the steps follow it. Non-owning: the row
-    // belongs to paramGroup.
-    juce::Slider* lengthSlider = nullptr;
     int appliedLength = -1;
 
-    // Set in resized(), drawn in paint(): the hairline between steps and parameters.
-    int dividerX = 0;
+    // Set in resized(), drawn in paint().
+    juce::Rectangle<int> wellArea;
+
+    /** Where inside the well the cycle wraps back to step one, or -1 at full length, where
+        there is nothing to mark. */
+    int wrapX = -1;
 
     int playingStep = -1;
 
@@ -298,12 +420,11 @@ private:
     /** The step a stroke at this distance across the lane should be editing, or -1 in a lane
         with no steps at all.
 
-        Nearest by centre rather than a hit test: the gaps between the slots, wider still
-        between the groups of four, are dead space a hit test would drop the stroke into, and
-        the bar would stop following the cursor for the few pixels between one step and the
-        next. Height plays no part either -- a stroke that wanders above or below the row
-        keeps painting the step it is over, with only the value it writes running out of
-        range.
+        Nearest by centre rather than a hit test: the gaps between the slots are dead space a
+        hit test would drop the stroke into, and the bar would stop following the cursor for
+        the few pixels between one step and the next. Height plays no part either -- a stroke
+        that wanders above or below the row keeps painting the step it is over, with only the
+        value it writes running out of range.
     */
     int slotIndexForStroke (float xInLane) const;
 
@@ -311,8 +432,8 @@ private:
         and opening the new one at the given point. */
     void handStrokeTo (StepSlot& slot, const juce::MouseEvent& atPoint);
 
-    /** Where a stroke that travelled from one point to the other crossed the given step:
-        that step's centre, at the height the line between the two had reached by then. */
+    /** Where a stroke that travelled from one point to the other crossed the given step: that
+        step's centre, at the height the line between the two had reached by then. */
     juce::Point<float> pointCrossingSlot (int index, juce::Point<float> from,
                                           juce::Point<float> to) const;
 

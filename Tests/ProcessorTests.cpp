@@ -182,22 +182,38 @@ int main()
 
         bool flat = true, fullLength = true;
 
-        // The note-lane default is deliberately not zero -- a freshly added lane is meant to
-        // be audibly pitched rather than looking silent -- so what makes a lane "flat" is
-        // every step agreeing, not every step being nothing.
-        const float stepDefault = defaultOf (processor, params::stepValueId (0, 0));
-
+        // "Flat" means every step in a lane agrees with the others, not that every step is
+        // zero and not that the lanes agree with each other: the first Note lane comes up
+        // pitched so a fresh instance is audibly doing something, and the rest come up at zero
+        // so a lane you add is a blank sheet. So each lane is measured against its own default.
         for (int lane = 0; lane < params::numLanes; ++lane)
         {
             fullLength = fullLength
                           && (int) std::lround (value (params::laneLengthId (lane))) == params::numSteps;
 
+            const float laneDefault = defaultOf (processor, params::stepValueId (lane, 0));
+
             for (int step = 0; step < params::numSteps; ++step)
-                flat = flat && std::abs (value (params::stepValueId (lane, step)) - stepDefault) < 1.0e-6f;
+                flat = flat && std::abs (value (params::stepValueId (lane, step)) - laneDefault) < 1.0e-6f;
         }
 
-        check (flat, "every lane is sixteen steps of the same value");
+        check (flat, "every lane is sixteen steps of one value");
         check (fullLength, "and sixteen steps long");
+
+        //----------------------------------------------------------------------
+        // The first lane carries the audible default; every lane after it starts silent, so
+        // adding a lane gives something to draw on rather than a pattern to clear away.
+        check (defaultOf (processor, params::stepValueId (0, 0)) > 0.0f,
+               "the first Note lane comes up pitched");
+
+        bool laterLanesSilent = true;
+
+        for (int lane = 1; lane < params::numLanes; ++lane)
+            for (int step = 0; step < params::numSteps; ++step)
+                laterLanesSilent = laterLanesSilent
+                                     && defaultOf (processor, params::stepValueId (lane, step)) == 0.0f;
+
+        check (laterLanesSilent, "every Note lane after the first comes up flat at zero");
 
         MockPlayHead playHead;
         processor.setPlayConfigDetails (0, 2, 48000.0, 512);
@@ -306,6 +322,92 @@ int main()
     }
 
     //==========================================================================
+    section ("Pattern actions act on the selected row");
+    {
+        RavelAudioProcessor processor;
+        juce::Random random (0x1234);
+
+        const auto plain = [&processor] (const juce::String& id)
+        {
+            return processor.apvts.getRawParameterValue (id)->load();
+        };
+
+        const auto valueOf  = [&] (int step) { return plain (params::stepValueId (0, step)); };
+        const auto chanceOf = [&] (int step) { return plain (params::stepChanceId (0, step)); };
+        const auto gateOf   = [&] (int step) { return plain (params::stepGateId (0, step)); };
+
+        //---------------------------------------------------------------------- randomise
+        // Chance starts at 1 on every step, so anything below it is this action's doing.
+        params::randomiseLaneRow (processor.apvts, 0, random, params::LaneKind::note,
+                                  params::StepLayer::chance);
+
+        bool chanceMoved = false;
+        bool valueUntouched = true;
+
+        for (int step = 0; step < params::numSteps; ++step)
+        {
+            chanceMoved = chanceMoved || chanceOf (step) < 0.999f;
+
+            // Note lanes start every step at 0.25; randomising Chance must not have moved it.
+            valueUntouched = valueUntouched && std::abs (valueOf (step) - 0.25f) < 1.0e-6f;
+        }
+
+        check (chanceMoved, "randomise moves the selected row");
+        check (valueUntouched, "randomise leaves the rows it was not pointed at alone");
+
+        //---------------------------------------------------------------------- own range
+        // Gate runs 5..200, not 0..1: randomising it must spread over its own range rather
+        // than pinning every step to the bottom of it.
+        params::randomiseLaneRow (processor.apvts, 0, random, params::LaneKind::note,
+                                  params::StepLayer::gate);
+
+        bool gateInRange = true;
+        bool gateAboveUnity = false;
+
+        for (int step = 0; step < params::numSteps; ++step)
+        {
+            gateInRange = gateInRange && gateOf (step) >= 5.0f && gateOf (step) <= 200.0f;
+            gateAboveUnity = gateAboveUnity || gateOf (step) > 1.0f;
+        }
+
+        check (gateInRange, "randomise stays inside the selected row's own range");
+        check (gateAboveUnity, "randomise spreads over the row's own range, not over 0..1");
+
+        //---------------------------------------------------------------------- clear
+        // Clearing Chance returns it to 1, not to 0: a row of zeroes there is a lane that
+        // never fires, which is switching the lane off rather than clearing it.
+        params::clearLaneRow (processor.apvts, 0, params::LaneKind::note,
+                              params::StepLayer::chance);
+
+        bool chanceNeutral = true;
+
+        for (int step = 0; step < params::numSteps; ++step)
+            chanceNeutral = chanceNeutral && std::abs (chanceOf (step) - 1.0f) < 1.0e-6f;
+
+        check (chanceNeutral, "clear puts the selected row back to its neutral, not to zero");
+
+        //---------------------------------------------------------------------- invert
+        params::clearLaneRow (processor.apvts, 0, params::LaneKind::note, params::StepLayer::gate);
+        params::invertLaneRow (processor.apvts, 0, params::LaneKind::note, params::StepLayer::gate);
+
+        // 60 sits at (60-5)/195 = 0.282 of the way up Gate's range; mirrored that is 0.718,
+        // which is 145. Mirroring in 0..1 instead would have given 140.
+        check (std::abs (gateOf (0) - 145.0f) < 1.5f,
+               "invert mirrors about the middle of the row's own range");
+
+        //---------------------------------------------------------------------- CC lanes
+        // A CC lane has no velocity row at all. Asking for one must do nothing rather than
+        // reaching the note lane of the same number that stepVelocityId would resolve to.
+        const float noteVelocityBefore = plain (params::stepVelocityId (0, 0));
+
+        params::randomiseLaneRow (processor.apvts, 0, random, params::LaneKind::cc,
+                                  params::StepLayer::velocity);
+
+        check (std::abs (plain (params::stepVelocityId (0, 0)) - noteVelocityBefore) < 1.0e-6f,
+               "a row the lane kind does not have is skipped, not redirected");
+    }
+
+    //==========================================================================
     section ("Per-lane randomise and clear");
     {
         RavelAudioProcessor processor;
@@ -328,8 +430,8 @@ int main()
             if (auto* p = processor.apvts.getParameter (params::stepValueId (1, step)))
                 p->setValueNotifyingHost (p->convertTo0to1 (0.5f));
 
-        params::randomiseLaneValues (processor.apvts, 0, random);
-        params::clearLaneValues (processor.apvts, 0);
+        params::randomiseLaneRow (processor.apvts, 0, random);
+        params::clearLaneRow (processor.apvts, 0);
 
         bool allZero = true;
 
@@ -347,7 +449,7 @@ int main()
         check (otherLanesIntact, "clear leaves the other lanes untouched");
 
         //----------------------------------------------------------------------
-        params::randomiseLaneValues (processor.apvts, 0, random);
+        params::randomiseLaneRow (processor.apvts, 0, random);
 
         bool anyNonZero = false;
         bool varied = false;
@@ -411,7 +513,7 @@ int main()
         for (int step = 0; step < params::numSteps; ++step)
             setValue (0, step, stepValue (step));
 
-        params::invertLaneValues (processor.apvts, 0);
+        params::invertLaneRow (processor.apvts, 0);
 
         bool inverted = true;
 
@@ -602,7 +704,7 @@ int main()
         RavelAudioProcessor processor;
         juce::Random random (0x5eed);
 
-        params::randomiseLaneValues (processor.apvts, 0, random);
+        params::randomiseLaneRow (processor.apvts, 0, random);
 
         check (processor.undoHistory.getUndoDepth() == 1,
                "randomising sixteen steps in one go records a single step");
@@ -626,7 +728,7 @@ int main()
         // action the editor has.
         processor.undoHistory.closeCurrentEdit();
 
-        params::randomiseLaneValues (processor.apvts, 1, random);
+        params::randomiseLaneRow (processor.apvts, 1, random);
         processor.undoHistory.closeCurrentEdit();
 
         const auto pattern = params::copyLane (processor.apvts, 1);
@@ -1153,14 +1255,14 @@ int main()
         };
 
         juce::Random random (0x9e11);
-        params::randomiseLaneValues (processor.apvts, 0, random);
+        params::randomiseLaneRow (processor.apvts, 0, random);
         processor.undoHistory.closeCurrentEdit();
 
         check (processor.presetManager.saveAs ("Undo"), "a preset saves");
 
         const auto saved = plain();
 
-        params::clearLaneValues (processor.apvts, 0);
+        params::clearLaneRow (processor.apvts, 0);
         processor.undoHistory.closeCurrentEdit();
 
         const int depthBeforeLoad = processor.undoHistory.getUndoDepth();

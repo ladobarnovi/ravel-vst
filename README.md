@@ -26,13 +26,16 @@ they are two separate sequencers sharing one clock, one transport and one plugin
 | What the fold drives | Pitch, over an MPE zone (or one channel) | The Mix CC |
 | Lanes | 1–4, own count | 1–4, own count |
 | Per-step | Value, Velocity, Chance, Gate | Value, Chance |
-| Per-lane shaping | Direction | — (always Forward) |
+| Per-lane shaping | Length, Rate, Direction, Mix amount | The same four |
 | Per-lane output | — | Its own Send / Number / Channel / Offset |
 | Swing | Shared — one control, on the Notes page | Shared — driven by the Notes page |
 
-CC lanes deliberately carry less. Velocity and Gate are only ever arguments to *start a note*,
-and a CC lane never starts one, so it has neither — which also keeps the plugin's automatable
-parameter count from doubling for nothing.
+The two differ per *step*, not per lane. Velocity and Gate are only ever arguments to *start a
+note*, and a CC lane never starts one, so it has neither — which also keeps the plugin's
+automatable parameter count from doubling for nothing. Everything a lane does as a lane —
+how long it is, how fast it runs, which way it traverses, how much it contributes to its
+stack's fold — is the same on both, because both are the same sequencer with a different
+destination on the end of it.
 
 ### Per lane
 
@@ -43,24 +46,50 @@ parameter count from doubling for nothing.
 | Lane toggle | on/off | Mutes the whole lane: transparent for the mix, triggers nothing |
 | Length | 1–16 | Shorter lanes phase against longer ones. Steps past the length grey out, and stay editable |
 | Rate | 1/1 … 1/32, incl. triplets | Independent per lane — this is where the polyrhythm comes from |
-| Depth | −100 % … +100 % | How much this lane contributes to its stack's fold |
+| Mix amount | −100 % … +100 % | How much this lane contributes to its stack's fold. Signed, and drawn filling out from a marked centre |
 | 16 velocity bars | 0–100 % | *Note lanes only.* Per-step accent, as a trim on the fixed master velocity of 100 (100 % is unity, so a bar only ever pulls a step below it) |
 | 16 gate bars | 5–200 % | *Note lanes only.* How long each step's note is held, as % of the step. Above 100 % overlaps into the next step (see Polyphony) |
 | 16 chance bars | 0–100 % | Per-step probability of firing |
-| Direction | Forward, Reverse, Ping-Pong, Random | *Note lanes only* |
-| Send / Number / Channel / Offset | on/off, 0–127, 1–16, 0–100 % | *CC lanes only.* This lane's own CC destination |
-| RND / CLR / ⋯ | — | Pattern actions |
-| Remove | — | Takes this lane out. The lanes below it move up to close the gap |
+| Direction | Forward, Reverse, Ping-Pong, Random | How the lane traverses its steps |
+| RND / CLR / ⋯ | — | Pattern actions. RND, CLR and Invert act on the **selected row** |
+| ✕ | — | Takes this lane out. The lanes below it move up to close the gap |
 
 On a **Note lane** the sixteen tall bars edit one of four per-step rows at a time, picked with
-the **Value / Velocity / Prob / Gate** selector down the left of the lane. The three that are
-not selected show as faint ticks across the bars, and only where they are away from their
-default, so an untouched lane stays clean.
+the **Pitch / Vel / Prob / Gate** selector down the left of the lane. Only the selected row
+is drawn — the bars show one layer at a time and nothing else, so a lane reads as the pattern
+you are actually editing.
 
-A **CC lane** has no selector — its bars always edit Value, and the column is left blank rather
-than filled with four buttons that would do nothing. Its per-step Chance still exists and still
-works (it decides whether a step reaches the fold, and the fold is what the CC output follows),
-and its tick is still drawn, but it is reachable only through host automation.
+Switching rows **slides** the bars from the heights they were at to the heights they are going
+to, over about 140 ms, eased out. Sixteen bars changing height at once otherwise reads as the
+grid being replaced; sliding them says the pattern stayed where it was and you changed which of
+its rows you are looking at.
+
+The same slide runs for every **pattern action that rewrites the row** — RND, CLR, Rotate,
+Invert and Paste — for the same reason, and it is the same code: the slide reads its destination
+live rather than capturing it, so it does not care whether the bars moved because a different
+slider is being read or because that slider's value changed. Copy is the one entry that does not
+slide, because it changes nothing on screen.
+
+The slide only ever borrows the height a bar draws to — it never touches the parameter, so
+nothing reaches the host or the undo history, and a pattern action is still exactly one undo
+step.
+
+A **CC lane** gets the same selector with one chip in it: **Val**, latched, because that is the
+only layer its bars have. It is *Val* rather than *Pitch* because a CC lane's value drives a CC
+and not a pitch — the row is the same parameter in both stacks, but only one of them is a pitch,
+and the chip says which stack you are in. Velocity and Gate are only ever arguments to *start a note* and a
+CC lane never starts one, so there is genuinely nothing else to offer — but the column stays and
+the chip stays, so the CC tab's step grid lines up with the Notes tab's and reads as the same
+grid with fewer layers behind it rather than as a different kind of control.
+
+A CC lane's per-step **Chance** is the one parameter with no control of its own. It still works —
+it decides whether a step reaches the fold, and the fold is what the CC output follows — but it
+is reachable only through host automation.
+
+Everything else on a CC lane's strip is what a Note lane has: Length, Rate, **Direction** and Mix
+amount. Its own **Send / Number / Channel / Offset** are not there, because they are a destination
+rather than a pattern — set once and then left — so they live in the CC tab's footer, one column
+per lane. See [CC outputs](#cc-outputs).
 
 ### Probability
 
@@ -90,11 +119,17 @@ a test asserting that.
 
 There are two kinds, and they are independent:
 
-- **The Mix CC** (CC tab → Output) is the CC stack's fold, exactly as pitch is the Note stack's
-  fold. Its **Send** switch, **Number**, **Channel** and **Offset** live on the CC tab.
-- **Each CC lane's own tap** follows that lane's raw step value and **ignores Depth**, since
-  Depth governs the lane's share of the fold, not its own output. Its Send, Number, Channel and
-  Offset live on the lane's own strip. Defaults are CC 20, 21, 22 and 23 for lanes 1–4.
+- **The Mix CC** (CC tab → *Mix CC*) is the CC stack's fold, exactly as pitch is the Note
+  stack's fold. Its **Send** switch, **Number**, **Channel** and **Offset** are the first column
+  of the CC tab's footer.
+- **Each CC lane's own tap** follows that lane's raw step value and **ignores Mix amount**, since
+  Mix amount governs the lane's share of the fold, not its own output. Its Send, Number, Channel
+  and Offset are that lane's own column in the same footer, headed *Lane 1* … *Lane 4* and marked
+  with the lane's accent. Defaults are CC 20, 21, 22 and 23 for lanes 1–4.
+
+A column for a lane the instance does not currently have is greyed rather than taken away: all
+four lanes' parameters exist from the moment the plugin loads, and a column that vanished and
+reappeared as the lane count changed would shuffle everything to its right each time.
 
 The two Offsets never cross: the CC tab's Offset shifts the Mix CC, and a lane's Offset shifts
 only that lane's tap, so one lane can be recentred without moving the rest. Inactive steps latch
@@ -102,11 +137,26 @@ the previous level rather than dropping to zero. All CC streams share the global
 
 ### Pattern actions
 
-**RND** re-rolls a lane's values, **CLR** zeroes them. Both touch values only — the toggles
-and chances are left alone, so a lane's rhythm survives a re-roll. The **⋯** menu has Rotate
-Left/Right, Invert Values, and Copy/Paste Pattern. Rotate and paste move value, on/off and
-chance together — and, on a Note lane, velocity and gate as well — because rotating only the
-values would slide a pattern out from under its own rhythm.
+**RND** re-rolls a row and **CLR** resets one — and the row they act on is whichever the lane's
+bars are currently showing. With Prob selected, RND re-rolls the probabilities; with Gate
+selected, the gates. Anything else would be a button that appears to do nothing whenever you are
+not on Value. Invert, in the **⋯** menu, follows the selection the same way, and names the row it
+is about to mirror.
+
+Each acts across that row's *own* range, not over 0–1: Gate runs 5–200, so randomising it spreads
+over 5–200 and inverting it mirrors about 102.5 rather than about 0.5.
+
+**CLR resets rather than zeroes.** Only Value clears to zero. Velocity, Prob and Gate are trims
+on something that already works — unity, always-fires, and a normal note length — so zeroing them
+gives silent notes, a lane that never fires, and zero-length notes, which are three ways of
+switching the lane off rather than of clearing it. Each goes back to its own neutral (1, 1 and
+60 %), which is also what double-clicking one of its bars resets to; the two read from the same
+table so they cannot drift apart.
+
+The step toggles are never touched by any of these, so a lane's rhythm survives a re-roll. Rotate
+and Paste are the exception to the whole selected-row rule: they move value, on/off and chance
+together — and, on a Note lane, velocity and gate as well — because rotating only one row would
+slide it out from under the rest of the pattern.
 
 The clipboard is per stack: you can paste one Note lane onto another, or one CC lane onto
 another, but not across the two.
@@ -171,8 +221,11 @@ no note if that lane is the trigger source.
 
 ### Lanes
 
-Every lane starts as sixteen steps of zero — a flat pattern on the root, not a demo to clear
-away — and lanes differ only in their default rate. *+ Add lane* sits under the last lane of the
+Every lane starts flat — sixteen steps of one value, not a demo to clear away — and lanes differ
+only in their default rate. The **first Note lane** is the one exception: its steps come up at
+25 % so a freshly loaded instance is audibly doing something rather than looking broken. Every
+lane after it, and every CC lane, starts at zero, because a lane you just added is a blank sheet
+to draw on and one that arrives already pitched is something to clear away first. *+ Add lane* sits under the last lane of the
 current stack and appends one at the bottom; **each lane carries its own Remove**, at the right
 of its action row, so any lane can go and not just the last one. The window grows and shrinks to
 fit the lane count on its own; **it's also resizable by hand**, from the bottom-right corner or
@@ -204,10 +257,14 @@ shown, which is what makes them automatable and undoable like any other control.
 
 ### The tabs
 
-The header carries the title, the two undo arrows, and — opposite the logo — the **MIDI output**
-pill, which routes both stacks alike and so belongs to neither tab (see
-[MPE into Live](#mpe-into-live-the-virtual-port-route)). Everything else global sits under
-whichever of the two top-level tabs it belongs to, laid out as a flat row of columns:
+The header runs left to right from what the plugin *is* to where its output goes: the mark and
+wordmark, the two history arrows, then the **preset pill** — steppers either side of the loaded
+patch's name, with **Save** and **Init** beside it — and, hard against the right edge, the **MIDI
+output** chooser and **Rescan**. The MIDI output routes both stacks alike and so belongs to
+neither tab (see [MPE into Live](#mpe-into-live-the-virtual-port-route)).
+
+Everything else global sits under whichever of the two top-level tabs it belongs to, in the
+footer below that tab's lane stack, laid out as a row of headed columns:
 
 **Notes**
 
@@ -222,7 +279,13 @@ whichever of the two top-level tabs it belongs to, laid out as a flat row of col
 
 | Column | Controls |
 |---|---|
-| Output | Send, Number, Channel, Offset, Slew |
+| Mix CC | Send, Number, Channel, Offset, Slew |
+| Lane 1 … Lane 4 | Send, Number, Channel, Offset — that lane's own tap |
+
+**Slew** is not strictly the Mix CC's — it smooths every CC this plugin sends, the lane taps
+included — but it sits in that column anyway, as an ordinary fifth row. It is the only global CC
+control there is, and a rule and a sub-heading to mark the distinction cost more attention than
+the distinction is worth; the tooltip carries it instead.
 
 Swing is not repeated here — it is shared, and lives on the Notes page.
 
@@ -454,9 +517,9 @@ out of scope for a plugin only running on your own machine.)
 .\build\RavelProcessorTests_artefacts\Release\RavelProcessorTests.exe
 ```
 
-244 checks across two suites, neither needing a plugin host.
+255 checks across two suites, neither needing a plugin host.
 
-`Tests/EngineTests.cpp` (117 checks) drives `SequencerEngine` over a synthetic timeline. The
+`Tests/EngineTests.cpp` (118 checks) drives `SequencerEngine` over a synthetic timeline. The
 engine takes PPQ positions as plain arguments rather than reading a playhead itself, which is
 what makes that possible. Covers step timing, gate length, per-lane length and rate, disabled
 steps, the fold, transport jumps, stuck-note release on stop, directions, probability,
@@ -466,11 +529,13 @@ path — including that note number plus pitch bend reconstructs the intended fr
 that non-12 EDO scales land where the tuning says, and that the bend range is actually
 transmitted.
 
-`Tests/ProcessorTests.cpp` (127 checks) drives the real `RavelAudioProcessor::processBlock`
+`Tests/ProcessorTests.cpp` (137 checks) drives the real `RavelAudioProcessor::processBlock`
 through a mock playhead. This covers the layer where the plugin could compile, load and still
 emit nothing: playhead handling, the free-run fallback, the parameter snapshot, state
-round-trip, every pattern action, lane add/remove and its undo behaviour, and the MIDI
-capability flags a host reads to decide whether to offer the plugin as a MIDI source.
+round-trip, every pattern action — including that RND, CLR and Invert act on the selected row,
+across that row's own range, and skip a row the lane kind does not have — lane add/remove and its
+undo behaviour, and the MIDI capability flags a host reads to decide whether to offer the plugin
+as a MIDI source.
 
 Worth keeping: these tests caught a real bug. Step boundaries were landing one sample late
 at some positions, because `ppqPerSample` is `1/24000` at 120 bpm / 48 kHz — not exactly
@@ -478,6 +543,31 @@ representable in binary — so `floor(ppq / stepLength)` returned the previous s
 lengths alternated between 5999 and 6001 samples. Fixed with a boundary epsilon in
 `SequencerEngine::process`, sized ~1000× smaller than one sample's worth of PPQ so it can
 only ever snap a value already inside rounding noise.
+
+### Looking at the UI
+
+The editor is a `juce::Component`, and a Component can paint itself into an image without ever
+reaching a desktop window — so the whole window can be rendered to a PNG from a build step
+rather than by loading the VST3 into a DAW and taking a screenshot by hand. Layout constants are
+the kind of thing that stays wrong by four pixels until someone actually looks at it.
+
+Off unless asked for, because it builds a second copy of the editor:
+
+```powershell
+cmake -S . -B build -DRAVEL_SNAPSHOT_SOURCE=Tests/Snapshot.cpp
+cmake --build build --target RavelSnapshot --config Debug
+.\build\RavelSnapshot_artefacts\Debug\RavelSnapshot.exe out.png notes 3
+```
+
+A fourth argument — the label of a chip on the lane strips, so `Pitch` (`Val` on the CC tab),
+`Vel`, `Prob`, `Gate`, `RND` or `CLR` — clicks that chip on every lane and writes one numbered frame per sample point
+across the slide that follows, so the animation can be reviewed from stills. Build the tool `--config Release` for that: a Debug paint of the window
+costs more wall clock than the slide lasts, so every frame would show it already finished.
+
+The first three arguments are the output file, which tab (`notes` or `cc`) and how many lanes. It dials in a
+fixed patch first — odd lane lengths, a muted lane, some steps switched off — because at its
+defaults the window shows none of the states worth checking: no wrap marker, no out-of-cycle
+steps, no negative Mix amount.
 
 ---
 
@@ -606,17 +696,20 @@ already includes M4L, and its modulation API can target any parameter directly.
 | `Source/SequencerEngine.*` | The sequencer core and MIDI generation |
 | `Source/PluginProcessor.*` | Plugin plumbing, playhead handling, state save/load |
 | `Source/PluginEditor.*` | Window layout, the header, and the Notes/CC workspaces |
-| `Source/PresetBar.*` | The header's preset pill: browser menu, name prompt, edited marker |
-| `Source/ExternalMidiSelector.*` | The header's MIDI-output pill: port list and Rescan |
+| `Source/PresetBar.*` | The header's preset pill, Save and Init: browser menu, name prompt, edited marker |
+| `Source/ExternalMidiSelector.*` | The header's MIDI-output chooser: port list and Rescan |
 | `Source/LaneComponent.*` | One lane: 16 steps plus its controls, in either kind |
 | `Source/Controls.*` | Shared row/column/tab building blocks the editor and lanes are built from |
 | `Source/PresetManager.*` | Saving, loading and browsing patches |
 | `Source/UndoHistory.*` | The edit history behind the arrows and Ctrl+Z |
 | `Source/ExternalMidiOutput.*` | Mirrors output to a system MIDI port, off the audio thread |
-| `Source/Theme.h` | Colours, metrics and the small drawing helpers |
+| `Source/Theme.h` | Colours, metrics, widget roles and the small drawing helpers |
+| `Source/Theme.cpp` | The two embedded Archivo faces, created once and cached |
 | `Source/RavelLookAndFeel.*` | Draws every custom widget, dispatching on `theme::roleOf()` |
+| `Assets/*.ttf` | Archivo Regular and SemiBold, compiled in by the `RavelFonts` target |
 | `Tests/EngineTests.cpp` | Engine tests, run as a standalone console app |
 | `Tests/ProcessorTests.cpp` | Processor tests, driven through a mock playhead |
+| `Tests/Snapshot.cpp` | Renders the editor to a PNG with no host — see [Looking at the UI](#looking-at-the-ui) |
 
 Both lane kinds are the same `LaneComponent`, told at construction which `params::LaneKind` it
 is; the same goes for the pattern actions and the engine's lane fold. That is what keeps the two

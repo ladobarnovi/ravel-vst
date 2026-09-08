@@ -6,81 +6,213 @@
 
 namespace theme
 {
+    //==========================================================================
     /** One ramp, and every surface in the window is exactly one of these.
 
         The names say where a colour sits in the stack rather than how light it is, because
-        the previous set did not: `background` was simultaneously the window's own ground
-        *and* the fill for sunken controls. That is what let a section nested two levels in
-        (window -> panel -> settings) get painted the same as level zero.
+        a name like `background` is simultaneously the window's own ground *and* the fill for
+        sunken controls -- which is what lets a section nested two levels in get painted the
+        same as level zero.
 
         Depth only ever increases inward: surface -> raised -> track. `well` is the single
         exception and goes the other way, for a control cut *into* whatever it sits on.
-
-        The steps are deliberately even, roughly ten units of channel value apart. The
-        previous values crowded raised and track three units apart, which left a step slot
-        indistinguishable from the lane it sits in and a popup menu's hover highlight
-        invisible against the menu.
     */
-    const juce::Colour well     { 0xff101216 };  ///< Cut into a surface: a select box, a pressed button.
-    const juce::Colour surface  { 0xff1a1e24 };  ///< The window itself, edge to edge.
-    const juce::Colour raised   { 0xff242932 };  ///< A card on the window: a lane, the header's MIDI pill.
-    const juce::Colour track    { 0xff2f3540 };  ///< A control's own ground: a step slot, a latched pill.
-    const juce::Colour outline  { 0xff3a4150 };  ///< Hairlines and borders.
+    const juce::Colour surface  { 0xff191c20 };  ///< The window itself, edge to edge.
+    const juce::Colour raised   { 0xff20242a };  ///< A chip or button at rest.
+    const juce::Colour raisedHot{ 0xff252a30 };  ///< The same, under the mouse.
+    const juce::Colour well     { 0xff0e1113 };  ///< Cut into a surface: the step area, a select box.
+    const juce::Colour track    { 0xff2f3540 };  ///< A control's own ground where it needs to read
+                                                 ///< above `raised` -- a latched pill, a switch bed.
+    const juce::Colour outline  { 0xff2d333a };  ///< Hairlines and borders.
+    const juce::Colour outlineSoft { 0xff23282e }; ///< Separators *inside* a section: between lanes,
+                                                   ///< between a lane's own parameter rows.
 
-    const juce::Colour text        { 0xffd8dee6 };
-    const juce::Colour textDim     { 0xff858d99 };
+    /** The three bands the window is built from, each a shade off `surface` so the header,
+        the tab bar and the settings footer read as their own registers without any of them
+        needing a border drawn round it. */
+    const juce::Colour headerTop { 0xff23282e };
+    const juce::Colour headerBottom { 0xff1d2126 };
+    const juce::Colour tabBar    { 0xff16191d };
+    const juce::Colour footer    { 0xff1c2024 };
 
-    /** One accent per lane, reused for that lane's step bars and playhead.
-        Deliberately not used on the lane's parameter rows: colour marks lane identity
-        and where the sequencer is, nothing else.
+    //==========================================================================
+    /** Three weights of text, and which one a string gets is decided by what the string is
+        for rather than by how important it looks:
+
+        - `text`      a value the user set, and the wordmark.
+        - `textDim`   a section heading, and the label on a pressable chip.
+        - `textFaint` the caption naming a value, and a step number.
+
+        The captions being the faintest of the three is deliberate. A settings column is read
+        by scanning the values down the right-hand side; the captions are what you fall back
+        to once something has caught your eye, so they stay legible without competing.
+    */
+    const juce::Colour text      { 0xffccd3da };
+    const juce::Colour textDim   { 0xff8b949d };
+    const juce::Colour textFaint { 0xff59626b };
+
+    /** Brighter than `text`, for the one or two things that have to sit above it: the
+        wordmark, and the label on the selected tab. */
+    const juce::Colour textBright { 0xffe4e9ee };
+
+    //==========================================================================
+    // Inside the step area. These are not reused anywhere else in the window, which is why
+    // they are their own tokens rather than an interpolation of the ramp above: a step bar's
+    // ground has to be a shade *lighter* than the well it sits in, and every generic token
+    // that is lighter than `well` is already spoken for.
+    const juce::Colour stepGround    { 0xff171b1e };  ///< The empty part of a live step's bar.
+    const juce::Colour stepGroundOff { 0xff131719 };  ///< The same, on a step that is toggled off.
+    const juce::Colour stepRingOff   { 0xff1f2529 };  ///< The hairline round an off step.
+    const juce::Colour trigGround    { 0xff1e2327 };  ///< The strip under a bar, when off.
+    const juce::Colour stepNumber    { 0xff454e56 };  ///< 1..16 under the trigs.
+
+    /** The knob of a switch that is off, and the underline under the selected tab. Both sit
+        between textFaint and outline: bright enough to be found, dim enough not to read as
+        the thing they are attached to being active. */
+    const juce::Colour switchKnobOff { 0xff4a535b };
+    const juce::Colour tabUnderline  { 0xff5c6670 };
+
+    /** The vertical mark inside the step area at the lane's Length, where the cycle wraps. */
+    const juce::Colour wrapLine      { 0xff3a434a };
+
+    //==========================================================================
+    /** One accent per lane, reused for that lane's step bars, its rail, its number and its
+        playhead. Deliberately not used on the lane's parameter rows: colour marks lane
+        identity and where the sequencer is, nothing else.
     */
     inline juce::Colour laneAccent (int laneIndex)
     {
         static const juce::Colour accents[]
         {
-            juce::Colour (0xff3fd1c0),   // teal
-            juce::Colour (0xffe8a33d),   // amber
-            juce::Colour (0xffd6567f),   // magenta
-            juce::Colour (0xff8a7ff0),   // violet
+            juce::Colour (0xff45b3c0),   // teal
+            juce::Colour (0xffdfa13c),   // amber
+            juce::Colour (0xffae7ad6),   // violet
+            juce::Colour (0xff79be68),   // green
         };
 
         return accents[(size_t) juce::jlimit (0, 3, laneIndex)];
     }
 
     //==========================================================================
+    /** Archivo, compiled into the binary (see the RavelFonts target in CMakeLists.txt).
+
+        Not the platform default. Every width in this file -- a settings column, the preset
+        pill, a lane's parameter block -- was measured against these glyphs, and JUCE's
+        default sans-serif is whatever the OS hands back: Segoe UI on Windows, Helvetica on
+        macOS. A layout that fits on one would overlap on the other.
+
+        Defined in Theme.cpp, because the typefaces have to be created once and kept, not
+        rebuilt for every string that gets measured.
+    */
+    juce::Font regularFont (float height);
+    juce::Font semiBoldFont (float height);
+
+    //==========================================================================
+    // Type sizes. Named for the thing they set rather than for their size, so a change here
+    // moves everything that shares a role instead of everything that happened to share a
+    // number.
+    inline juce::Font rowFont()      { return regularFont  (12.0f); }   ///< Captions and values.
+    inline juce::Font rowValueFont() { return semiBoldFont (12.0f); }   ///< The value half of a row.
+    inline juce::Font headingFont()  { return semiBoldFont (11.0f); }   ///< A settings column's heading.
+    inline juce::Font tabFont()      { return semiBoldFont (12.5f); }
+    inline juce::Font wordmarkFont() { return semiBoldFont (16.0f); }
+    inline juce::Font chipFont()     { return semiBoldFont (10.5f); }   ///< Layer selector, lane actions.
+    inline juce::Font stepNumFont()  { return regularFont  (9.0f); }
+
+    //==========================================================================
+    // Vertical rhythm.
+    // Rows sit flush against each other; the height carries the spacing, and a ruled row's own
+    // hairline is drawn inside it (see setRuled). There is no gap constant because there is no
+    // gap -- what separates two rows is the rule, or nothing.
+    inline constexpr int rowHeight      = 22;   ///< A settings row.
+    inline constexpr int paramRowHeight = 25;   ///< A row in a lane's parameter column, rule included.
+    inline constexpr int headingHeight  = 27;   ///< Heading text, its underline, and the gap after it.
+
+    //==========================================================================
     /** How a widget wants to be drawn.
 
-        Every custom-drawn widget in the plugin is a stock JUCE control with a role
-        stamped on it, and the LookAndFeel switches on that role. This is what lets one
-        shared LookAndFeel draw an inline parameter row, a step bar and a step trig
-        without any of them needing a subclass, and it keeps JUCE's mouse handling and
-        parameter attachments working untouched.
+        Every custom-drawn widget in the plugin is a stock JUCE control with a role stamped on
+        it, and the LookAndFeel switches on that role. This is what lets one shared LookAndFeel
+        draw a settings row, a step bar and a lane action chip without any of them needing a
+        subclass, and it keeps JUCE's mouse handling and parameter attachments working
+        untouched.
     */
     enum class Role
     {
         standard = 0,   ///< Leave it to LookAndFeel_V4.
-        valueRow,       ///< "caption ....... value" on one line, with a fill hairline.
-        selectChip,     ///< A caption beside a boxed, arrowed value -- a ComboBox standing
-                        ///< alone rather than among the peers a valueRow's bare caption/value
-                        ///< pair leans on to read as a control at all.
-        stepBar,        ///< Tall vertical step value bar.
-        stepChance,     ///< Tick across a step bar; only its right gutter takes the mouse.
-        stepTrig,       ///< Flat strip under a step bar: this step's on/off toggle.
+
+        valueRow,       ///< "caption ................ value" on one line.
+        valueRowSlider, ///< The same, with a short track and a read-out in place of the value.
+        valueRowOctaves,///< The same again, but the track is seven discrete octave cells.
+        switchRow,      ///< "caption ................ [switch]".
+
+        lengthBar,      ///< 16 cells, lit up to the lane's Length. Sits under a block heading.
+        bipolarBar,     ///< Mix amount: fills out from the centre. Also under a block heading.
+
+        stepBar,        ///< One step's tall value bar.
+        stepTrig,       ///< The flat strip under a step bar: this step's on/off.
+
+        layerChip,      ///< Val / Vel / Prob / Gate. Latched -- the current one stays filled.
+        laneAction,     ///< RND / CLR.
+        laneMenu,       ///< The pattern menu's chip. Three dots, drawn rather than typed --
+                        ///< U+22EF is not in every font, and a chip that renders as a
+                        ///< missing-glyph box is worse than no chip at all.
+        laneRemove,     ///< The lane's own close cross, drawn the same way and for the
+                        ///< same reason.
+        addLane,        ///< The full-width "+ Add lane" bar under the stack.
+
+        headerButton,   ///< Save / Init / Rescan.
+
+        // The history pair. Both draw a glyph in place of their text and take the same chip
+        // behind them as headerButton does -- see drawButtonBackground, where they share its
+        // case rather than carrying a second role for the box.
         undoArrow,      ///< Curved arrow drawn in place of a TextButton's text.
         redoArrow,      ///< The same arrow, mirrored.
-        actionButton,   ///< Pressable chip: filled and outlined at rest, not only on hover.
-        presetChip,     ///< selectChip's look on a TextButton rather than a ComboBox -- a
-                        ///< caption beside a boxed, arrowed value, where the value is text
-                        ///< this button is told to show rather than a choice it owns.
-        stepperPrev,    ///< Bare chevron, no chip behind it: step to the previous entry.
+
+        selectChip,     ///< A boxed, arrowed value standing alone -- the MIDI output chooser.
+        presetName,     ///< The middle of the preset pill: the loaded patch's name.
+        stepperPrev,    ///< Bare chevron: step to the previous preset.
         stepperNext     ///< The same chevron, mirrored.
     };
 
     const juce::Identifier roleProperty { "ravelRole" };
 
+    /** The pointer a role wants.
+
+        Set from the role rather than at each call site, so the two can never disagree -- a
+        control that looks draggable and shows an arrow cursor reads as decoration, and that is
+        exactly the mistake a per-widget setMouseCursor() call invites by being easy to forget.
+    */
+    inline juce::MouseCursor cursorForRole (Role role)
+    {
+        switch (role)
+        {
+            // Anything dragged along its own length.
+            case Role::valueRow:
+            case Role::valueRowSlider:
+            case Role::valueRowOctaves:
+            case Role::lengthBar:
+            case Role::bipolarBar:
+                return juce::MouseCursor::LeftRightResizeCursor;
+
+            // A step bar is dragged up and down, and a stroke across several of them still
+            // moves each one vertically.
+            case Role::stepBar:
+                return juce::MouseCursor::UpDownResizeCursor;
+
+            case Role::standard:
+                return juce::MouseCursor::NormalCursor;
+
+            // Everything else is pressed rather than dragged.
+            default:
+                return juce::MouseCursor::PointingHandCursor;
+        }
+    }
+
     inline void setRole (juce::Component& component, Role role)
     {
         component.getProperties().set (roleProperty, (int) role);
+        component.setMouseCursor (cursorForRole (role));
     }
 
     inline Role roleOf (const juce::Component& component)
@@ -88,16 +220,105 @@ namespace theme
         return (Role) (int) component.getProperties().getWithDefault (roleProperty, 0);
     }
 
-    /** The caption a valueRow draws on its left. Stored as the component's name so it
-        also reaches the accessibility layer, which wants the same string.
-    */
+    /** The caption a row draws on its left. Stored as the component's name so it also reaches
+        the accessibility layer, which wants the same string. */
     inline void setCaption (juce::Component& component, const juce::String& caption)
     {
         component.setName (caption);
     }
 
-    /** Marks a presetChip's value as no longer matching what it names -- the patch has been
-        edited since the preset was loaded. Drawn as a dim dot after the name.
+    //==========================================================================
+    /** Draws a hairline under this row.
+
+        A lane's parameter block rules its rows; a settings column does not. The difference is
+        that a settings column already has a heading and a vertical divider marking where it
+        starts and stops, and a lane's parameter block has neither -- it is four controls in a
+        column with a step grid beside them, and without the rules they read as one block of
+        text rather than as four separate parameters.
+    */
+    const juce::Identifier ruledProperty { "ravelRuled" };
+
+    inline void setRuled (juce::Component& component, bool shouldBeRuled)
+    {
+        component.getProperties().set (ruledProperty, shouldBeRuled);
+    }
+
+    inline bool isRuled (const juce::Component& component)
+    {
+        return (bool) component.getProperties().getWithDefault (ruledProperty, false);
+    }
+
+    /** Marks a step bar as belonging to a step that is toggled off, so it can be drawn with a
+        hairline round it as well as a darker ground. Needed because a step at value zero has no
+        fill for the off state to show up in, and the ground alone is a two-value difference
+        that vanishes at a glance across sixteen of them. */
+    const juce::Identifier stepOffProperty { "ravelStepOff" };
+
+    inline void setStepOff (juce::Component& component, bool isOff)
+    {
+        component.getProperties().set (stepOffProperty, isOff);
+    }
+
+    inline bool isStepOff (const juce::Component& component)
+    {
+        return (bool) component.getProperties().getWithDefault (stepOffProperty, false);
+    }
+
+    /** Overrides the height a step bar draws its fill to, as a proportion of the bar, while a
+        layer switch is animating.
+
+        Switching a lane from Value to Prob replaces every bar's height at once, and sixteen
+        bars jumping together reads as the grid being replaced rather than as the same grid
+        showing a different row of itself. Sliding them across says the pattern stayed put and
+        you changed what you are looking at.
+
+        An override rather than driving the Slider's own value, because the value belongs to
+        the parameter: writing to it to animate would send sixteen bogus gestures to the host
+        and land in the undo history. The bar keeps drawing itself, its colours and its off
+        ring; only the one number it draws to is borrowed.
+
+        Negative (the default) means "draw your own value", which is the state outside a
+        transition.
+    */
+    const juce::Identifier drawProportionProperty { "ravelDrawProportion" };
+
+    inline void setDrawProportion (juce::Component& component, float proportion)
+    {
+        component.getProperties().set (drawProportionProperty, (double) proportion);
+    }
+
+    inline void clearDrawProportion (juce::Component& component)
+    {
+        component.getProperties().remove (drawProportionProperty);
+    }
+
+    inline float drawProportionOf (const juce::Component& component)
+    {
+        return (float) (double) component.getProperties()
+                   .getWithDefault (drawProportionProperty, -1.0);
+    }
+
+    /** The accent a widget draws itself in, where that is the lane's colour rather than one of
+        the ramp's. Stamped rather than passed, so a step bar, a length bar and a layer chip
+        can all be stock JUCE controls that the one shared LookAndFeel colours correctly.
+    */
+    const juce::Identifier accentProperty { "ravelAccent" };
+
+    inline void setAccent (juce::Component& component, juce::Colour accent)
+    {
+        component.getProperties().set (accentProperty, (int) accent.getARGB());
+    }
+
+    inline juce::Colour accentOf (const juce::Component& component)
+    {
+        const auto argb = (juce::uint32) (juce::int64) component.getProperties()
+                              .getWithDefault (accentProperty, (juce::int64) text.getARGB());
+        return juce::Colour (argb);
+    }
+
+    //==========================================================================
+    /** Marks a presetName's value as no longer matching what it names -- the patch has been
+        edited since the preset was loaded. Drawn as a small dot after the name.
 
         A stamped property rather than a widget subclass or a second colour ID, for the same
         reason the role itself is one: the chip stays a stock TextButton, and the LookAndFeel
@@ -116,7 +337,7 @@ namespace theme
         return (bool) component.getProperties().getWithDefault (dirtyProperty, false);
     }
 
-    /** Marks a presetChip's value as standing in for the absence of one -- "Init", when no
+    /** Marks a presetName's value as standing in for the absence of one -- "Init", when no
         preset is loaded -- so it is drawn dim, the way a placeholder is, rather than as a
         preset that happens to be called that.
     */
@@ -134,21 +355,29 @@ namespace theme
     }
 
     //==========================================================================
-    inline constexpr int rowHeight     = 18;
-    inline constexpr int rowGap        = 3;
-    inline constexpr int headingHeight = 18;
+    // Widths of the inline controls a value row can carry on its right, and the gap before
+    // the read-out that follows them. Shared between the LookAndFeel that draws them and the
+    // layout code that has to leave room.
+    inline constexpr int inlineTrackWidth  = 86;
+    inline constexpr int inlineTrackNarrow = 60;  ///< In a settings column that holds four of them.
+    inline constexpr int inlineReadoutWidth = 44;
+    inline constexpr int inlineGap          = 9;
 
-    inline juce::Font rowFont()     { return juce::Font (juce::FontOptions (11.5f)); }
-    inline juce::Font headingFont() { return juce::Font (juce::FontOptions (11.5f, juce::Font::bold)); }
-    inline juce::Font titleFont()   { return juce::Font (juce::FontOptions (17.0f, juce::Font::bold)); }
+    /** Reserved on the right of a select chip for its arrow, so it never crowds the value. */
+    inline constexpr int chipArrowWidth = 18;
 
-    /** The font a TextButton draws its label in. Capped, so the tall history arrows do not
-        get a proportionally larger label than the buttons in the lanes. Lives here rather
-        than only inside the LookAndFeel because layout code has to measure the same string
-        the LookAndFeel is about to draw. */
-    inline juce::Font buttonFont (int buttonHeight)
+    //==========================================================================
+    /** Width an action chip needs to hold its label, padding included.
+
+        Chips are sized to their own text rather than to a shared width: "Randomize" is more
+        than twice the width of "More", and one width wide enough for the longest leaves the
+        short ones as mostly empty chip, which is what makes a row of buttons read as a table
+        instead of as a row of buttons.
+    */
+    inline int chipWidth (const juce::String& chipText, int padding = 16)
     {
-        return juce::Font (juce::FontOptions ((float) juce::jmin (15, buttonHeight) * 0.7f));
+        return (int) std::ceil (juce::GlyphArrangement::getStringWidth (chipFont(), chipText))
+                 + padding;
     }
 
     /** Small dim heading over a group of value rows. */
@@ -160,101 +389,55 @@ namespace theme
         label.setJustificationType (juce::Justification::centredLeft);
         label.setInterceptsMouseClicks (false, false);
 
-        // Label's default border is (1, 5, 1, 5), which would indent the heading relative
-        // to the row captions underneath it and eats the width of a short label whole.
+        // Label's default border is (1, 5, 1, 5), which would indent the heading relative to
+        // the row captions underneath it and eats the width of a short label whole.
         label.setBorderSize (juce::BorderSize<int> (0));
     }
 
-    /** A one-shot action -- Rnd, Clr, the pattern menu, Add lane, Remove -- rather than a
-        selector or a parameter. These sit in among captions and value rows, where a bare
-        word reads as a label, so they take a resting fill and outline instead of only
-        lighting up once the mouse has already found them. The latched layer selectors
-        deliberately do not: a fill there means "this is the current layer", and giving the
-        other three one at rest would leave that meaning nothing to say.
-    */
-    inline void styleActionButton (juce::TextButton& button)
-    {
-        setRole (button, Role::actionButton);
-
-        // Brighter than the textDim default, which was chosen for a button with no
-        // background and looks switched-off once there is a filled chip behind it.
-        button.setColour (juce::TextButton::textColourOffId, text.withAlpha (0.85f));
-    }
-
-    /** Width an action chip needs to hold its label, padding included. Buttons are sized to
-        their own text rather than to a shared width: "Randomize" is more than twice the
-        width of "More", and one width wide enough for the longest leaves the short ones as
-        mostly empty chip, which is what makes a row of buttons read as a table instead. */
-    inline int actionButtonWidth (const juce::String& buttonText, int buttonHeight)
-    {
-        const auto textWidth = juce::GlyphArrangement::getStringWidth (buttonFont (buttonHeight),
-                                                                       buttonText);
-        return (int) std::ceil (textWidth) + 18;
-    }
-
     //==========================================================================
-    /** Paints one inline parameter row: caption on the left, value on the right, and a
-        hairline along the bottom whose filled portion shows where the value sits.
+    /** The wordmark's four bars: one per lane accent, at four different heights.
 
-        @param fillProportion  0 to 1, or negative to omit the fill (choices and toggles
-                               have no meaningful position along a range).
-        @param bipolar         Fill grows out from the centre rather than from the left,
-                               so a Depth of zero reads as zero instead of as minimum.
+        Drawn rather than shipped as an image so it picks up the lane palette -- the mark is
+        the four lanes, and changing an accent in laneAccent() above should change the logo
+        with it rather than leaving a PNG quietly disagreeing.
     */
-    inline void drawValueRow (juce::Graphics& g,
-                              juce::Rectangle<int> bounds,
-                              const juce::String& caption,
-                              const juce::String& valueText,
-                              bool highlighted,
-                              float fillProportion,
-                              bool bipolar)
+    inline void drawLogoMark (juce::Graphics& g, juce::Rectangle<float> bounds)
     {
-        auto area = bounds.toFloat();
-        const auto hairline = area.removeFromBottom (1.0f);
+        // Proportions of the mark's own height, so it scales with whatever it is handed.
+        static const float heights[] { 0.53f, 1.0f, 0.35f, 0.76f };
 
-        g.setFont (rowFont());
+        constexpr float barWidth = 2.5f;
+        constexpr float barGap   = 2.0f;
 
-        g.setColour (highlighted ? text.withAlpha (0.85f) : textDim);
-        g.drawText (caption, bounds.reduced (1, 0), juce::Justification::centredLeft, false);
+        auto x = bounds.getX();
 
-        g.setColour (highlighted ? text : text.withAlpha (0.82f));
-        g.drawText (valueText, bounds.reduced (1, 0), juce::Justification::centredRight, false);
-
-        g.setColour (track);
-        g.fillRect (hairline);
-
-        if (fillProportion < 0.0f)
-            return;
-
-        const float clamped = juce::jlimit (0.0f, 1.0f, fillProportion);
-
-        const auto fill = bipolar
-                            ? juce::Rectangle<float> (hairline.getX() + hairline.getWidth() * juce::jmin (0.5f, clamped),
-                                                      hairline.getY(),
-                                                      hairline.getWidth() * std::abs (clamped - 0.5f),
-                                                      hairline.getHeight())
-                            : hairline.withWidth (hairline.getWidth() * clamped);
-
-        if (fill.getWidth() > 0.5f)
+        for (int i = 0; i < 4; ++i)
         {
-            g.setColour (highlighted ? text.withAlpha (0.75f) : text.withAlpha (0.34f));
-            g.fillRect (fill);
+            const float height = bounds.getHeight() * heights[i];
+
+            g.setColour (laneAccent (i));
+            g.fillRoundedRectangle (x, bounds.getBottom() - height, barWidth, height, 1.0f);
+
+            x += barWidth + barGap;
         }
     }
+
+    /** Width drawLogoMark occupies, so the header can leave exactly that much room. */
+    inline constexpr float logoMarkWidth = 4 * 2.5f + 3 * 2.0f;
 
     //==========================================================================
     /** One history button's glyph: a semicircle over the top, with a head on the end the
         arrow travels toward.
 
-        Drawn rather than typed. The characters this stands in for -- U+21B6 and U+21B7 --
-        are not in every font Windows might hand back for the default sans-serif, and a
-        header button that renders as a missing-glyph box is worse than no button at all.
+        Drawn rather than typed. The characters this stands in for -- U+21B6 and U+21B7 -- are
+        not in every font Windows might hand back, and a header button that renders as a
+        missing-glyph box is worse than no button at all.
     */
     inline void drawHistoryArrow (juce::Graphics& g, juce::Rectangle<float> bounds,
                                   bool forward, juce::Colour colour)
     {
         const auto centre = bounds.getCentre();
-        const float radius = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.28f;
+        const float radius = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.26f;
 
         // The arc rides above the button's centre line, because the head hangs below it and
         // the two together have to look centred.
@@ -270,12 +453,12 @@ namespace theme
                            true);
 
         g.setColour (colour);
-        g.strokePath (arc, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved,
+        g.strokePath (arc, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved,
                                                  juce::PathStrokeType::butt));
 
         // Sitting on the arc's end and pointing down, which is where the tangent goes there.
         const float tipX = centre.x + (forward ? radius : -radius);
-        const float head = radius * 0.7f;
+        const float head = radius * 0.72f;
 
         juce::Path arrowHead;
         arrowHead.addTriangle (tipX - head * 0.8f, baseline,
@@ -285,48 +468,20 @@ namespace theme
         g.fillPath (arrowHead);
     }
 
-    /** Reserved on the right of a chip's boxed area for its chevron, so it never crowds the
-        value text. */
-    inline constexpr int chipArrowWidth = 18;
-
-    /** The boxed, arrowed portion of a chip: everything after its caption.
-
-        Shared three ways -- drawing the box, positioning the text inside it, and anchoring
-        the menu a presetChip opens -- so the caption's own width, which depends on its text,
-        can never leave them disagreeing about where the box starts. A dropdown that opened
-        under the caption rather than under the field it fills is the visible symptom.
-
-        Takes a Component rather than a ComboBox because a presetChip is a TextButton wearing
-        the same look; both hold their caption in the component name (see setCaption).
-    */
-    inline juce::Rectangle<int> chipBoxArea (const juce::Component& component)
-    {
-        const auto captionWidth = (int) std::ceil (
-            juce::GlyphArrangement::getStringWidth (rowFont(), component.getName()));
-
-        return component.getLocalBounds().withTrimmedLeft (captionWidth + 8);
-    }
-
     /** A stepper's glyph: a bare chevron, stroked rather than filled.
 
         Deliberately a different shape from drawHistoryArrow's curved arrow even though both
         pairs sit in the same header. The two do different things -- history walks the edit
         stack, a stepper walks the preset list -- and telling them apart at 22px is what the
         chevron's straight strokes buy over a second pair of curves.
-
-        Drawn rather than typed for the same reason the history arrows are: U+2039 and
-        U+203A are not in every font Windows might hand back for the default sans-serif.
     */
     inline void drawChevron (juce::Graphics& g, juce::Rectangle<float> bounds,
                              bool pointingLeft, juce::Colour colour)
     {
-        // Sized against the row's text rather than against the button: a chevron drawn to
-        // fill its own click target comes out taller than the name it sits beside and reads
-        // as the louder of the two, when it is the name that matters.
         const auto centre = bounds.getCentre();
         const float extent = juce::jmin (bounds.getWidth(), bounds.getHeight());
-        const float halfWidth  = extent * 0.11f;
-        const float halfHeight = extent * 0.18f;
+        const float halfWidth  = extent * 0.13f;
+        const float halfHeight = extent * 0.21f;
 
         const float tipX  = centre.x + (pointingLeft ? -halfWidth : halfWidth);
         const float backX = centre.x + (pointingLeft ?  halfWidth : -halfWidth);
@@ -339,6 +494,56 @@ namespace theme
         g.setColour (colour);
         g.strokePath (chevron, juce::PathStrokeType (1.3f, juce::PathStrokeType::curved,
                                                      juce::PathStrokeType::rounded));
+    }
+
+    /** The small solid triangle that marks a value as a dropdown. */
+    inline void drawDropArrow (juce::Graphics& g, juce::Rectangle<float> bounds, juce::Colour colour)
+    {
+        constexpr float halfWidth = 3.6f;
+        constexpr float height    = 3.2f;
+
+        const auto centre = bounds.getCentre();
+
+        juce::Path arrow;
+        arrow.addTriangle (centre.x - halfWidth, centre.y - height * 0.5f,
+                           centre.x + halfWidth, centre.y - height * 0.5f,
+                           centre.x,             centre.y + height * 0.5f);
+
+        g.setColour (colour);
+        g.fillPath (arrow);
+    }
+
+    //==========================================================================
+    /** The switch a boolean row draws on its right: a small rounded bed with a square knob
+        that slides across it.
+
+        A sliding knob rather than a tick or a filled box, because the two states have to be
+        distinguishable at a glance in a column of eight rows -- position reads faster than
+        colour alone, and this is the one control in the window that has no read-out text
+        beside it to fall back on.
+    */
+    inline void drawSwitch (juce::Graphics& g, juce::Rectangle<float> bounds, bool on,
+                            bool highlighted, juce::Colour accent)
+    {
+        constexpr float corner = 2.0f;
+
+        g.setColour (on ? accent.withMultipliedSaturation (0.55f).withMultipliedBrightness (0.32f)
+                        : well);
+        g.fillRoundedRectangle (bounds, corner);
+
+        g.setColour (on ? accent.withAlpha (0.55f)
+                        : (highlighted ? outline.brighter (0.3f) : outline));
+        g.drawRoundedRectangle (bounds.reduced (0.5f), corner, 1.0f);
+
+        // A knob that slides rather than a fill that changes colour: position is readable at a
+        // glance down a column of eight rows, and this is the one control in the window with
+        // no read-out beside it to fall back on.
+
+        const float knob = bounds.getHeight() - 4.0f;
+        const float x = on ? bounds.getRight() - knob - 2.0f : bounds.getX() + 2.0f;
+
+        g.setColour (on ? accent : (highlighted ? switchKnobOff.brighter (0.3f) : switchKnobOff));
+        g.fillRoundedRectangle (x, bounds.getY() + 2.0f, knob, knob, 1.0f);
     }
 }
 

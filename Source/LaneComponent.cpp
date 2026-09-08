@@ -2,14 +2,6 @@
 
 namespace
 {
-    constexpr int trigHeight   = 11;
-    constexpr int trigGap      = 4;
-
-    // Wide enough that the sixteen trig strips read as sixteen marks rather than as one line
-    // ruled under the whole step area. Part of lane::stepSlotWidth, not extra to it: the
-    // gap comes out of the slot, so the pitch from one step to the next stays exact.
-    constexpr int slotGap      = 5;
-
     /** What each layer's bar edits. Out here rather than in the constructor's table because
         the slot's tooltip asks for it again every time the mouse rests on a bar, and the
         layer under the bars changes without the slot being rebuilt. */
@@ -24,12 +16,46 @@ namespace
             default:                  return "Step value -- drives pitch";
         }
     }
+
+}
+
+namespace
+{
+    /** How long a slide takes, and how it is paced.
+
+        Short enough to feel like a state change rather than an animation you wait through --
+        the point is to show that the bars moved rather than were replaced, and that reads in
+        well under a fifth of a second. Eased out, so it leaves immediately on the click and
+        settles into the new heights rather than arriving at speed.
+    */
+    constexpr double valueSlideMs = 140.0;
+
+    float easeOut (float t) noexcept
+    {
+        const float inverse = 1.0f - t;
+        return 1.0f - inverse * inverse * inverse;
+    }
+}
+
+//==============================================================================
+int lane::height()
+{
+    const int ruledBlock = ParamBlock::preferredHeight() + 1;
+    const int ruledRow   = theme::paramRowHeight;
+
+    // Length, Rate, Direction, Mix amount, then the action chips pushed to the foot. Both
+    // kinds of lane carry all four, so there is one height rather than one per kind: a CC
+    // lane's steps traverse exactly as a Note lane's do.
+    const int paramHeight = ruledBlock + ruledRow + ruledRow + ruledBlock
+                              + actionGap + actionHeight;
+
+    return padTop + juce::jmax (wellHeight, paramHeight) + padBottom + separatorHeight;
 }
 
 //==============================================================================
 StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, int stepIndex,
                     params::LaneKind kind)
-    : accent (theme::laneAccent (laneIndex))
+    : step (stepIndex), accent (theme::laneAccent (laneIndex))
 {
     struct LayerSetup
     {
@@ -42,12 +68,18 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
     // Parameters.cpp) -- so for a CC-kind slot only Value and Chance get built at all.
     const bool isCc = kind == params::LaneKind::cc;
 
+    // Both the id and the double-click reset come from params, so a bar resets to exactly what
+    // the lane's Clear puts that row back to.
     const LayerSetup setups[]
     {
-        { valueSlider,    params::stepValueId (laneIndex, stepIndex, kind),  0.0 },
-        { velocitySlider, isCc ? juce::String() : params::stepVelocityId (laneIndex, stepIndex),  1.0 },
-        { chanceSlider,   params::stepChanceId (laneIndex, stepIndex, kind), 1.0 },
-        { gateSlider,     isCc ? juce::String() : params::stepGateId (laneIndex, stepIndex),      60.0 },
+        { valueSlider,    params::stepLayerId (laneIndex, stepIndex, StepLayer::value, kind),
+                          params::stepLayerNeutral (StepLayer::value) },
+        { velocitySlider, params::stepLayerId (laneIndex, stepIndex, StepLayer::velocity, kind),
+                          params::stepLayerNeutral (StepLayer::velocity) },
+        { chanceSlider,   params::stepLayerId (laneIndex, stepIndex, StepLayer::chance, kind),
+                          params::stepLayerNeutral (StepLayer::chance) },
+        { gateSlider,     params::stepLayerId (laneIndex, stepIndex, StepLayer::gate, kind),
+                          params::stepLayerNeutral (StepLayer::gate) },
     };
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>* attachments[]
@@ -55,17 +87,16 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
 
     for (int i = 0; i < numStepLayers; ++i)
     {
-        // Velocity (1) and Gate (3): skipped entirely for a CC lane, rather than attached
-        // to the note lane of the same number that stepVelocityId/stepGateId would
-        // otherwise silently resolve to.
-        if (isCc && (i == (int) StepLayer::velocity || i == (int) StepLayer::gate))
+        // Empty for a CC lane's velocity and gate, which do not exist -- skipped rather than
+        // attached to the note lane of the same number those ids would otherwise resolve to.
+        if (setups[i].paramID.isEmpty())
             continue;
 
         auto& slider = setups[i].slider;
 
         slider.setSliderStyle (juce::Slider::LinearBarVertical);
         slider.setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
-        slider.setColour (juce::Slider::backgroundColourId, theme::track);
+        slider.setColour (juce::Slider::backgroundColourId, theme::stepGround);
 
         // On drag only. The hover half of it went with the slider's mouse handling, since a
         // component that is never under the mouse is never hovered; the slot's own tooltip
@@ -76,8 +107,8 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
         slider.setPopupDisplayEnabled (true, false, nullptr);
         slider.setDoubleClickReturnValue (true, setups[i].resetTo);
 
-        // The slot takes the mouse for all four bars and passes each event on to whichever
-        // one the stroke has reached -- see this class's own comment. A bar that took its own
+        // The slot takes the mouse for all four bars and passes each event on to whichever one
+        // the stroke has reached -- see this class's own comment. A bar that took its own
         // mouse-down would hold the rest of the drag whatever the cursor went on to do.
         slider.setInterceptsMouseClicks (false, false);
 
@@ -88,17 +119,21 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
             state, setups[i].paramID, slider);
     }
 
+    // The bars are deaf to the mouse and the slot takes the gesture for all four of them (see
+    // this class's own comment), so the drag cursor belongs here rather than on the bar the
+    // role would otherwise put it on. The trig is a real button and sets its own.
+    setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
+
     onButton.setColour (juce::ToggleButton::tickColourId, accent);
     onButton.setTooltip ("Mute or unmute this step");
-    onButton.setMouseCursor (juce::MouseCursor::PointingHandCursor);
     theme::setRole (onButton, theme::Role::stepTrig);
     addAndMakeVisible (onButton);
 
     onAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
         state, params::stepOnId (laneIndex, stepIndex, kind), onButton);
 
-    // ButtonAttachment listens through addListener rather than through either callback,
-    // so onStateChange is free for the lane's own use.
+    // ButtonAttachment listens through addListener rather than through either callback, so
+    // onStateChange is free for the lane's own use.
     //
     // Guarded on the toggle actually having moved: onStateChange fires for every state the
     // button passes through, mouse-over and mouse-down included, so an unguarded hover ran the
@@ -127,6 +162,10 @@ juce::Slider& StepSlot::sliderFor (StepLayer layer) noexcept
 
 void StepSlot::setLayer (StepLayer layer)
 {
+    // The bar being hidden must not keep an override from a slide it was part of, or it would
+    // come back at that height the next time this layer is selected.
+    theme::clearDrawProportion (sliderFor (currentLayer));
+
     currentLayer = layer;
 
     for (auto l : { StepLayer::value, StepLayer::velocity, StepLayer::chance, StepLayer::gate })
@@ -136,14 +175,56 @@ void StepSlot::setLayer (StepLayer layer)
     repaint();
 }
 
+float StepSlot::proportionOf (const juce::Slider& slider)
+{
+    const auto range = slider.getRange();
+
+    return range.getLength() > 0.0
+             ? (float) juce::jlimit (0.0, 1.0, (slider.getValue() - range.getStart()) / range.getLength())
+             : 0.0f;
+}
+
+float StepSlot::drawnProportion() const
+{
+    const float overridden = theme::drawProportionOf (const_cast<StepSlot*> (this)->sliderFor (currentLayer));
+
+    return overridden >= 0.0f ? overridden
+                              : proportionOf (const_cast<StepSlot*> (this)->sliderFor (currentLayer));
+}
+
+void StepSlot::beginValueSlide()
+{
+    transitionFrom = drawnProportion();
+}
+
+void StepSlot::setValueSlideProgress (float progress)
+{
+    if (transitionFrom < 0.0f)
+        return;
+
+    auto& bar = sliderFor (currentLayer);
+
+    if (progress >= 1.0f)
+    {
+        transitionFrom = -1.0f;
+        theme::clearDrawProportion (bar);
+    }
+    else
+    {
+        theme::setDrawProportion (bar, transitionFrom
+                                         + (proportionOf (bar) - transitionFrom) * progress);
+    }
+
+    bar.repaint();
+}
+
 void StepSlot::setLaneActive (bool laneIsActive)
 {
     if (laneActive == laneIsActive)
         return;
 
     laneActive = laneIsActive;
-    applyTrigState();
-    repaint();
+    applySlotAlpha();
 }
 
 void StepSlot::setWithinLength (bool isWithinLength)
@@ -152,7 +233,19 @@ void StepSlot::setWithinLength (bool isWithinLength)
         return;
 
     withinLength = isWithinLength;
-    applyTrigState();
+    applySlotAlpha();
+}
+
+void StepSlot::applySlotAlpha()
+{
+    // Both states fade the whole slot -- bar, trig and number together -- rather than being
+    // mixed into each colour separately, and they multiply: a step past the end of a muted
+    // lane is fainter than either on its own. That is what keeps the three readings ("off",
+    // "never runs", "lane is muted") distinguishable instead of collapsing into one grey.
+    //
+    // On the slot rather than on its children because the number is painted by the slot
+    // itself, and a child-by-child fade would leave it at full strength.
+    setAlpha ((laneActive ? 1.0f : 0.34f) * (withinLength ? 1.0f : 0.3f));
     repaint();
 }
 
@@ -177,39 +270,37 @@ void StepSlot::applyTrigState()
 
     appliedTrigOn = on ? 1 : 0;
 
-    // Either reason for the step never firing -- a muted lane, or a step the lane's Length
-    // leaves out of the cycle -- lands on the same faint treatment.
-    const bool live = laneActive && withinLength;
-
     auto& visible = sliderFor (currentLayer);
 
-    // Three levels rather than two: an inert step sits below even an off step, so the
-    // difference between "this step is off" and "this step never runs" stays readable.
-    const float alpha = ! live ? 0.12f : (on ? 1.0f : 0.25f);
+    // Only on/off and the playhead are mixed into the colours here. Muting and running past
+    // the lane's Length fade the whole slot instead -- see applySlotAlpha -- so this does not
+    // have to know about either.
+    const float alpha = ! on    ? 0.16f
+                      : playing ? 1.0f
+                                : 0.82f;
 
-    visible.setColour (juce::Slider::trackColourId, accent.withAlpha (alpha));
+    visible.setColour (juce::Slider::trackColourId,
+                       (playing && on ? accent.brighter (0.28f) : accent).withAlpha (alpha));
 
-    // The empty part of the bar carries the out-of-range state on its own, which is what
-    // makes it visible on a step whose value is zero -- there is no fill there to dim.
-    // Mixed toward theme::raised, which is the lane's own fill -- an out-of-range slot
-    // has to fade into the surface it is actually drawn on. Mixing toward theme::surface (the
-    // ground under the lane, not the lane) would overshoot past it and leave the slot
-    // reading as a dark hole punched in the lane rather than as an absent step.
     visible.setColour (juce::Slider::backgroundColourId,
-                       withinLength ? theme::track
-                                    : theme::track.interpolatedWith (theme::raised, 0.85f));
+                       on ? theme::stepGround : theme::stepGroundOff);
+
+    // Drawn as a hairline round the bar by the LookAndFeel. The ground alone cannot carry the
+    // off state on a step whose value is zero, because there is no fill above it to contrast
+    // against.
+    theme::setStepOff (visible, ! on);
     visible.repaint();
 
-    // Mixed toward the lane rather than made transparent: drawStepTrig sets its own alpha
-    // on whatever colour it finds here, so an alpha stored on this one would be discarded.
-    onButton.setColour (juce::ToggleButton::tickColourId,
-                        live ? accent : accent.interpolatedWith (theme::raised, 0.8f));
+    onButton.setColour (juce::ToggleButton::tickColourId, accent);
     onButton.repaint();
+
+    repaint();
 }
 
 juce::Rectangle<int> StepSlot::barArea() const
 {
-    return getLocalBounds().withTrimmedBottom (trigHeight + trigGap);
+    return getLocalBounds().withTrimmedBottom (lane::numberHeight + lane::stepInnerGap
+                                                 + lane::trigHeight + lane::stepInnerGap);
 }
 
 bool StepSlot::barContains (juce::Point<int> positionInSlot) const
@@ -255,9 +346,9 @@ void StepSlot::endBarDrag (const juce::MouseEvent& e)
 //==============================================================================
 void StepSlot::mouseDown (const juce::MouseEvent& e)
 {
-    // The trig strip is a button of its own and takes its own clicks, so the only part of
-    // the slot that reaches here is the bar -- except for the few pixels of gap between the
-    // two, which start nothing.
+    // The trig strip is a button of its own and takes its own clicks, so the only part of the
+    // slot that reaches here is the bar -- except for the few pixels of gap between the two,
+    // which start nothing.
     if (! barContains (e.getPosition()))
         return;
 
@@ -284,8 +375,8 @@ void StepSlot::mouseDoubleClick (const juce::MouseEvent& e)
     if (! barContains (e.getPosition()))
         return;
 
-    // Reaches the bar directly rather than through the lane: a double click is one step's
-    // own reset, and there is no stroke for it to be part of.
+    // Reaches the bar directly rather than through the lane: a double click is one step's own
+    // reset, and there is no stroke for it to be part of.
     if (auto* bar = activeBar())
         bar->mouseDoubleClick (e.getEventRelativeTo (bar));
 }
@@ -308,24 +399,42 @@ void StepSlot::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheel
     }
 }
 
+void StepSlot::paint (juce::Graphics& g)
+{
+    // The step's own number, under the trig. Drawn by the slot rather than by the lane so it
+    // moves with the slot and can pick up the playhead without the lane having to repaint a
+    // strip of sixteen labels.
+    auto numberArea = getLocalBounds().removeFromBottom (lane::numberHeight);
+
+    g.setFont (theme::stepNumFont());
+    g.setColour (playing ? accent : theme::stepNumber);
+    g.drawText (juce::String (step + 1), numberArea, juce::Justification::centred, false);
+}
+
 void StepSlot::paintOverChildren (juce::Graphics& g)
 {
     if (! playing)
         return;
 
-    // Drawn over the children rather than in paint(), because the bar fills the whole slot
-    // and would cover anything painted underneath it. A muted lane keeps its playhead --
-    // it is still running, and unmuting it mid-bar should not be a surprise.
-    g.setColour (laneActive ? accent : accent.withAlpha (0.3f));
-    g.drawRoundedRectangle (barArea().toFloat().reduced (0.75f), 3.0f, 1.5f);
+    // Over the children rather than in paint(), because the bar fills this rectangle and would
+    // cover anything painted underneath it.
+    //
+    // A ring rather than a fill, so the playhead never hides the value it is standing on. A
+    // muted lane keeps its playhead -- it is still running, and unmuting it mid-bar should not
+    // be a surprise.
+    g.setColour (accent.withAlpha (0.55f));
+    g.drawRoundedRectangle (barArea().toFloat().reduced (0.5f), 1.5f, 1.0f);
 }
 
 void StepSlot::resized()
 {
     auto r = getLocalBounds();
 
-    onButton.setBounds (r.removeFromBottom (trigHeight));
-    r.removeFromBottom (trigGap);
+    r.removeFromBottom (lane::numberHeight);
+    r.removeFromBottom (lane::stepInnerGap);
+
+    onButton.setBounds (r.removeFromBottom (lane::trigHeight));
+    r.removeFromBottom (lane::stepInnerGap);
 
     valueSlider.setBounds (r);
     velocitySlider.setBounds (r);
@@ -339,23 +448,23 @@ void StepSlot::setPlaying (bool shouldBePlaying)
         return;
 
     playing = shouldBePlaying;
-    repaint();
+
+    // The playhead brightens the bar's fill as well as adding a ring, so the colours have to
+    // be rebuilt rather than only repainted.
+    applyTrigState();
 }
 
 //==============================================================================
 LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int laneIndex,
                               params::LanePattern& sharedClipboard, params::LaneKind kind)
     : apvts (state), lane (laneIndex), kind (kind), accent (theme::laneAccent (laneIndex)),
-      clipboard (sharedClipboard), paramGroup (state)
+      clipboard (sharedClipboard),
+      lengthBlock (state, params::laneLengthId (laneIndex, kind), "Length",
+                   theme::Role::lengthBar, accent),
+      rateGroup (state),
+      mixBlock (state, params::laneDepthId (laneIndex, kind), "Mix amount",
+                theme::Role::bipolarBar, accent)
 {
-    numberLabel.setText (juce::String (laneIndex + 1), juce::dontSendNotification);
-    numberLabel.setFont (juce::Font (juce::FontOptions (14.0f, juce::Font::bold)));
-    numberLabel.setColour (juce::Label::textColourId, accent);
-    numberLabel.setJustificationType (juce::Justification::centred);
-    numberLabel.setInterceptsMouseClicks (false, false);
-    numberLabel.setBorderSize (juce::BorderSize<int> (0));
-    addAndMakeVisible (numberLabel);
-
     onButton.setColour (juce::ToggleButton::tickColourId, accent);
     onButton.setTooltip ("Mute or unmute this lane");
     addAndMakeVisible (onButton);
@@ -370,91 +479,101 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
         addAndMakeVisible (slots.add (new StepSlot (state, laneIndex, step, kind)));
 
     //--------------------------------------------------------------------------
-    // Two columns, filled left to right then wrapping, so each row pairs a structural
-    // parameter with one that shapes the lane's feel. A Note lane and a CC lane share Length/
-    // Rate/Depth/Direction; a CC lane goes on to add its own destination besides.
-    auto* lengthRow = paramGroup.add (params::laneLengthId (laneIndex, kind), "Length");
-    lengthRow->setTooltip ("How many of the eight steps the lane cycles through");
-    paramGroup.add (params::laneDivId (laneIndex, kind),    "Rate");
-    paramGroup.add (params::laneDepthId (laneIndex, kind),  "Mix Amount");
-    paramGroup.add (params::laneDirId (laneIndex, kind),    "Direction");
+    // One column, not two. Four parameters in 190px read as a list; the same four in two
+    // columns of 95px read as a table with nothing in the cells, and neither Length nor Mix
+    // amount fits beside its own caption at that width anyway.
+    lengthBlock.setTooltip ("How many of the sixteen steps the lane cycles through");
+    theme::setRuled (lengthBlock, true);
+    addAndMakeVisible (lengthBlock);
 
-    if (kind == params::LaneKind::cc)
-    {
-        paramGroup.add (params::laneCcOnId (laneIndex), "Send")
-                  ->setTooltip ("Send this lane's own value as its own CC, independent of "
-                               "the Mix CC");
-        paramGroup.add (params::laneCcNumId (laneIndex), "Number");
-        paramGroup.add (params::laneCcChanId (laneIndex), "Channel");
-        paramGroup.add (params::laneCcOffsetId (laneIndex), "Offset")
-                  ->setTooltip ("Shifts this lane's own tap. Independent of the CC tab's own "
-                               "Offset, which shifts the Mix CC instead");
-    }
+    rateGroup.setRowHeight (theme::paramRowHeight);
+    rateGroup.add (params::laneDivId (laneIndex, kind), "Rate");
 
-    paramGroup.setColumns (2);
-    addAndMakeVisible (paramGroup);
+    // Both kinds: a CC lane's steps traverse the same way a Note lane's do, and the engine
+    // reads the parameter for both (see PluginProcessor's lane snapshot).
+    rateGroup.add (params::laneDirId (laneIndex, kind), "Direction");
+
+    addAndMakeVisible (rateGroup);
+
+    theme::setRuled (mixBlock, true);
+    addAndMakeVisible (mixBlock);
+
+    // The rows inside rateGroup take the same rule the two blocks either side of them do, so
+    // the column reads as four separated parameters rather than as two blocks with a gap.
+    for (auto* child : rateGroup.getChildren())
+        theme::setRuled (*child, true);
 
     //--------------------------------------------------------------------------
-    randomiseButton.setTooltip ("Randomize this lane's 8 step values");
-    theme::styleActionButton (randomiseButton);
-    randomiseButton.onClick = [this, kind] { params::randomiseLaneValues (apvts, lane, random, kind); };
+    theme::setRole (randomiseButton, theme::Role::laneAction);
+    randomiseButton.onClick = [this, kind]
+    {
+        slideThrough ([this, kind]
+                      { params::randomiseLaneRow (apvts, lane, random, kind, currentLayer); });
+    };
     addAndMakeVisible (randomiseButton);
 
-    clearButton.setTooltip ("Zero this lane's 8 step values");
-    theme::styleActionButton (clearButton);
-    clearButton.onClick = [this, kind] { params::clearLaneValues (apvts, lane, kind); };
+    theme::setRole (clearButton, theme::Role::laneAction);
+    clearButton.onClick = [this, kind]
+    {
+        slideThrough ([this, kind]
+                      { params::clearLaneRow (apvts, lane, kind, currentLayer); });
+    };
     addAndMakeVisible (clearButton);
 
-    menuButton.setTooltip ("Rotate, invert, copy and paste this lane's pattern");
-    theme::styleActionButton (menuButton);
+    theme::setRole (menuButton, theme::Role::laneMenu);
     menuButton.onClick = [this] { showActionsMenu(); };
     addAndMakeVisible (menuButton);
 
     removeButton.setTooltip ("Remove this lane. The lanes below it move up to close the gap, "
                              "and this one's pattern goes with it -- Ctrl+Z brings it back");
-    theme::styleActionButton (removeButton);
+    theme::setRole (removeButton, theme::Role::laneRemove);
     removeButton.onClick = [this] { if (onRemove != nullptr) onRemove(); };
 
     // Added hidden: the editor turns it on for every lane once there is more than one.
     addChildComponent (removeButton);
 
     //--------------------------------------------------------------------------
-    if (kind == params::LaneKind::note)
-    {
-        static const char* layerTooltips[]
-        {
-            "Bars edit each step's value, which drives pitch",
-            "Bars edit each step's velocity accent",
-            "Bars edit each step's probability of firing",
-            "Bars edit each step's gate, how long its note is held",
-        };
+    // A CC lane builds the selector too, but only its first chip. Velocity and Gate are only
+    // ever arguments to starting a note and a CC lane never starts one, so there is genuinely
+    // nothing for the other three to select -- but a blank column left the CC tab's steps
+    // looking like a different kind of grid from the Notes tab's, when they are the same grid
+    // with fewer layers behind it. One latched chip says "Value, and that is all there is"
+    // where an empty column said nothing at all.
+    const int builtLayers = kind == params::LaneKind::note ? numStepLayers : 1;
 
-        for (int i = 0; i < numStepLayers; ++i)
-        {
-            auto& button = layerButtons[i];
-
-            button.setTooltip (layerTooltips[i]);
-            button.setClickingTogglesState (false);
-            button.onClick = [this, i] { setLayer ((StepLayer) i); };
-            addAndMakeVisible (button);
-        }
-    }
-    else
+    static const char* layerTooltips[]
     {
-        // A CC lane has no layer to select -- the bars always edit Value -- so the selector
-        // never appears, leaving its column blank rather than four buttons that would do
-        // nothing.
-        for (auto& button : layerButtons)
+        "the bars edit each step's value",
+        "the bars edit each step's accent",
+        "the bars edit each step's chance of firing",
+        "the bars edit how long each step's note is held",
+    };
+
+    for (int i = 0; i < numStepLayers; ++i)
+    {
+        auto& button = layerButtons[i];
+        const auto layer = (StepLayer) i;
+
+        button.setButtonText (params::stepLayerShortName (layer, kind));
+
+        if (i >= builtLayers)
+        {
             button.setVisible (false);
+            continue;
+        }
+
+        button.setTooltip (params::stepLayerName (layer, kind) + ": " + layerTooltips[i]);
+        button.setClickingTogglesState (false);
+        theme::setRole (button, theme::Role::layerChip);
+        theme::setAccent (button, accent);
+        button.onClick = [this, i] { setLayer ((StepLayer) i); };
+        addAndMakeVisible (button);
     }
 
-    // The attachment drives the slider through Slider::Listener, the same way the step
-    // trigs' does, so onValueChange is free for the lane's own use -- and it fires for a
-    // change from the host as readily as for a drag.
-    lengthSlider = dynamic_cast<juce::Slider*> (&lengthRow->getControl());
-
-    if (lengthSlider != nullptr)
-        lengthSlider->onValueChange = [this] { applyLength(); };
+    // The attachment drives the slider through Slider::Listener, the same way the step trigs'
+    // does, so onValueChange is free for the lane's own use -- and it fires for a change from
+    // the host as readily as for a drag.
+    lengthBlock.getSlider().onValueChange = [this] { applyLength(); lengthBlock.repaint(); };
 
     setLayer (StepLayer::value);
     applyLaneState();
@@ -463,9 +582,9 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
 
 LaneComponent::~LaneComponent()
 {
-    // A lane cannot normally go while a stroke is running -- the button that removes it is
-    // not reachable with a step bar holding the mouse -- but an undo step left held open
-    // would quietly swallow every edit made after it into the same step.
+    // A lane cannot normally go while a stroke is running -- the button that removes it is not
+    // reachable with a step bar holding the mouse -- but an undo step left held open would
+    // quietly swallow every edit made after it into the same step.
     if (strokeSlot != nullptr && onStrokeActive != nullptr)
         onStrokeActive (false);
 }
@@ -548,9 +667,9 @@ juce::Point<float> LaneComponent::pointCrossingSlot (int index, juce::Point<floa
 {
     const auto x = (float) slots.getUnchecked (index)->getBounds().getCentreX();
 
-    // How far along the cursor's travel this step sits, so the height can be read off the
-    // line between the two reported positions. A stroke that only moved vertically never
-    // reaches here, but the division is guarded all the same.
+    // How far along the cursor's travel this step sits, so the height can be read off the line
+    // between the two reported positions. A stroke that only moved vertically never reaches
+    // here, but the division is guarded all the same.
     const float span = to.x - from.x;
     const float t = std::abs (span) > 0.001f ? juce::jlimit (0.0f, 1.0f, (x - from.x) / span)
                                              : 1.0f;
@@ -581,10 +700,8 @@ int LaneComponent::slotIndexForStroke (float xInLane) const
 //==============================================================================
 void LaneComponent::applyLength()
 {
-    if (lengthSlider == nullptr)
-        return;
-
-    const int length = juce::jlimit (1, params::numSteps, (int) std::lround (lengthSlider->getValue()));
+    const int length = juce::jlimit (1, params::numSteps,
+                                     (int) std::lround (lengthBlock.getSlider().getValue()));
 
     if (appliedLength == length)
         return;
@@ -593,6 +710,15 @@ void LaneComponent::applyLength()
 
     for (int i = 0; i < slots.size(); ++i)
         slots.getUnchecked (i)->setWithinLength (i < length);
+
+    // The wrap mark sits in the gap after the last step in the cycle, not on it -- it marks
+    // where the lane returns to step one, which is a boundary rather than a step.
+    if (length >= params::numSteps || slots.isEmpty())
+        wrapX = -1;
+    else
+        wrapX = slots.getUnchecked (length - 1)->getRight() + lane::stepGap / 2;
+
+    repaint();
 }
 
 void LaneComponent::applyLaneState()
@@ -604,19 +730,49 @@ void LaneComponent::applyLaneState()
 
     appliedLaneActive = active;
 
-    numberLabel.setColour (juce::Label::textColourId,
-                           active != 0 ? accent : accent.withAlpha (0.35f));
-    numberLabel.repaint();
-
     for (auto* slot : slots)
         slot->setLaneActive (active != 0);
 
-    // The accent stripe is painted here, not by a child.
+    // The parameter column and the layer selector recede with the lane, so a muted lane reads
+    // as one dimmed block rather than as live controls beside dead steps. The steps dim
+    // themselves, above, because they have three states to express and this has one.
+    const float alpha = active != 0 ? 1.0f : 0.34f;
+
+    lengthBlock.setAlpha (alpha);
+    rateGroup.setAlpha (alpha);
+    mixBlock.setAlpha (alpha);
+
+    for (auto& button : layerButtons)
+        button.setAlpha (alpha);
+
+    // The accent rail is painted here, not by a child.
     repaint();
+}
+
+void LaneComponent::updateActionTooltips()
+{
+    // RND, CLR and the menu all act on the selected row, and which row that is has to be
+    // readable from the button rather than inferred from what happens after pressing it.
+    const auto row = params::stepLayerName (currentLayer, kind);
+
+    randomiseButton.setTooltip ("Randomize this lane's sixteen " + row + " steps");
+    clearButton.setTooltip ("Put this lane's sixteen " + row + " steps back to their default");
+    menuButton.setTooltip ("Rotate or copy the whole pattern, or invert its " + row + " row");
 }
 
 void LaneComponent::setLayer (StepLayer layer)
 {
+    // False on the constructor's own call, which sets the layer the lane opens on -- there is
+    // nothing on screen yet to slide away from.
+    const bool changed = layer != currentLayer;
+
+    // Captured before the layer changes under them, because each slot records where its bar is
+    // drawn *now* -- including mid-slide, if the selector is clicked twice in quick
+    // succession.
+    if (changed)
+        for (auto* slot : slots)
+            slot->beginValueSlide();
+
     currentLayer = layer;
 
     for (int i = 0; i < numStepLayers; ++i)
@@ -624,6 +780,54 @@ void LaneComponent::setLayer (StepLayer layer)
 
     for (auto* slot : slots)
         slot->setLayer (layer);
+
+    updateActionTooltips();
+
+    if (changed)
+        startValueSlide();
+}
+
+void LaneComponent::startValueSlide()
+{
+    valueSlideStartMs = juce::Time::getMillisecondCounterHiRes();
+
+    // Applied at zero straight away rather than left to the first timer callback, so the new
+    // heights never show for the frame between the click and that callback.
+    applyValueSlide (0.0f);
+
+    startTimerHz (60);
+}
+
+void LaneComponent::slideThrough (const std::function<void()>& edit)
+{
+    // Before the edit, because writing the parameters moves the sliders under us: the
+    // attachments apply a message-thread parameter change synchronously, so by the time edit()
+    // returns the bars already hold their new heights and there is nothing left to capture.
+    for (auto* slot : slots)
+        slot->beginValueSlide();
+
+    edit();
+
+    startValueSlide();
+}
+
+void LaneComponent::applyValueSlide (float progress)
+{
+    const float eased = progress >= 1.0f ? 1.0f : easeOut (progress);
+
+    for (auto* slot : slots)
+        slot->setValueSlideProgress (eased);
+}
+
+void LaneComponent::timerCallback()
+{
+    const double elapsed = juce::Time::getMillisecondCounterHiRes() - valueSlideStartMs;
+    const float progress = (float) juce::jlimit (0.0, 1.0, elapsed / valueSlideMs);
+
+    applyValueSlide (progress);
+
+    if (progress >= 1.0f)
+        stopTimer();
 }
 
 //==============================================================================
@@ -634,7 +838,7 @@ void LaneComponent::showActionsMenu()
 
     menu.addItem (1, "Rotate left");
     menu.addItem (2, "Rotate right");
-    menu.addItem (3, "Invert values");
+    menu.addItem (3, "Invert " + params::stepLayerName (currentLayer, kind));
     menu.addSeparator();
     menu.addItem (4, "Copy pattern");
     menu.addItem (5, "Paste pattern", clipboard.valid);
@@ -650,143 +854,170 @@ void LaneComponent::showActionsMenu()
 
                             auto& state = safeThis->apvts;
                             const int laneIndex = safeThis->lane;
-                            const auto kind = safeThis->kind;
+                            const auto laneKind = safeThis->kind;
 
-                            switch (result)
+                            // Copy is the one entry that changes nothing on screen, so it is
+                            // the one that does not slide.
+                            if (result == 4)
                             {
-                                case 1: params::rotateLane (state, laneIndex, -1, kind); break;
-                                case 2: params::rotateLane (state, laneIndex, 1, kind); break;
-                                case 3: params::invertLaneValues (state, laneIndex, kind); break;
-                                case 4: safeThis->clipboard = params::copyLane (state, laneIndex, kind); break;
-                                case 5: params::pasteLane (state, laneIndex, safeThis->clipboard, kind); break;
-                                default: break;
+                                safeThis->clipboard = params::copyLane (state, laneIndex, laneKind);
+                                return;
                             }
+
+                            safeThis->slideThrough ([&]
+                            {
+                                switch (result)
+                                {
+                                    case 1: params::rotateLane (state, laneIndex, -1, laneKind); break;
+                                    case 2: params::rotateLane (state, laneIndex, 1, laneKind); break;
+                                    case 3: params::invertLaneRow (state, laneIndex, laneKind,
+                                                                   safeThis->currentLayer); break;
+                                    case 5: params::pasteLane (state, laneIndex, safeThis->clipboard, laneKind); break;
+                                    default: break;
+                                }
+                            });
                         });
 }
 
 //==============================================================================
 void LaneComponent::paint (juce::Graphics& g)
 {
-    const auto bounds = getLocalBounds().toFloat();
+    auto bounds = getLocalBounds();
 
-    // A flat fill and no outline: the lane reads as a card raised off the window's one
-    // surface, which separates it without adding another rectangle to the picture. This is
-    // the only thing separating it now -- the window no longer draws a panel behind the
-    // lane stack -- so matching theme::surface here would leave a lane, the gap around it,
-    // the Add lane bar and the settings block below it all one indistinguishable colour.
-    g.setColour (theme::raised);
-    g.fillRoundedRectangle (bounds, 6.0f);
+    // The accent edge: hard against the lane's left, full height, no inset. It is the lane's
+    // name as much as the number beside it is -- the same colour its steps and its footer
+    // column carry -- so it runs the whole strip rather than floating inside a margin.
+    g.setColour (appliedLaneActive == 0 ? accent.withAlpha (0.3f) : accent);
+    g.fillRect (bounds.withWidth (lane::railWidth)
+                      .withTrimmedBottom (lane::separatorHeight));
 
-    // Accent stripe down the left edge identifies the lane at a glance, and goes faint
-    // while the lane is muted so the state reads from across the window.
-    g.setColour (appliedLaneActive == 0 ? accent.withAlpha (0.25f) : accent);
-    g.fillRoundedRectangle (bounds.getX() + 10.0f, bounds.getY() + 14.0f, (float) lane::railWidth,
-                            bounds.getHeight() - 28.0f, 1.5f);
+    // The step area is cut into the window rather than raised off it: it is the one part of a
+    // lane you draw *into*, and the sunken ground is what says so.
+    const float wellAlpha = appliedLaneActive == 0 ? 0.5f : 1.0f;
 
-    g.setColour (theme::outline);
-    g.fillRect ((float) dividerX, bounds.getY() + 14.0f, 1.0f, bounds.getHeight() - 28.0f);
+    g.setColour (theme::well.interpolatedWith (theme::surface, 1.0f - wellAlpha));
+    g.fillRoundedRectangle (wellArea.toFloat(), 2.0f);
+
+    g.setColour (theme::outlineSoft.withMultipliedAlpha (wellAlpha));
+    g.drawRoundedRectangle (wellArea.toFloat().reduced (0.5f), 2.0f, 1.0f);
+
+    // Where the cycle returns to step one. Inside the well and clear of its padding, so it
+    // reads as a mark on the grid rather than as an edge of it.
+    if (wrapX > 0)
+    {
+        g.setColour (theme::wrapLine);
+        g.fillRect (wrapX, wellArea.getY() + 6, 1, wellArea.getHeight() - 12);
+    }
+
+    // The hairline between this lane and the next. Lanes are rows of one list, not cards --
+    // the accent edges already separate them, and a border round each one would put four
+    // rectangles on screen competing with the step grid inside them.
+    g.setColour (theme::outlineSoft);
+    g.fillRect (bounds.removeFromBottom (lane::separatorHeight));
 }
 
 void LaneComponent::resized()
 {
-    auto r = getLocalBounds().reduced (lane::inset, 10);
+    auto r = getLocalBounds().withTrimmedBottom (lane::separatorHeight);
 
-    r.removeFromLeft (lane::railWidth);
-    r.removeFromLeft (lane::railGap);
+    r.removeFromTop (lane::padTop);
+    r.removeFromBottom (lane::padBottom);
+    r.removeFromRight (lane::padRight);
 
-    auto leftColumn = r.removeFromLeft (lane::numberWidth);
+    //--------------------------------------------------------------------------
+    // The mute is the only thing left of the steps now, so it is centred in the whole run from
+    // the accent rail to the layer chips -- its own column plus the gap after it -- rather
+    // than parked at the left of a column sized for a lane number that is no longer drawn.
+    // Measured off the rail rather than off x=0 so the margin either side is the space the eye
+    // actually sees, not the space the rail is sitting in.
+    auto slotColumn = r.removeFromLeft (lane::slotWidth + lane::columnGap)
+                       .withTrimmedLeft (lane::railWidth);
 
-    // The lane number and its mute share the top row: the toggle belongs with the label
-    // that identifies the lane, and the layer buttons below keep their full width.
-    auto identityRow = leftColumn.removeFromTop (18);
-    onButton.setBounds (identityRow.removeFromRight (16).reduced (1, 2));
-    numberLabel.setBounds (identityRow.withTrimmedRight (4));
+    // Level with the first layer chip: the lane's own switch and the switch for what its bars
+    // show belong on the same line.
+    onButton.setBounds (slotColumn.removeFromTop (lane::layerChipHeight)
+                                  .withSizeKeepingCentre (lane::muteSize, lane::muteSize));
 
-    leftColumn.removeFromTop (6);
+    //--------------------------------------------------------------------------
+    auto selectorColumn = r.removeFromLeft (lane::selectorWidth);
+    r.removeFromLeft (lane::columnGap);
 
     for (auto& button : layerButtons)
     {
-        // Skipped entirely with Notes off, where the whole selector is hidden.
+        // Skipped entirely on a CC lane, where the whole selector is hidden but its column is
+        // still reserved.
         if (! button.isVisible())
             continue;
 
-        button.setBounds (leftColumn.removeFromTop (theme::rowHeight));
-        leftColumn.removeFromTop (2);
+        button.setBounds (selectorColumn.removeFromTop (lane::layerChipHeight));
+        selectorColumn.removeFromTop (lane::layerChipGap);
     }
-
-    r.removeFromLeft (lane::columnGap);
 
     //--------------------------------------------------------------------------
     auto paramBlock = r.removeFromRight (lane::paramWidth);
-    r.removeFromRight (lane::dividerGap);
-    dividerX = r.getRight() + lane::dividerGap / 2;
+    r.removeFromRight (lane::columnGap);
 
     //--------------------------------------------------------------------------
+    // The step area takes what is left, top-aligned: a Note lane's parameter column is taller
+    // than the well, and the two are read across rather than as one centred block.
+    wellArea = r.withHeight (lane::wellHeight);
+
+    auto steps = wellArea.reduced (lane::wellPadX, 0)
+                         .withTrimmedTop (lane::wellPadTop)
+                         .withTrimmedBottom (lane::wellPadBottom);
+
     // A fixed pitch rather than a share of what is left over, so a step is the same width
-    // whatever zoom the window is at -- the window itself is sized from this. Clamped only
-    // so a host that forces the editor narrower than its native size still lays out.
-    const int slotWidth = juce::jmin (lane::stepSlotWidth, r.getWidth() / params::numSteps);
+    // whatever zoom the window is at -- the window itself is sized from this. Clamped only so
+    // a host that forces the editor narrower than its native size still lays out.
+    const int slotWidth = juce::jmin (lane::stepBarWidth,
+                                      (steps.getWidth() - (params::numSteps - 1) * lane::stepGap)
+                                          / params::numSteps);
 
     for (int i = 0; i < slots.size(); ++i)
     {
-        slots.getUnchecked (i)->setBounds (r.removeFromLeft (slotWidth).withTrimmedRight (slotGap));
+        slots.getUnchecked (i)->setBounds (steps.removeFromLeft (slotWidth));
 
-        // Extra room after every fourth step, so the row reads as four groups instead of
-        // one long strip -- skipped after the last step, which already ends at the divider.
-        if ((i + 1) % 4 == 0 && i + 1 < slots.size())
-            r.removeFromLeft (lane::groupGap);
+        if (i + 1 < slots.size())
+            steps.removeFromLeft (lane::stepGap);
     }
+
+    // The wrap mark is derived from the slots' bounds, which have just moved -- so the
+    // cached length is cleared to force applyLength() past its early-out and recompute it.
+    appliedLength = -1;
+    applyLength();
 
     //--------------------------------------------------------------------------
-    // Pushed to the two ends of the lane rather than centred as one block: the parameter
-    // rows sit level with the top of the step bars and the pattern buttons with the bottom,
-    // so the whitespace collects between them. That separates the two by what they are --
-    // settings that stay put, and actions that rewrite the pattern under them -- instead of
-    // leaving the actions looking like one more row of the block above.
-    const int groupHeight  = paramGroup.getPreferredHeight();
-    const int buttonHeight = theme::rowHeight;
+    // Length, Rate, [Direction] and Mix amount stack from the top; the action chips are
+    // pushed to the foot. That separates the two by what they are -- settings that stay put,
+    // and actions that rewrite the pattern under them -- instead of leaving the actions
+    // looking like one more row of the block above.
+    auto actionRow = paramBlock.removeFromBottom (lane::actionHeight);
 
-    paramGroup.setBounds (paramBlock.removeFromTop (groupHeight));
+    lengthBlock.setBounds (paramBlock.removeFromTop (ParamBlock::preferredHeight() + 1));
 
-    auto actionRow = paramBlock.removeFromBottom (buttonHeight);
+    // Rate and Direction, on both kinds of lane.
+    rateGroup.setBounds (paramBlock.removeFromTop (2 * theme::paramRowHeight));
 
-    // Hard right, a wide gap clear of the pattern buttons. It is the only action in the lane
-    // that a second click does not undo, so it should not sit where the hand passes on the
+    mixBlock.setBounds (paramBlock.removeFromTop (ParamBlock::preferredHeight() + 1));
+
+    //--------------------------------------------------------------------------
+    // Hard right, a wide gap clear of the pattern chips. Removing a lane is the only action
+    // here that a second click does not undo, so it does not sit where the hand passes on the
     // way to the ones that do.
-    removeButton.setBounds (actionRow.removeFromRight (
-                                theme::actionButtonWidth (removeButton.getButtonText(), buttonHeight)));
+    removeButton.setBounds (actionRow.removeFromRight (26));
 
-    // Each takes only the width its own label needs, so the gap before Remove absorbs the
-    // difference rather than the buttons padding out to meet it.
-    for (auto* button : { &randomiseButton, &clearButton, &menuButton })
+    for (auto* button : { &randomiseButton, &clearButton })
     {
-        button->setBounds (actionRow.removeFromLeft (
-                               theme::actionButtonWidth (button->getButtonText(), buttonHeight)));
+        button->setBounds (actionRow.removeFromLeft (theme::chipWidth (button->getButtonText())));
         actionRow.removeFromLeft (4);
     }
+
+    menuButton.setBounds (actionRow.removeFromLeft (28));
 }
 
 void LaneComponent::setCanRemove (bool canBeRemoved)
 {
     removeButton.setVisible (canBeRemoved);
-}
-
-void LaneComponent::setLayerSelectionAvailable (bool available)
-{
-    if (layerSelectionAvailable == available)
-        return;
-
-    layerSelectionAvailable = available;
-
-    for (auto& button : layerButtons)
-        button.setVisible (available);
-
-    // With nothing left to select, the bars go back to Value -- otherwise Notes could be
-    // switched off with them still editing a layer whose button has just gone.
-    if (! available)
-        setLayer (StepLayer::value);
-
-    resized();
 }
 
 void LaneComponent::setPlayingStep (int stepIndex)
