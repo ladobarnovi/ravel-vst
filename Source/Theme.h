@@ -117,7 +117,6 @@ namespace theme
     inline juce::Font tabFont()      { return semiBoldFont (12.5f); }
     inline juce::Font wordmarkFont() { return semiBoldFont (16.0f); }
     inline juce::Font chipFont()     { return semiBoldFont (10.5f); }   ///< Layer selector, lane actions.
-    inline juce::Font laneIndexFont(){ return semiBoldFont (13.0f); }
     inline juce::Font stepNumFont()  { return regularFont  (9.0f); }
 
     //==========================================================================

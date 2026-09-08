@@ -395,14 +395,6 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
       mixBlock (state, params::laneDepthId (laneIndex, kind), "Mix amount",
                 theme::Role::bipolarBar, accent)
 {
-    numberLabel.setText (juce::String (laneIndex + 1), juce::dontSendNotification);
-    numberLabel.setFont (theme::laneIndexFont());
-    numberLabel.setColour (juce::Label::textColourId, accent);
-    numberLabel.setJustificationType (juce::Justification::centredLeft);
-    numberLabel.setInterceptsMouseClicks (false, false);
-    numberLabel.setBorderSize (juce::BorderSize<int> (0));
-    addAndMakeVisible (numberLabel);
-
     onButton.setColour (juce::ToggleButton::tickColourId, accent);
     onButton.setTooltip ("Mute or unmute this lane");
     addAndMakeVisible (onButton);
@@ -660,10 +652,6 @@ void LaneComponent::applyLaneState()
 
     appliedLaneActive = active;
 
-    numberLabel.setColour (juce::Label::textColourId,
-                           active != 0 ? accent : accent.withAlpha (0.35f));
-    numberLabel.repaint();
-
     for (auto* slot : slots)
         slot->setLaneActive (active != 0);
 
@@ -778,15 +766,18 @@ void LaneComponent::resized()
     r.removeFromRight (lane::padRight);
 
     //--------------------------------------------------------------------------
-    auto slotColumn = r.removeFromLeft (lane::slotWidth);
-    r.removeFromLeft (lane::columnGap);
+    // The mute is the only thing left of the steps now, so it is centred in the whole run from
+    // the accent rail to the layer chips -- its own column plus the gap after it -- rather
+    // than parked at the left of a column sized for a lane number that is no longer drawn.
+    // Measured off the rail rather than off x=0 so the margin either side is the space the eye
+    // actually sees, not the space the rail is sitting in.
+    auto slotColumn = r.removeFromLeft (lane::slotWidth + lane::columnGap)
+                       .withTrimmedLeft (lane::railWidth);
 
-    // Number and mute stacked rather than side by side: the column is 32px, and the two of
-    // them beside each other would leave neither room to breathe.
-    slotColumn.removeFromLeft (6);
-    numberLabel.setBounds (slotColumn.removeFromTop (16));
-    slotColumn.removeFromTop (8);
-    onButton.setBounds (slotColumn.removeFromTop (15).withWidth (15));
+    // Level with the first layer chip: the lane's own switch and the switch for what its bars
+    // show belong on the same line.
+    onButton.setBounds (slotColumn.removeFromTop (lane::layerChipHeight)
+                                  .withSizeKeepingCentre (lane::muteSize, lane::muteSize));
 
     //--------------------------------------------------------------------------
     auto selectorColumn = r.removeFromLeft (lane::selectorWidth);
@@ -799,8 +790,8 @@ void LaneComponent::resized()
         if (! button.isVisible())
             continue;
 
-        button.setBounds (selectorColumn.removeFromTop (19));
-        selectorColumn.removeFromTop (2);
+        button.setBounds (selectorColumn.removeFromTop (lane::layerChipHeight));
+        selectorColumn.removeFromTop (lane::layerChipGap);
     }
 
     //--------------------------------------------------------------------------

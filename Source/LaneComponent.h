@@ -16,8 +16,16 @@ namespace lane
     //--------------------------------------------------------------------------
     // Across.
     inline constexpr int railWidth    = 3;   ///< The accent edge, hard against the lane's left.
-    inline constexpr int slotWidth    = 32;  ///< Lane number, and the mute under it.
+    inline constexpr int slotWidth    = 32;  ///< The lane's mute, and the space round it.
+
+    /** The mute toggle itself. Larger than a step's own trig even though it does the same job
+        one level up, because it is the only control in this column and has no neighbour to be
+        read against -- at a step's size it would look like a stray step that had escaped the
+        grid. */
+    inline constexpr int muteSize     = 18;
     inline constexpr int selectorWidth = 46; ///< Val / Vel / Prob / Gate -- Val alone on a CC lane.
+    inline constexpr int layerChipHeight = 19;
+    inline constexpr int layerChipGap    = 2;
     inline constexpr int paramWidth   = 190; ///< Length, Rate, Direction, Mix amount.
     inline constexpr int columnGap    = 14;
     inline constexpr int padRight     = 16;
@@ -268,7 +276,6 @@ private:
     const params::LaneKind kind;
     const juce::Colour accent;
 
-    juce::Label numberLabel;
     juce::ToggleButton onButton;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> onAttachment;
 
