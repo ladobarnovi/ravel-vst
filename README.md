@@ -55,7 +55,7 @@ destination on the end of it.
 | ✕ | — | Takes this lane out. The lanes below it move up to close the gap |
 
 On a **Note lane** the sixteen tall bars edit one of four per-step rows at a time, picked with
-the **Value / Velocity / Prob / Gate** selector down the left of the lane. Only the selected row
+the **Pitch / Vel / Prob / Gate** selector down the left of the lane. Only the selected row
 is drawn — the bars show one layer at a time and nothing else, so a lane reads as the pattern
 you are actually editing.
 
@@ -74,8 +74,10 @@ The slide only ever borrows the height a bar draws to — it never touches the p
 nothing reaches the host or the undo history, and a pattern action is still exactly one undo
 step.
 
-A **CC lane** gets the same selector with one chip in it: **Value**, latched, because that is
-the only layer its bars have. Velocity and Gate are only ever arguments to *start a note* and a
+A **CC lane** gets the same selector with one chip in it: **Val**, latched, because that is the
+only layer its bars have. It is *Val* rather than *Pitch* because a CC lane's value drives a CC
+and not a pitch — the row is the same parameter in both stacks, but only one of them is a pitch,
+and the chip says which stack you are in. Velocity and Gate are only ever arguments to *start a note* and a
 CC lane never starts one, so there is genuinely nothing else to offer — but the column stays and
 the chip stays, so the CC tab's step grid lines up with the Notes tab's and reads as the same
 grid with fewer layers behind it rather than as a different kind of control.
@@ -557,8 +559,8 @@ cmake --build build --target RavelSnapshot --config Debug
 .\build\RavelSnapshot_artefacts\Debug\RavelSnapshot.exe out.png notes 3
 ```
 
-A fourth argument — the label of a chip on the lane strips, so `Val`, `Vel`, `Prob`, `Gate`,
-`RND` or `CLR` — clicks that chip on every lane and writes one numbered frame per sample point
+A fourth argument — the label of a chip on the lane strips, so `Pitch` (`Val` on the CC tab),
+`Vel`, `Prob`, `Gate`, `RND` or `CLR` — clicks that chip on every lane and writes one numbered frame per sample point
 across the slide that follows, so the animation can be reviewed from stills. Build the tool `--config Release` for that: a Debug paint of the window
 costs more wall clock than the slide lasts, so every frame would show it already finished.
 

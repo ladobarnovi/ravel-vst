@@ -432,7 +432,7 @@ float stepLayerNeutral (StepLayer layer) noexcept
     }
 }
 
-juce::String stepLayerName (StepLayer layer)
+juce::String stepLayerName (StepLayer layer, LaneKind kind)
 {
     switch (layer)
     {
@@ -440,7 +440,19 @@ juce::String stepLayerName (StepLayer layer)
         case StepLayer::chance:   return "Prob";
         case StepLayer::gate:     return "Gate";
         case StepLayer::value:
-        default:                  return "Value";
+        default:                  return kind == LaneKind::note ? "Pitch" : "Value";
+    }
+}
+
+juce::String stepLayerShortName (StepLayer layer, LaneKind kind)
+{
+    switch (layer)
+    {
+        case StepLayer::velocity: return "Vel";
+        case StepLayer::chance:   return "Prob";
+        case StepLayer::gate:     return "Gate";
+        case StepLayer::value:
+        default:                  return kind == LaneKind::note ? "Pitch" : "Val";
     }
 }
 

@@ -543,15 +543,18 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
 
     static const char* layerTooltips[]
     {
-        "Value: the bars edit each step's value",
-        "Velocity: the bars edit each step's accent",
-        "Probability: the bars edit each step's chance of firing",
-        "Gate: the bars edit how long each step's note is held",
+        "the bars edit each step's value",
+        "the bars edit each step's accent",
+        "the bars edit each step's chance of firing",
+        "the bars edit how long each step's note is held",
     };
 
     for (int i = 0; i < numStepLayers; ++i)
     {
         auto& button = layerButtons[i];
+        const auto layer = (StepLayer) i;
+
+        button.setButtonText (params::stepLayerShortName (layer, kind));
 
         if (i >= builtLayers)
         {
@@ -559,7 +562,7 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
             continue;
         }
 
-        button.setTooltip (layerTooltips[i]);
+        button.setTooltip (params::stepLayerName (layer, kind) + ": " + layerTooltips[i]);
         button.setClickingTogglesState (false);
         theme::setRole (button, theme::Role::layerChip);
         theme::setAccent (button, accent);
@@ -750,7 +753,7 @@ void LaneComponent::updateActionTooltips()
 {
     // RND, CLR and the menu all act on the selected row, and which row that is has to be
     // readable from the button rather than inferred from what happens after pressing it.
-    const auto row = params::stepLayerName (currentLayer);
+    const auto row = params::stepLayerName (currentLayer, kind);
 
     randomiseButton.setTooltip ("Randomize this lane's sixteen " + row + " steps");
     clearButton.setTooltip ("Put this lane's sixteen " + row + " steps back to their default");
@@ -835,7 +838,7 @@ void LaneComponent::showActionsMenu()
 
     menu.addItem (1, "Rotate left");
     menu.addItem (2, "Rotate right");
-    menu.addItem (3, "Invert " + params::stepLayerName (currentLayer));
+    menu.addItem (3, "Invert " + params::stepLayerName (currentLayer, kind));
     menu.addSeparator();
     menu.addItem (4, "Copy pattern");
     menu.addItem (5, "Paste pattern", clipboard.valid);

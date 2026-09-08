@@ -25,7 +25,7 @@ namespace lane
     inline constexpr int muteSize     = 18;
     inline constexpr int selectorWidth = 46; ///< Val / Vel / Prob / Gate -- Val alone on a CC lane.
     inline constexpr int layerChipHeight = 19;
-    inline constexpr int layerChipGap    = 2;
+    inline constexpr int layerChipGap    = 5;
     inline constexpr int paramWidth   = 190; ///< Length, Rate, Direction, Mix amount.
     inline constexpr int columnGap    = 14;
     inline constexpr int padRight     = 16;
@@ -339,13 +339,11 @@ private:
     ControlGroup rateGroup;
     ParamBlock mixBlock;
 
-    // Abbreviated, unlike the settings footer's captions. These four sit in a 46px column
-    // beside the steps, and the words they stand for do not fit it -- the tooltips carry the
-    // full names.
-    juce::TextButton layerButtons[numStepLayers] { juce::TextButton ("Val"),
-                                                   juce::TextButton ("Vel"),
-                                                   juce::TextButton ("Prob"),
-                                                   juce::TextButton ("Gate") };
+    // Labelled from params::stepLayerShortName in the constructor rather than here, because
+    // the first one differs by lane kind: a Note lane's Value drives pitch and says so, a CC
+    // lane's does not. Abbreviated, unlike the settings footer's captions -- these sit in a
+    // 46px column beside the steps, and the tooltips carry the full names.
+    juce::TextButton layerButtons[numStepLayers];
 
     // Abbreviated for the same reason: the action row has 190px to hold four controls, and
     // the two destructive ones are glyphs rather than words so they cannot be misread at a

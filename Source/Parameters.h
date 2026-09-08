@@ -87,9 +87,17 @@ juce::String stepLayerId (int lane, int step, StepLayer layer, LaneKind kind = L
 */
 float stepLayerNeutral (StepLayer layer) noexcept;
 
-/** The row's name as the UI writes it, for tooltips that have to say which row an action is
-    about to rewrite. */
-juce::String stepLayerName (StepLayer layer);
+/** The row's name as the UI writes it, for tooltips and menu entries that have to say which
+    row an action is about to rewrite.
+
+    Kind-dependent for one row. A Note lane's Value *is* its pitch -- that is the whole of what
+    it drives -- so calling it anything else there makes the reader work out the connection
+    themselves. A CC lane's Value drives a CC, so "Pitch" would be a plain lie.
+*/
+juce::String stepLayerName (StepLayer layer, LaneKind kind = LaneKind::note);
+
+/** The same, abbreviated for the chips beside the steps, which have 46px to fit it in. */
+juce::String stepLayerShortName (StepLayer layer, LaneKind kind = LaneKind::note);
 
 juce::String laneOnId       (int lane, LaneKind kind = LaneKind::note);
 juce::String laneLengthId   (int lane, LaneKind kind = LaneKind::note);
