@@ -1515,6 +1515,66 @@ int main()
     }
 
     //==========================================================================
+    section ("Per-lane CC Offset scales the step into the headroom above it");
+    {
+        auto s = baseSnapshot();
+        s.ccLanes[0].length = 1;
+        s.ccLanes[0].values[0] = 0.5f;
+        s.ccLanes[0].depth = 0.0f;
+        s.ccLanes[0].ccOn = true;
+        s.ccLanes[0].ccNumber = 20;
+        s.ccLanes[0].ccOffset = 0.5f;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto ccs = only (run (engine, s, 4 * samplesPerStep), controller);
+
+        int laneMax = -1;
+
+        for (const auto& e : ccs)
+            if (e.number == 20)
+                laneMax = juce::jmax (laneMax, e.value);
+
+        check (laneMax == (int) std::lround (0.75 * 127.0),
+              "a step at 50% with CC Offset 50% is half of the remaining half -- 75%, not a "
+              "clamped 100%");
+    }
+
+    //==========================================================================
+    section ("Per-lane CC Offset keeps the pattern's shape rather than clamping its top flat");
+    {
+        auto s = baseSnapshot();
+        s.ccLanes[0].length = 2;
+        s.ccLanes[0].values[0] = 0.5f;
+        s.ccLanes[0].values[1] = 1.0f;
+        s.ccLanes[0].depth = 0.0f;
+        s.ccLanes[0].ccOn = true;
+        s.ccLanes[0].ccNumber = 20;
+        s.ccLanes[0].ccOffset = 0.5f;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto ccs = only (run (engine, s, 4 * samplesPerStep), controller);
+
+        int laneMin = 128;
+        int laneMax = -1;
+
+        for (const auto& e : ccs)
+            if (e.number == 20)
+            {
+                laneMin = juce::jmin (laneMin, e.value);
+                laneMax = juce::jmax (laneMax, e.value);
+            }
+
+        // Adding the Offset would have put both steps over the top and sent one flat 127.
+        check (laneMin == (int) std::lround (0.75 * 127.0) && laneMax == 127,
+              "steps at 50% and 100% under CC Offset 50% stay two distinct levels, 75% and "
+              "100%");
+    }
+
+    //==========================================================================
     section ("The CC tab's own Offset does not leak into per-lane CC");
     {
         auto s = baseSnapshot();

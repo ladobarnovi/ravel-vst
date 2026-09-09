@@ -75,8 +75,10 @@ public:
         int   ccNumber  = 20;
         int   ccChannel = 1;
 
-        /** Shifts this CC lane's own tap, independent of the other CC lanes and of the CC
-            tab's own Offset (which shifts the Mix CC instead). */
+        /** Raises the floor of this CC lane's own tap: the step value then spans the range
+            left above it, so a step reads as a percentage of the headroom and the tap never
+            runs past the top. Independent of the other CC lanes and of the CC tab's own
+            Offset (which shifts the Mix CC instead). */
         float ccOffset  = 0.0f;
     };
 

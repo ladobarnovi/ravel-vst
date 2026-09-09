@@ -303,8 +303,9 @@ void RavelAudioProcessorEditor::buildWorkspaces()
         column.add (params::laneCcNumId (laneIndex),  "Number");
         column.add (params::laneCcChanId (laneIndex), "Channel");
         column.add (params::laneCcOffsetId (laneIndex), "Offset", RowStyle::narrowSlider)
-              ->setTooltip ("Shifts this lane's own tap. Independent of the Mix CC's Offset, "
-                            "which shifts the fold instead");
+              ->setTooltip ("Raises the floor of this lane's own tap -- step values then span "
+                            "what is left above it, so the total never passes 100%. "
+                            "Independent of the Mix CC's Offset, which shifts the fold instead");
 
         ccLaneColumns[laneIndex] = &column;
     }

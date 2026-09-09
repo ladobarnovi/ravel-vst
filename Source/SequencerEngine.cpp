@@ -918,8 +918,15 @@ void SequencerEngine::process (const Snapshot& s,
             // Each CC lane's own Offset, not the CC tab's own one -- that already has a job
             // (the Mix CC) and moving every lane's tap by the same amount would leave no way
             // to recentre just one of them.
+            //
+            // Offset raises the tap's floor and the step value spans whatever is left above
+            // it, rather than adding on top: at Offset 50% a step at 50% is half of the
+            // remaining half, so the tap lands on 75%. Adding instead would push every step
+            // above 50% into the same clamped 100% and flatten the top of the pattern; this
+            // way the whole shape survives, compressed into the headroom.
+            const float offset = juce::jlimit (0.0f, 1.0f, s.ccLanes[laneIndex].ccOffset);
             const float target = juce::jlimit (0.0f, 1.0f,
-                                               ccLaneHeldValue[laneIndex] + s.ccLanes[laneIndex].ccOffset);
+                                               offset + ccLaneHeldValue[laneIndex] * (1.0f - offset));
             ccLaneSlewedValue[laneIndex] += (target - ccLaneSlewedValue[laneIndex]) * slewCoeff;
         }
 
