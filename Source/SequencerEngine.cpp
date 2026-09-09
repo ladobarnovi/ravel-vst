@@ -51,15 +51,30 @@ namespace
     */
     constexpr double boundaryEpsilon = 1.0e-7;
 
-    /** One RPN as three controller messages, matching the byte order JUCE's
-        MidiRPNGenerator produces: parameter LSB, parameter MSB, then data entry MSB.
-        Data entry LSB is only required for 14-bit values, which none of these are.
+    /** One RPN as a complete, self-closing transaction: parameter LSB, parameter MSB, data
+        entry MSB, data entry LSB, then the Null RPN that deselects it again.
+
+        The data entry LSB is not needed to carry any value we send -- none of these are
+        14-bit -- but a receiver latches MSB and LSB independently, so a stale fine value
+        left over from whatever RPN it handled last would ride along with ours. Sending an
+        explicit zero is what makes "48" mean 48 semitones and not 48-and-a-bit.
+
+        The Null RPN at the end matters more. Without it the parameter stays selected on that
+        channel forever, and every later CC 6 or CC 38 on it is swallowed as data for this
+        RPN rather than reaching the instrument as itself. On a plugin whose whole job is
+        sending CCs -- where any lane can be pointed at CC 6 -- that turns a routine
+        modulation into a silent rewrite of the instrument's pitch bend range.
     */
     void addRpn (juce::MidiBuffer& out, int sampleOffset, int channel, int rpnNumber, int value)
     {
         out.addEvent (juce::MidiMessage::controllerEvent (channel, 0x64, rpnNumber & 0x7f), sampleOffset);
         out.addEvent (juce::MidiMessage::controllerEvent (channel, 0x65, rpnNumber >> 7),    sampleOffset);
         out.addEvent (juce::MidiMessage::controllerEvent (channel, 0x06, value),             sampleOffset);
+        out.addEvent (juce::MidiMessage::controllerEvent (channel, 0x26, 0),                 sampleOffset);
+
+        // 127 in both parameter bytes is the Null RPN: "nothing is selected now".
+        out.addEvent (juce::MidiMessage::controllerEvent (channel, 0x64, 0x7f), sampleOffset);
+        out.addEvent (juce::MidiMessage::controllerEvent (channel, 0x65, 0x7f), sampleOffset);
     }
 }
 
@@ -633,8 +648,18 @@ void SequencerEngine::process (const Snapshot& s,
             configuredMpeWantedMode = wantedMode;
             configuredMpeBendRange  = bendRange;
 
-            // Bend range itself goes out lazily, per member channel, the first time each is
-            // actually used -- see startNote().
+            // The zone's range, announced where the zone itself was announced. Strictly, MPE
+            // sets the member range from any *member* channel -- which is what startNote()
+            // does below, lazily, the first time each channel is used -- and the master
+            // channel's own range is a separate parameter. But a receiver that takes RPN 0 on
+            // the master as the zone's range is common enough, and the ones that ignore
+            // per-member RPN 0 entirely are exactly the ones that strand us at the MPE
+            // default of +/-48 while we scale for something else. Four messages, once per
+            // range change, buys agreement with both readings.
+            sendPitchBendRange (out, 0, mpeMasterChannel, bendRange);
+
+            // The member channels get theirs lazily, the first time each is actually used --
+            // see startNote(). Most patterns never touch more than a few.
             for (auto& mc : mpeChannels)
                 mc.rangeSent = false;
         }
@@ -975,7 +1000,12 @@ void SequencerEngine::process (const Snapshot& s,
             {
                 const auto& ln = s.ccLanes[laneIndex];
 
-                if (! ln.ccOn)
+                // Inert lanes stay off the wire. `active` folds in both the mute and the lane
+                // count, so this covers a muted lane and -- the case that actually leaked --
+                // a lane the instance has not been given yet: Send defaults to on and the CC
+                // numbers are pre-assigned, so lanes 2-4 of a one-lane instance were each
+                // announcing themselves at zero before anything had been drawn on them.
+                if (! ln.active || ! ln.ccOn)
                     continue;
 
                 const int laneCc = juce::jlimit (0, 127,

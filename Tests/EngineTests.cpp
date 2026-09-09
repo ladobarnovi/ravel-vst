@@ -1462,6 +1462,33 @@ int main()
     }
 
     //==========================================================================
+    section ("A CC lane the instance does not have yet stays off the wire");
+    {
+        // Send defaults to on and the CC numbers are pre-assigned 20-23, so every lane past
+        // the lane count used to announce itself at zero the moment the transport rolled --
+        // three CCs a one-lane instance never asked to send, aimed at whatever those numbers
+        // happen to be mapped to downstream. `active` folds in the lane count and the mute
+        // both, so the same check covers a muted lane.
+        auto s = baseSnapshot();
+        s.ccLanes[1].active   = false;
+        s.ccLanes[1].ccOn     = true;
+        s.ccLanes[1].ccNumber = 21;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        const auto ccs = only (run (engine, s, 4 * samplesPerStep), controller);
+
+        bool sawHiddenLane = false;
+
+        for (const auto& e : ccs)
+            if (e.number == 21)
+                sawHiddenLane = true;
+
+        check (! sawHiddenLane, "a lane the instance does not have sends no CC");
+    }
+
+    //==========================================================================
     section ("Per-lane CC Offset shifts that lane's own CC");
     {
         auto s = baseSnapshot();
@@ -2151,6 +2178,92 @@ int main()
         check (rpn0Correct, "RPN 0 reaches the member channel the note actually used");
         check (rpn6Index >= 0 && rpn0Index >= 0 && rpn6Index < rpn0Index,
                "the zone is announced before any per-channel bend range");
+    }
+
+    //==========================================================================
+    section ("MPE announces the zone's bend range on the master channel too");
+    {
+        // Strictly, MPE reads the member range off any member channel -- which the test above
+        // covers. This is the belt to that pair of braces: an instrument that takes RPN 0 on
+        // the master as the zone's range gets it there as well. The ones that ignore
+        // per-member RPN 0 are exactly the ones that otherwise strand a note at the MPE
+        // default of +/-48 while the engine is scaling its residual for something else, and
+        // the audible result is a pitch that stops rising with the mix.
+        auto s = baseSnapshot();
+        s.quantize   = false;
+        s.bendRange  = 7;
+        s.mpeEnabled = true;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        juce::MidiBuffer buffer;
+        engine.process (s, buffer, 512, 0.0, ppqPerSample, true);
+
+        int  currentRpn = -1;
+        bool onMaster   = false;
+
+        for (const auto metadata : buffer)
+        {
+            const auto message = metadata.getMessage();
+
+            if (! message.isController())
+                continue;
+
+            if (message.getControllerNumber() == 0x64)
+                currentRpn = message.getControllerValue();
+
+            if (message.getControllerNumber() == 0x06
+                  && currentRpn == params::pitchBendRangeRpn
+                  && message.getChannel() == SequencerEngine::mpeMasterChannel
+                  && message.getControllerValue() == 7)
+                onMaster = true;
+        }
+
+        check (onMaster, "the zone's bend range is announced on the master channel");
+    }
+
+    //==========================================================================
+    section ("Every RPN closes itself");
+    {
+        // An RPN left selected turns the next CC 6 or CC 38 on that channel into data for it.
+        // This plugin exists to send CCs and any lane can be pointed at either number, so an
+        // unterminated RPN is a live wire: a routine modulation would silently rewrite the
+        // instrument's pitch bend range.
+        auto s = baseSnapshot();
+        s.quantize   = false;
+        s.bendRange  = 7;
+        s.mpeEnabled = true;
+
+        SequencerEngine engine;
+        engine.prepare (sampleRate);
+
+        juce::MidiBuffer buffer;
+        engine.process (s, buffer, 512, 0.0, ppqPerSample, true);
+
+        int dataEntryMsb = 0, dataEntryLsb = 0, nullLsb = 0, nullMsb = 0;
+
+        for (const auto metadata : buffer)
+        {
+            const auto message = metadata.getMessage();
+
+            if (! message.isController())
+                continue;
+
+            const int number = message.getControllerNumber();
+            const int value  = message.getControllerValue();
+
+            if      (number == 0x06)                 ++dataEntryMsb;
+            else if (number == 0x26)                 ++dataEntryLsb;
+            else if (number == 0x64 && value == 0x7f) ++nullLsb;
+            else if (number == 0x65 && value == 0x7f) ++nullMsb;
+        }
+
+        check (dataEntryMsb > 0, "the block does announce at least one RPN");
+        check (dataEntryLsb == dataEntryMsb,
+               "every RPN carries a data entry LSB, so no stale fine value rides along");
+        check (nullLsb == dataEntryMsb && nullMsb == dataEntryMsb,
+               "every RPN is closed with a Null RPN");
     }
 
     //==========================================================================

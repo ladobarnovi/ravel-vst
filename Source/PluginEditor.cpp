@@ -236,7 +236,10 @@ void RavelAudioProcessorEditor::buildWorkspaces()
 
     auto& output = notesSettingsPage.addColumn ("Output", settingsColumn);
     bendRangeRow = output.add (params::bendRangeId, "Bend range");
-    bendRangeRow->setTooltip ("This property has to match your instrument's pitch bend range value");
+    bendRangeRow->setTooltip ("Has to match the instrument's own pitch bend range, or continuous "
+                              "pitch plays the wrong interval. With MPE on the instrument ignores "
+                              "its own setting and uses the MPE default of " + juce::String::charToString (0x00b1) + "48, "
+                              "so leave this at 48 unless you turn MPE off");
 
     // Whole octaves, -3 to +3: seven positions rather than a continuum, so it gets seven cells
     // lighting out from a marked centre instead of a track. See RowStyle::octaves.

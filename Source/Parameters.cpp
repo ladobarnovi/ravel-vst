@@ -260,8 +260,21 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     layout.add (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { quantizeId, versionHint }, "Quantize", false));
 
+    // 48, not 2, because MPE is on by default and 48 is what an MPE instrument comes up at.
+    //
+    // Continuous pitch is sent as the nearest note plus a residual bend, so this number is a
+    // promise about how the receiver will read that bend -- and the two ends have to agree or
+    // the residual is scaled wrong. Announcing a zone (RPN 6) is what makes the instrument's
+    // own bend-range setting stop applying: its member channels revert to the MPE default of
+    // +/-48, and the RPN 0 we send to talk them back down is the least reliably implemented
+    // corner of the spec. Defaulting to 2 while announcing a zone meant a stock instance
+    // scaled for +/-2 against an instrument reading +/-48 -- a 24x error on the residual,
+    // flipping sign at every half semitone, so the pitch stopped rising with the mix.
+    //
+    // The other direction is safe: with MPE off, RPN 0 on an ordinary channel is the oldest
+    // and best-supported RPN there is, so 48 is honoured there too.
     layout.add (std::make_unique<juce::AudioParameterInt> (
-        juce::ParameterID { bendRangeId, versionHint }, "Bend Range", 1, 48, 2,
+        juce::ParameterID { bendRangeId, versionHint }, "Bend Range", 1, 48, 48,
         juce::AudioParameterIntAttributes().withStringFromValueFunction (
             [] (int v, int) { return juce::String::charToString (0x00b1) + juce::String (v); })));
 
