@@ -51,7 +51,7 @@ destination on the end of it.
 | Length | 1–16 | Shorter lanes phase against longer ones. Steps past the length grey out, and stay editable |
 | Rate | 1/1 … 1/32, incl. triplets | Independent per lane — this is where the polyrhythm comes from |
 | Mix amount | −100 % … +100 % | How much this lane contributes to its stack's fold. Signed, and drawn filling out from a marked centre |
-| 16 spread bars | 0–100 % | *Note lanes only.* How wide a range the step picks its pitch from, centred on its own value. Zero plays the value itself |
+| 16 spread bars | 0–100 % | *Note lanes only.* How far **above** its own value the step may pick a pitch. Zero plays the value itself |
 | 16 velocity bars | 0–100 % | *Note lanes only.* Per-step accent, as a trim on the fixed master velocity of 100 (100 % is unity, so a bar only ever pulls a step below it) |
 | 16 gate bars | 5–200 % | *Note lanes only.* How long each step's note is held, as % of the step. Above 100 % overlaps into the next step (see Polyphony) |
 | 16 chance bars | 0–100 % | Per-step probability of firing |
@@ -100,22 +100,22 @@ per lane. See [CC outputs](#cc-outputs).
 
 ### Spread
 
-A step's **Spread** is how wide a range it picks its pitch from, centred on the step's own
-value: a step at 45 % with a Spread of 30 % plays somewhere in **30–60 %**, and lands somewhere
-else the next time round. At zero — where every step starts, and where every step of a pattern
-written before this existed loads — the window has one value in it and the step plays exactly
-what it is drawn at.
+A step's **Spread** is how far above its own value the step may pick a pitch: a step at 30 %
+with a Spread of 30 % plays somewhere in **30–60 %**, and lands somewhere else the next time
+round. The bar you draw is the **floor** of the range and the window is the headroom above it,
+so a pattern still reads as the lowest pitch each step can play. At zero — where every step
+starts, and where every step of a pattern written before this existed loads — the window has
+one value in it and the step plays exactly what it is drawn at.
 
-It is a **width**, not a second endpoint, and that is what keeps Value meaning *where this step
-sits*: turning Spread up widens a step in place instead of transposing it, so Invert still
-mirrors centres with their windows intact and Rotate carries each window along with the pitch
-it belongs to. Everywhere a number is shown — the bar's tooltip, on either row — it is said in
-endpoints anyway, because nobody dials a range by half-width.
+It is stored as a **width** rather than as the range's top end, which is what lets it be a row
+like any other: sixteen bars with their own RND, CLR and Invert, all of which want one quantity
+per step and not a pair that has to stay in order. Two endpoints would put Invert in the
+position of flipping floors past their own ceilings. The read-outs — the bar's tooltip, on
+either row — name both ends anyway, because that is how a range is read.
 
-Near either end of the range the window is **clamped rather than slid**: a step at 5 % with a
-wide Spread wanders only upward. Sliding it inside the range would keep the width at the cost
-of moving the centre off the value the step is drawn at, and a step that plays a pitch it is
-not sitting on is worse than one whose range is narrow.
+Only the **ceiling** is ever clamped: the floor is a value already inside the range, so there
+is nothing to clamp it against. A step at 80 % with a Spread of 50 % plays 80–100 %, and the
+band the editor paints is clipped the same way, so what is drawn and what is played agree.
 
 The draw is a hash of the timeline position, the same mechanism Chance and Random direction
 use, so a loop replays the same wandering pitches rather than drifting. That is not only about
@@ -133,13 +133,13 @@ enough to cover three degrees turns that step into *pick one of these three note
 
 #### Reading it and setting it
 
-The window is drawn **on the Pitch row**, as an outlined band around the bar's own top, so a
-pattern and its ranges are visible at once. This is the one place the one-row-at-a-time rule is
-deliberately broken: Vel, Prob and Gate are unrelated quantities that happen to share a
-rectangle, but a Spread is drawn in the same units on the same axis as the bar it belongs to.
-It is an annotation on that bar, not a fifth pattern competing with it. The outline is neutral
-rather than the lane's accent because it has to cross the bar's own fill, and anything drawn
-from the accent is invisible against a solid bar of it.
+The window is drawn **on the Pitch row**, as a translucent extension of the bar reaching up
+from its own top to the step's ceiling, so a pattern and its ranges are visible at once. This is
+the one place the one-row-at-a-time rule is deliberately broken: Vel, Prob and Gate are
+unrelated quantities that happen to share a rectangle, but a Spread is drawn in the same units
+on the same axis as the bar it belongs to. It is an annotation on that bar, not a fifth pattern
+competing with it. Read together, the solid bar is how far the step goes at least and the wash
+above it is how far it might.
 
 While the transport is running, a brighter mark inside the band shows **where the current pass
 actually landed**. A band with nothing in it says a step might go anywhere in a range and says
@@ -219,8 +219,8 @@ The step toggles are never touched by any of these, so a lane's rhythm survives 
 and Paste are the exception to the whole selected-row rule: they move value, on/off and
 chance together — and, on a Note lane, spread, velocity and gate as well — because rotating
 only one row would slide it out from under the rest of the pattern. Spread in particular has
-to travel with its own value: a window left behind by the pitch it was centred on is a range
-around a note that has gone somewhere else.
+to travel with its own value: a window is measured from the pitch beneath it, so one left
+behind belongs to a note that has gone somewhere else.
 
 The clipboard is per stack: you can paste one Note lane onto another, or one CC lane onto
 another, but not across the two.
@@ -583,15 +583,15 @@ out of scope for a plugin only running on your own machine.)
 .\build\RavelProcessorTests_artefacts\Release\RavelProcessorTests.exe
 ```
 
-279 checks across two suites, neither needing a plugin host.
+280 checks across two suites, neither needing a plugin host.
 
-`Tests/EngineTests.cpp` (134 checks) drives `SequencerEngine` over a synthetic timeline. The
+`Tests/EngineTests.cpp` (135 checks) drives `SequencerEngine` over a synthetic timeline. The
 engine takes PPQ positions as plain arguments rather than reading a playhead itself, which is
 what makes that possible. Covers step timing, gate length, per-lane length and rate, disabled
 steps, the fold, transport jumps, stuck-note release on stop, directions, probability,
-swing, per-step velocity, polyphony and poly mode, per-step Spread — that a window is centred
-on its value and clamped rather than slid at the ends of the range, and that the same timeline
-draws the same pitches whatever the block size — the Mix CC and each lane's own CC
+swing, per-step velocity, polyphony and poly mode, per-step Spread — that a step's value is
+the floor of its window rather than its middle, that the ceiling is clamped into the range, and
+that the same timeline draws the same pitches whatever the block size — the Mix CC and each lane's own CC
 tap (including that the two Offsets stay out of each other's way), and the continuous-pitch
 path — including that note number plus pitch bend reconstructs the intended fractional pitch,
 that non-12 EDO scales land where the tuning says, and that the bend range is actually

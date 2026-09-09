@@ -767,8 +767,8 @@ int main()
                "a CC lane has no Spread row to reach, and the note lane's is left alone");
 
         //---------------------------------------------------------------------- rotate
-        // Spread travels with the value it is centred on: a window left behind by its own
-        // pitch is a range around a note that has moved somewhere else.
+        // Spread travels with the value it is measured from: a window left behind by its own
+        // floor is a range belonging to a note that has moved somewhere else.
         for (int step = 0; step < params::numSteps; ++step)
             set (params::stepSpreadId (0, step), 0.03f * (float) step);
 
