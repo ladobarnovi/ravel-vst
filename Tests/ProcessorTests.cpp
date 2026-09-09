@@ -699,6 +699,106 @@ int main()
     }
 
     //==========================================================================
+    section ("Spread is a row of the note lane's pattern");
+    {
+        RavelAudioProcessor processor;
+        juce::Random random (0x59ead);
+
+        const auto set = [&processor] (const juce::String& id, float actual)
+        {
+            if (auto* p = processor.apvts.getParameter (id))
+                p->setValueNotifyingHost (p->convertTo0to1 (actual));
+        };
+
+        const auto get = [&processor] (const juce::String& id)
+        {
+            return processor.apvts.getRawParameterValue (id)->load();
+        };
+
+        const auto spreadOf = [&] (int lane, int step) { return get (params::stepSpreadId (lane, step)); };
+
+        //---------------------------------------------------------------------- default
+        // Zero on every step, which is what makes this additive: a session or preset written
+        // before Spread existed loads with no window anywhere and plays as it always did.
+        bool allZero = true;
+
+        for (int step = 0; step < params::numSteps; ++step)
+            allZero = allZero && spreadOf (0, step) < 1.0e-6f;
+
+        check (allZero, "every step opens with no Spread at all");
+
+        //---------------------------------------------------------------------- randomise
+        params::randomiseLaneRow (processor.apvts, 0, random, params::LaneKind::note,
+                                  params::StepLayer::spread);
+
+        bool spreadMoved = false;
+        bool valueUntouched = true;
+
+        for (int step = 0; step < params::numSteps; ++step)
+        {
+            spreadMoved = spreadMoved || spreadOf (0, step) > 1.0e-6f;
+            valueUntouched = valueUntouched && std::abs (get (params::stepValueId (0, step)) - 0.25f) < 1.0e-6f;
+        }
+
+        check (spreadMoved, "randomise reaches the Spread row when it is the selected one");
+        check (valueUntouched, "and leaves the pitches it is a window on alone");
+
+        //---------------------------------------------------------------------- clear
+        // Back to zero rather than to a neutral trim: no wander is a real position for this
+        // row, the way it is for Value and unlike Velocity, Prob and Gate.
+        params::clearLaneRow (processor.apvts, 0, params::LaneKind::note, params::StepLayer::spread);
+
+        bool cleared = true;
+
+        for (int step = 0; step < params::numSteps; ++step)
+            cleared = cleared && spreadOf (0, step) < 1.0e-6f;
+
+        check (cleared, "clear puts the Spread row back to zero");
+
+        //---------------------------------------------------------------------- CC lanes
+        // A CC lane has no Spread row. Asking for one must do nothing rather than reach the
+        // note lane of the same number that stepSpreadId would resolve to.
+        set (params::stepSpreadId (0, 0), 0.4f);
+
+        params::randomiseLaneRow (processor.apvts, 0, random, params::LaneKind::cc,
+                                  params::StepLayer::spread);
+
+        check (std::abs (spreadOf (0, 0) - 0.4f) < 1.0e-6f,
+               "a CC lane has no Spread row to reach, and the note lane's is left alone");
+
+        //---------------------------------------------------------------------- rotate
+        // Spread travels with the value it is centred on: a window left behind by its own
+        // pitch is a range around a note that has moved somewhere else.
+        for (int step = 0; step < params::numSteps; ++step)
+            set (params::stepSpreadId (0, step), 0.03f * (float) step);
+
+        params::rotateLane (processor.apvts, 0, 1);
+
+        check (std::abs (spreadOf (0, 1) - 0.0f) < 0.01f
+                 && std::abs (spreadOf (0, 2) - 0.03f) < 0.01f
+                 && std::abs (spreadOf (0, 0) - 0.03f * (float) (params::numSteps - 1)) < 0.01f,
+               "rotate carries each step's Spread along with its value");
+
+        //---------------------------------------------------------------------- copy/paste
+        const auto pattern = params::copyLane (processor.apvts, 0);
+        params::pasteLane (processor.apvts, 1, pattern);
+
+        bool pasted = true;
+
+        for (int step = 0; step < params::numSteps; ++step)
+            pasted = pasted && std::abs (spreadOf (1, step) - spreadOf (0, step)) < 0.001f;
+
+        check (pasted, "and copy/paste carries it onto another lane");
+
+        //---------------------------------------------------------------------- lane removal
+        set (params::noteLaneCountId, 2.0f);
+        params::removeLane (processor.apvts, 0);
+
+        check (std::abs (spreadOf (0, 2) - 0.03f) < 0.01f,
+               "a lane moving down to close a gap brings its Spread with it");
+    }
+
+    //==========================================================================
     section ("A pattern action is one undo step, not sixteen");
     {
         RavelAudioProcessor processor;

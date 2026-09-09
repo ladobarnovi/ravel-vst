@@ -64,6 +64,21 @@ public:
         /** Per-step note length, as a percentage of the step's own length. 100 touches the
             next step without overlapping it; above that overlaps into it (see Voices). */
         float gate[params::numSteps] {};
+
+        /** How far above its own value this step may land, as a width: 0.3 on a step at 0.30
+            plays somewhere in 0.30..0.60. The value is the floor of the range rather than its
+            middle, so the bar the editor draws is the bottom of what the step can play and
+            the window is the headroom above it. Zero -- the default, and what every step of a
+            pattern written before this existed loads with -- is a window with one value in
+            it, so it needs no special case anywhere.
+
+            The draw is a hash of the timeline position rather than a running RNG, for the
+            same reason Chance and Random direction are (see hashToUnitFloat). Here it is not
+            only about a loop repeating: a lane is re-resolved at the start of every block
+            whether or not it advanced, so a running RNG would re-roll mid-step and zipper the
+            pitch. A pure function of the global index gives the same answer however often it
+            is asked, which is what holds a step's pitch still for the step's whole life. */
+        float spread[params::numSteps] {};
     };
 
     /** A CC lane: the pattern above, plus its own destination -- the whole reason a CC lane
@@ -201,6 +216,21 @@ public:
                  .load (std::memory_order_relaxed);
     }
 
+    /** Where inside its Spread window a note lane's current step actually landed, 0..1, or
+        -1 while nothing is playing.
+
+        Only worth drawing on a step that has a Spread: at zero width this is the step's own
+        value, which the bar is already showing. It exists so a window can be read as a
+        window -- a band with no mark in it says a step might land anywhere in a range, and
+        says nothing about where it just did. */
+    float getCurrentValue (int lane) const noexcept
+    {
+        return noteUiValue[lane].load (std::memory_order_relaxed);
+    }
+
+    /** -1 means this lane is not sounding a value right now. */
+    static constexpr float noValue = -1.0f;
+
 private:
     //==========================================================================
     static int stepIndexFor (std::int64_t globalIndex, int length, int direction, int laneIndex) noexcept;
@@ -249,6 +279,12 @@ private:
     {
         std::int64_t lastGlobalIndex = std::numeric_limits<std::int64_t>::min();
         int step = 0;
+
+        /** What the step resolved to after any Spread draw -- the step's own value wherever
+            there is no Spread, and noValue on a lane that is muted or that the instance does
+            not have. Held so the editor can be shown where the current step landed inside its
+            window; the engine reads it off the run rather than from here. */
+        float value = noValue;
     };
 
     LaneState noteLaneStates[params::numLanes];
@@ -401,4 +437,9 @@ private:
 
     std::atomic<int>   noteUiStep[params::numLanes] {};
     std::atomic<int>   ccUiStep[params::numLanes] {};
+    // Spelled out rather than value-initialised, because zero is a real position inside a
+    // window and this has to start at "nothing landed here yet": publishUiSteps only runs
+    // from process(), so an editor opened before the first block would otherwise be told
+    // every lane was sitting at the bottom of its range.
+    std::atomic<float> noteUiValue[params::numLanes] { -1.0f, -1.0f, -1.0f, -1.0f };
 };

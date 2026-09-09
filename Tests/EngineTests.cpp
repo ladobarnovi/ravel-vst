@@ -1274,6 +1274,152 @@ int main()
     }
 
     //==========================================================================
+    section ("Per-step Spread widens a step into a range");
+    {
+        // Root 48, Range 1 octave, chromatic: note = 48 + round(value * 12), so a window in
+        // value space maps onto a run of note numbers that can be named exactly. The value is
+        // the floor of the window and the spread is how far above it the step may reach.
+        const auto notesFor = [] (float value, float spread, float depth = 1.0f)
+        {
+            auto s = baseSnapshot();
+            s.noteLanes[0].depth = depth;
+
+            for (int i = 0; i < params::numSteps; ++i)
+            {
+                s.noteLanes[0].values[i] = value;
+                s.noteLanes[0].spread[i] = spread;
+            }
+
+            SequencerEngine engine;
+            engine.prepare (sampleRate);
+
+            return only (run (engine, s, 64 * samplesPerStep), noteOn);
+        };
+
+        const auto spanOf = [] (const std::vector<Event>& notes)
+        {
+            std::pair<int, int> span { 127, 0 };
+
+            for (const auto& e : notes)
+            {
+                span.first  = juce::jmin (span.first,  e.number);
+                span.second = juce::jmax (span.second, e.number);
+            }
+
+            return span;
+        };
+
+        //---------------------------------------------------------------------- no spread
+        const auto flat = notesFor (0.5f, 0.0f);
+        const auto flatSpan = spanOf (flat);
+
+        check (flat.size() == 64 && flatSpan.first == 54 && flatSpan.second == 54,
+               "Spread 0 leaves every step on its own value");
+
+        //---------------------------------------------------------------------- a window
+        // 0.5 wide from 0.25 is 0.25..0.75, which is degrees 3..9 of the octave.
+        const auto spread = notesFor (0.25f, 0.5f);
+        const auto span   = spanOf (spread);
+
+        check (span.first >= 51 && span.second <= 57,
+               "no step lands outside its Spread window");
+        check (span.first < span.second, "and the steps do not all land on the same note");
+
+        //---------------------------------------------------------------------- anchored
+        // The window opens upward from the value rather than straddling it, so the bar the
+        // editor draws is the lowest pitch the step can play. Centring it on 0.25 instead
+        // would have reached down to 48.
+        check (span.first == 51, "the step's value is the floor of its window, not its middle");
+        check (span.second > 51, "and the window is the headroom above it");
+
+        //---------------------------------------------------------------------- clamped
+        // Only the ceiling ever needs clamping: the floor is a value that is already in the
+        // range. A wide window near the top of the range has nowhere further to go, and the
+        // band the editor paints is clamped the same way, so the two agree.
+        const auto atCeiling = spanOf (notesFor (0.8f, 0.5f));
+
+        check (atCeiling.first >= 58 && atCeiling.second == 60,
+               "a window is clamped at the top of the range rather than running past it");
+
+        const auto atFloor = spanOf (notesFor (0.0f, 0.5f));
+
+        check (atFloor.first == 48 && atFloor.second <= 54,
+               "and a step at the bottom of the range opens upward from it");
+
+        //---------------------------------------------------------------------- depth
+        // The draw happens before the lane's share is taken, so Mix amount scales the wander
+        // along with everything else: half depth is half the window.
+        const auto halfDepth = spanOf (notesFor (0.0f, 1.0f, 0.5f));
+
+        check (halfDepth.second <= 54, "Mix amount scales the wander with the rest of the lane");
+    }
+
+    //==========================================================================
+    section ("Spread is locked to the timeline");
+    {
+        auto s = baseSnapshot();
+
+        for (int i = 0; i < params::numSteps; ++i)
+        {
+            s.noteLanes[0].values[i] = 0.2f;
+            s.noteLanes[0].spread[i] = 0.6f;
+        }
+
+        SequencerEngine engineA, engineB;
+        engineA.prepare (sampleRate);
+        engineB.prepare (sampleRate);
+
+        const auto first  = only (run (engineA, s, 16 * samplesPerStep), noteOn);
+        const auto second = only (run (engineB, s, 16 * samplesPerStep), noteOn);
+
+        bool identical = first.size() == second.size() && ! first.empty();
+
+        for (size_t i = 0; i < first.size() && i < second.size(); ++i)
+            identical = identical && first[i].number == second[i].number;
+
+        check (identical, "the same timeline span draws exactly the same pitches");
+
+        //---------------------------------------------------------------------- block size
+        // The draw has to be a function of the timeline and of nothing else. A lane is
+        // re-resolved at the start of every block whether or not it advanced, so a running
+        // RNG would draw again mid-step and the pitches would depend on where the block
+        // boundaries happened to fall. Same span, a block size that lands on entirely
+        // different samples, same notes.
+        std::vector<Event> odd;
+        {
+            SequencerEngine engineC;
+            engineC.prepare (sampleRate);
+
+            juce::MidiBuffer buffer;
+            const int total = 16 * samplesPerStep;
+            const int oddBlock = 997;
+
+            for (int pos = 0; pos < total; pos += oddBlock)
+            {
+                const int numSamples = juce::jmin (oddBlock, total - pos);
+
+                buffer.clear();
+                engineC.process (s, buffer, numSamples, ppqPerSample * (double) pos,
+                                 ppqPerSample, true);
+
+                for (const auto metadata : buffer)
+                    if (metadata.getMessage().isNoteOn())
+                        odd.push_back ({ pos + metadata.samplePosition, noteOn,
+                                         metadata.getMessage().getChannel(),
+                                         metadata.getMessage().getNoteNumber(),
+                                         metadata.getMessage().getVelocity() });
+            }
+        }
+
+        bool sameUnderOddBlocks = odd.size() == first.size() && ! odd.empty();
+
+        for (size_t i = 0; i < odd.size() && i < first.size(); ++i)
+            sameUnderOddBlocks = sameUnderOddBlocks && odd[i].number == first[i].number;
+
+        check (sameUnderOddBlocks, "and the same pitches whatever the block size");
+    }
+
+    //==========================================================================
     section ("A muted lane is transparent and fires nothing");
     {
         // Lane 2 would add a full range to the mix, pushing every note to the top. Muted, it

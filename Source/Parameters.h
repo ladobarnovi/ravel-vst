@@ -60,30 +60,37 @@ juce::String stepChanceId   (int lane, int step, LaneKind kind = LaneKind::note)
 juce::String stepVelocityId (int lane, int step);
 juce::String stepGateId     (int lane, int step);
 
+// How far above its own value this step's pitch may land, as a width: at 30% a step at 30%
+// plays somewhere in 30..60%. Note-only for the same reason as the two above -- what it
+// widens is a pitch, and the same parameter on a CC lane would be step jitter, which is a
+// different feature wearing this one's name.
+juce::String stepSpreadId   (int lane, int step);
+
 //==============================================================================
-/** Which of a step's four continuous parameters is being addressed.
+/** Which of a step's five continuous parameters is being addressed.
 
     Lives here rather than in the editor because the pattern actions below take one: a lane's
     Randomize acts on whichever row its bars are currently showing, so "which row" is a
     parameter-domain idea and not only a UI one.
 */
-enum class StepLayer { value = 0, velocity = 1, chance = 2, gate = 3 };
+enum class StepLayer { value = 0, spread = 1, velocity = 2, chance = 3, gate = 4 };
 
-inline constexpr int numStepLayers = 4;
+inline constexpr int numStepLayers = 5;
 
 /** The parameter one step's given row lives in, or an empty string where that lane kind has no
-    such row -- a CC lane has neither velocity nor gate. Callers skip the empty ones rather
+    such row -- a CC lane has no velocity, gate or spread. Callers skip the empty ones rather
     than addressing the note lane of the same number that stepVelocityId would resolve to. */
 juce::String stepLayerId (int lane, int step, StepLayer layer, LaneKind kind = LaneKind::note);
 
 /** What a row goes back to when it is cleared, and what a double-click on one of its bars
     resets to.
 
-    Not zero for three of the four. Velocity, Chance and Gate are all *trims* on something that
+    Not zero for three of the five. Velocity, Chance and Gate are all *trims* on something that
     already works -- unity, always-fires, and a normal note length -- so zeroing them gives
     silent notes, a lane that never fires and zero-length notes, which are three ways of
-    turning the lane off rather than of clearing it. Only Value, where zero is a real musical
-    position, clears to zero.
+    turning the lane off rather than of clearing it. Value and Spread both clear to zero,
+    because for both of them zero is a real position rather than an off switch: the bottom of
+    the range, and no headroom above it.
 */
 float stepLayerNeutral (StepLayer layer) noexcept;
 
@@ -198,8 +205,10 @@ void invertLaneRow (juce::AudioProcessorValueTreeState& state, int lane,
 /** Shifts the lane's steps round by one. Negative rotates left, positive rotates right.
 
     Value, on/off and chance move together -- rotating only the values would slide a pattern
-    out from under its own rhythm and accents. A note lane's velocity and gate move with them
-    too; a CC lane has neither.
+    out from under its own rhythm and accents. A note lane's velocity, gate and spread move
+    with them too; a CC lane has none of the three. Spread travels with its own value in
+    particular because the two together are one step's pitch: a window is measured from the
+    value under it, so one left behind belongs to a note that has gone somewhere else.
 */
 void rotateLane (juce::AudioProcessorValueTreeState& state, int lane, int direction,
                  LaneKind kind = LaneKind::note);
@@ -221,9 +230,9 @@ void rotateLane (juce::AudioProcessorValueTreeState& state, int lane, int direct
 */
 void removeLane (juce::AudioProcessorValueTreeState& state, int lane, LaneKind kind = LaneKind::note);
 
-/** A whole lane's step data, for copy/paste between lanes of the same kind. Velocity and
-    gate are along for a note lane's ride and simply unused when the pattern came from, or
-    is pasted onto, a CC lane. */
+/** A whole lane's step data, for copy/paste between lanes of the same kind. Velocity, gate
+    and spread are along for a note lane's ride and simply unused when the pattern came from,
+    or is pasted onto, a CC lane. */
 struct LanePattern
 {
     float values[numSteps] {};
@@ -231,6 +240,7 @@ struct LanePattern
     float chance[numSteps] {};
     float velocity[numSteps] {};
     float gate[numSteps] {};
+    float spread[numSteps] {};
     bool  valid = false;
 };
 

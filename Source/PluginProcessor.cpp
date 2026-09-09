@@ -18,6 +18,7 @@ RavelAudioProcessor::RavelAudioProcessor()
             np.chance[step]  = apvts.getRawParameterValue (params::stepChanceId (lane, step));
             np.stepVelocity[step] = apvts.getRawParameterValue (params::stepVelocityId (lane, step));
             np.stepGate[step] = apvts.getRawParameterValue (params::stepGateId (lane, step));
+            np.stepSpread[step] = apvts.getRawParameterValue (params::stepSpreadId (lane, step));
         }
 
         np.active    = apvts.getRawParameterValue (params::laneOnId (lane));
@@ -127,6 +128,7 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
                 ns.chance[step]   = np.chance[step]->load();
                 ns.velocity[step] = np.stepVelocity[step]->load();
                 ns.gate[step]     = np.stepGate[step]->load();
+                ns.spread[step]   = np.stepSpread[step]->load();
             }
         }
 

@@ -23,7 +23,7 @@ namespace lane
         read against -- at a step's size it would look like a stray step that had escaped the
         grid. */
     inline constexpr int muteSize     = 18;
-    inline constexpr int selectorWidth = 46; ///< Val / Vel / Prob / Gate -- Val alone on a CC lane.
+    inline constexpr int selectorWidth = 46; ///< Pitch / Spread / Vel / Prob / Gate -- Val alone on a CC lane.
     inline constexpr int layerChipHeight = 19;
     inline constexpr int layerChipGap    = 5;
     inline constexpr int paramWidth   = 190; ///< Length, Rate, Direction, Mix amount.
@@ -90,11 +90,15 @@ namespace lane
     int height();
 }
 
-/** Which of a step's four continuous parameters the tall bars currently edit.
+/** Which of a step's five continuous parameters the tall bars currently edit.
 
-    All four are full-height bars stacked in the same rectangle with one visible at a time,
-    rather than four smaller bars competing for the slot. Every bar keeps its own parameter
+    All five are full-height bars stacked in the same rectangle with one visible at a time,
+    rather than five smaller bars competing for the slot. Every bar keeps its own parameter
     attachment, since nothing has to be rebound when the selection changes.
+
+    Spread is the one that is also drawn while another row is showing -- as a window round the
+    Pitch bar rather than as bars of its own -- because it is a range on the same axis as the
+    value it surrounds. See theme::stepSpreadProperty.
 
     Defined in Parameters.h, because the pattern actions take one -- Randomize acts on the row
     the bars are showing -- and aliased here so the editor can go on spelling it unqualified.
@@ -154,13 +158,23 @@ public:
     /** The three stages of a stroke, as they reach this slot's bar. The event may come from
         anywhere -- a stroke that started three steps away is still one drag, and its events
         arrive in the coordinates of the slot it started in -- so each is rebased onto the bar
-        before being handed over. */
-    void beginBarDrag    (const juce::MouseEvent&);
+        before being handed over.
+
+        The layer is the lane's to decide and is fixed for the whole stroke, which is why it
+        arrives with the opening event rather than being read per slot: an Alt-drag edits
+        Spread while the Pitch row is the one on screen, and it has to keep doing so as the
+        cursor crosses into steps that were never told a modifier was held. */
+    void beginBarDrag    (const juce::MouseEvent&, StepLayer);
     void continueBarDrag (const juce::MouseEvent&);
     void endBarDrag      (const juce::MouseEvent&);
 
     void setPlaying (bool shouldBePlaying);
     void setLayer (StepLayer layer);
+
+    /** Marks where inside its Spread window this step's current pass actually landed, 0..1,
+        or negative for "not sounding one". Only the playing step is ever given a position;
+        the rest are cleared as the playhead leaves them. */
+    void setLandedValue (float proportion);
 
     //==========================================================================
     // Sliding the bar from the height it is drawn at to the height it is about to have,
@@ -209,10 +223,11 @@ private:
 
     const int step;
 
-    juce::Slider valueSlider, velocitySlider, chanceSlider, gateSlider;
+    juce::Slider valueSlider, spreadSlider, velocitySlider, chanceSlider, gateSlider;
     juce::ToggleButton onButton;
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> valueAttachment,
+                                                                         spreadAttachment,
                                                                          velocityAttachment,
                                                                          chanceAttachment,
                                                                          gateAttachment;
@@ -244,9 +259,24 @@ private:
 
     juce::Slider& sliderFor (StepLayer) noexcept;
 
+    /** Which layers this slot was actually given a parameter for. A CC step has no Velocity,
+        Gate or Spread bar, so those were never built or attached.
+
+        Visibility cannot stand in for this everywhere it used to: the Spread bar is hidden
+        exactly when an Alt-drag wants it, because the Pitch row is the one on screen. */
+    bool built[numStepLayers] {};
+
     /** The bar a stroke would edit, or nullptr where the lane has no such layer to edit -- a
-        CC step has no Velocity or Gate bar to reach for. */
+        CC step has no Velocity, Gate or Spread bar to reach for. */
     juce::Slider* activeBar() noexcept;
+
+    /** The bar the stroke in progress is editing, which is not always the visible one. Null
+        between strokes, and null for a layer this slot does not have. */
+    juce::Slider* strokeBar = nullptr;
+
+    /** Pushes this step's Spread onto the value bar, which is what draws the window. Runs on
+        every change to the Spread parameter, from a drag or from the host alike. */
+    void applySpread();
 
     /** Guards the one place the forwarding could turn back on itself: a Slider that makes no
         use of a wheel event passes it up to its parent, which is this slot. */
@@ -261,9 +291,9 @@ private:
     Both kinds carry the same strip -- Length, Rate, Direction and Mix amount -- because both
     are the same sequencer with a different destination on the end of it. They differ in one
     place only: how many layers sit behind the step bars, and so how many chips the selector
-    beside them offers. A Note lane has four (Value, Velocity, Prob, Gate); a CC lane has
-    Value alone, because Velocity and Gate are only ever arguments to starting a note and a CC
-    lane never starts one.
+    beside them offers. A Note lane has five (Value, Spread, Velocity, Prob, Gate); a CC lane
+    has Value alone, because Velocity and Gate are only ever arguments to starting a note and a
+    CC lane never starts one, and a Spread is a window on a pitch.
 
     A CC lane's own Send/Number/Channel/Offset live in the CC page's footer rather than here,
     one column per lane -- they are a destination, which is a property of where the lane goes
@@ -285,6 +315,11 @@ public:
 
     /** Called from the editor's timer with the lane's current step. */
     void setPlayingStep (int stepIndex);
+
+    /** Called from the editor's timer with where inside its Spread window the current step
+        landed, 0..1, or negative while the lane is not playing. Note lanes only -- a CC lane
+        has no Spread to land inside. */
+    void setPlayingValue (float proportion);
 
     /** Hidden on the last remaining lane, since an instance always has at least one. */
     void setCanRemove (bool canBeRemoved);
@@ -416,6 +451,11 @@ private:
         arrived are the two ends of a line the cursor has already travelled -- see
         continueStroke, which has to fill in the steps along it. */
     juce::Point<float> strokePosition;
+
+    /** Which row the stroke in progress is writing. The selected one, or Spread while Alt was
+        held as the stroke opened -- fixed at that moment rather than sampled per event, so
+        letting go of the modifier mid-drag does not switch rows under the cursor. */
+    StepLayer strokeLayer = StepLayer::value;
 
     /** The step a stroke at this distance across the lane should be editing, or -1 in a lane
         with no steps at all.

@@ -12,9 +12,28 @@ namespace
             case StepLayer::velocity: return "This step's accent, as a trim on the global Velocity";
             case StepLayer::chance:   return "Probability this step fires";
             case StepLayer::gate:     return "How long this step's note is held, as % of the step";
+            case StepLayer::spread:   return "How far above its own value this step may pick "
+                                             "a pitch";
             case StepLayer::value:
             default:                  return "Step value -- drives pitch";
         }
+    }
+
+    /** The endpoints a value and a width come out as, for the read-outs.
+
+        The parameter is a width so that it can be a row of its own -- sixteen bars, its own
+        RND and CLR -- but a range is read as two ends, so every place a number is shown says
+        it that way. Clamped exactly as the engine clamps its draw, so the read-out never
+        promises a pitch that cannot be played.
+    */
+    juce::String spreadRangeText (float value, float spread)
+    {
+        const auto percent = [] (float v) { return juce::String (juce::roundToInt (v * 100.0f)); };
+
+        const float low  = juce::jlimit (0.0f, 1.0f, value);
+        const float high = juce::jmin (1.0f, low + spread);
+
+        return percent (low) + "-" + percent (high) + "%";
     }
 
 }
@@ -64,16 +83,17 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
         double        resetTo;
     };
 
-    // Velocity and Gate are note-only parameters -- a CC lane's step has neither (see
-    // Parameters.cpp) -- so for a CC-kind slot only Value and Chance get built at all.
-    const bool isCc = kind == params::LaneKind::cc;
-
+    // Velocity, Gate and Spread are note-only parameters -- a CC lane's step has none of them
+    // (see Parameters.cpp) -- so for a CC-kind slot only Value and Chance get built at all.
+    //
     // Both the id and the double-click reset come from params, so a bar resets to exactly what
     // the lane's Clear puts that row back to.
     const LayerSetup setups[]
     {
         { valueSlider,    params::stepLayerId (laneIndex, stepIndex, StepLayer::value, kind),
                           params::stepLayerNeutral (StepLayer::value) },
+        { spreadSlider,   params::stepLayerId (laneIndex, stepIndex, StepLayer::spread, kind),
+                          params::stepLayerNeutral (StepLayer::spread) },
         { velocitySlider, params::stepLayerId (laneIndex, stepIndex, StepLayer::velocity, kind),
                           params::stepLayerNeutral (StepLayer::velocity) },
         { chanceSlider,   params::stepLayerId (laneIndex, stepIndex, StepLayer::chance, kind),
@@ -83,14 +103,18 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
     };
 
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>* attachments[]
-        { &valueAttachment, &velocityAttachment, &chanceAttachment, &gateAttachment };
+        { &valueAttachment, &spreadAttachment, &velocityAttachment, &chanceAttachment,
+          &gateAttachment };
 
     for (int i = 0; i < numStepLayers; ++i)
     {
-        // Empty for a CC lane's velocity and gate, which do not exist -- skipped rather than
-        // attached to the note lane of the same number those ids would otherwise resolve to.
+        // Empty for a CC lane's velocity, gate and spread, which do not exist -- skipped
+        // rather than attached to the note lane of the same number those ids would otherwise
+        // resolve to.
         if (setups[i].paramID.isEmpty())
             continue;
+
+        built[i] = true;
 
         auto& slider = setups[i].slider;
 
@@ -107,7 +131,16 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
         slider.setPopupDisplayEnabled (true, false, nullptr);
         slider.setDoubleClickReturnValue (true, setups[i].resetTo);
 
-        // The slot takes the mouse for all four bars and passes each event on to whichever one
+        // Every bar stays an absolute drag whatever modifier is held. JUCE reads Ctrl, Alt or
+        // Cmd as "swap to velocity-sensitive drag" by default (see Slider's
+        // isAbsoluteDragMode), which hides the cursor and turns the stroke into a relative
+        // nudge -- so a modified drag across the step grid did almost nothing and looked
+        // broken. It is also what the Pitch row's Alt-drag needs: that gesture reaches this
+        // slot's Spread bar through the same absolute path an ordinary stroke takes, and
+        // there is nothing here a velocity mode would be good for.
+        slider.setVelocityModeParameters (1.0, 1, 0.0, false);
+
+        // The slot takes the mouse for every bar and passes each event on to whichever one
         // the stroke has reached -- see this class's own comment. A bar that took its own
         // mouse-down would hold the rest of the drag whatever the cursor went on to do.
         slider.setInterceptsMouseClicks (false, false);
@@ -119,7 +152,17 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
             state, setups[i].paramID, slider);
     }
 
-    // The bars are deaf to the mouse and the slot takes the gesture for all four of them (see
+    // The window is drawn by the value bar, so the value bar has to be told when it changes.
+    // Through onValueChange rather than by polling: the attachment drives the slider through
+    // Slider::Listener, which leaves this callback free and fires it for a change arriving
+    // from the host exactly as readily as for one from a drag.
+    if (built[(int) StepLayer::spread])
+    {
+        spreadSlider.onValueChange = [this] { applySpread(); };
+        applySpread();
+    }
+
+    // The bars are deaf to the mouse and the slot takes the gesture for all of them (see
     // this class's own comment), so the drag cursor belongs here rather than on the bar the
     // role would otherwise put it on. The trig is a real button and sets its own.
     setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
@@ -152,12 +195,30 @@ juce::Slider& StepSlot::sliderFor (StepLayer layer) noexcept
 {
     switch (layer)
     {
+        case StepLayer::spread:   return spreadSlider;
         case StepLayer::velocity: return velocitySlider;
         case StepLayer::chance:   return chanceSlider;
         case StepLayer::gate:     return gateSlider;
         case StepLayer::value:
         default:                  return valueSlider;
     }
+}
+
+void StepSlot::applySpread()
+{
+    // On the value bar rather than on the one that owns the number: the window is headroom
+    // above that bar, and only legible against it. See theme::stepSpreadProperty.
+    theme::setStepSpread (valueSlider, (float) spreadSlider.getValue());
+    valueSlider.repaint();
+}
+
+void StepSlot::setLandedValue (float proportion)
+{
+    if (juce::approximatelyEqual (theme::stepLandedOf (valueSlider), proportion))
+        return;
+
+    theme::setStepLanded (valueSlider, proportion);
+    valueSlider.repaint();
 }
 
 void StepSlot::setLayer (StepLayer layer)
@@ -168,8 +229,8 @@ void StepSlot::setLayer (StepLayer layer)
 
     currentLayer = layer;
 
-    for (auto l : { StepLayer::value, StepLayer::velocity, StepLayer::chance, StepLayer::gate })
-        sliderFor (l).setVisible (l == layer);
+    for (int l = 0; l < numStepLayers; ++l)
+        sliderFor ((StepLayer) l).setVisible ((StepLayer) l == layer);
 
     applyTrigState();
     repaint();
@@ -260,8 +321,8 @@ void StepSlot::parentHierarchyChanged()
     if (host == nullptr)
         return;
 
-    for (auto layer : { StepLayer::value, StepLayer::velocity, StepLayer::chance, StepLayer::gate })
-        sliderFor (layer).setPopupDisplayEnabled (true, false, host);
+    for (int layer = 0; layer < numStepLayers; ++layer)
+        sliderFor ((StepLayer) layer).setPopupDisplayEnabled (true, false, host);
 }
 
 void StepSlot::applyTrigState()
@@ -318,29 +379,56 @@ juce::Slider* StepSlot::activeBar() noexcept
 
 juce::String StepSlot::getTooltip()
 {
-    if (auto* bar = activeBar())
-        return bar->getTextFromValue (bar->getValue()) + " -- " + layerTooltip (currentLayer);
+    auto* bar = activeBar();
 
-    return layerTooltip (currentLayer);
+    if (bar == nullptr)
+        return layerTooltip (currentLayer);
+
+    auto text = bar->getTextFromValue (bar->getValue()) + " -- " + layerTooltip (currentLayer);
+
+    // Both rows that describe one pitch say it in endpoints, since that is how a range is
+    // thought of even though the parameter behind it is a width. On the Pitch row the hint
+    // for the gesture goes with it: an Alt-drag is only discoverable where it works, and it
+    // works here.
+    if (const float spread = (float) spreadSlider.getValue();
+        built[(int) StepLayer::spread] && spread > 0.001f)
+    {
+        if (currentLayer == StepLayer::value)
+            text += " (plays " + spreadRangeText ((float) valueSlider.getValue(), spread) + ")";
+        else if (currentLayer == StepLayer::spread)
+            text += " (" + spreadRangeText ((float) valueSlider.getValue(), spread) + ")";
+    }
+
+    if (currentLayer == StepLayer::value && built[(int) StepLayer::spread])
+        text += ". Alt-drag to widen its Spread";
+
+    return text;
 }
 
 //==============================================================================
-void StepSlot::beginBarDrag (const juce::MouseEvent& e)
+void StepSlot::beginBarDrag (const juce::MouseEvent& e, StepLayer layer)
 {
-    if (auto* bar = activeBar())
-        bar->mouseDown (e.getEventRelativeTo (bar));
+    // A bar the slot does not have leaves strokeBar null and the stroke inert, which is what
+    // an Alt-drag on a CC lane comes to: there is no Spread there to widen.
+    strokeBar = built[(int) layer] ? &sliderFor (layer) : nullptr;
+
+    if (strokeBar != nullptr)
+        strokeBar->mouseDown (e.getEventRelativeTo (strokeBar));
 }
 
 void StepSlot::continueBarDrag (const juce::MouseEvent& e)
 {
-    if (auto* bar = activeBar())
-        bar->mouseDrag (e.getEventRelativeTo (bar));
+    if (strokeBar != nullptr)
+        strokeBar->mouseDrag (e.getEventRelativeTo (strokeBar));
 }
 
 void StepSlot::endBarDrag (const juce::MouseEvent& e)
 {
-    if (auto* bar = activeBar())
-        bar->mouseUp (e.getEventRelativeTo (bar));
+    if (strokeBar == nullptr)
+        return;
+
+    strokeBar->mouseUp (e.getEventRelativeTo (strokeBar));
+    strokeBar = nullptr;
 }
 
 //==============================================================================
@@ -436,7 +524,11 @@ void StepSlot::resized()
     onButton.setBounds (r.removeFromBottom (lane::trigHeight));
     r.removeFromBottom (lane::stepInnerGap);
 
+    // Every bar gets the same rectangle whether or not it is the visible one: the Spread bar
+    // is dragged while it is hidden, and a slider maps a drag onto its value through its own
+    // bounds.
     valueSlider.setBounds (r);
+    spreadSlider.setBounds (r);
     velocitySlider.setBounds (r);
     chanceSlider.setBounds (r);
     gateSlider.setBounds (r);
@@ -448,6 +540,12 @@ void StepSlot::setPlaying (bool shouldBePlaying)
         return;
 
     playing = shouldBePlaying;
+
+    // Only the step under the playhead carries a landed mark, so the one being left drops it
+    // here rather than waiting to be told: the lane only ever pushes a position to the step
+    // that has one.
+    if (! playing)
+        setLandedValue (-1.0f);
 
     // The playhead brightens the bar's fill as well as adding a ring, so the colours have to
     // be rebuilt rather than only repainted.
@@ -544,6 +642,7 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
     static const char* layerTooltips[]
     {
         "the bars edit each step's value",
+        "the bars edit how far above its own value each step may pick a pitch",
         "the bars edit each step's accent",
         "the bars edit each step's chance of firing",
         "the bars edit how long each step's note is held",
@@ -598,7 +697,19 @@ void LaneComponent::startStroke (StepSlot& slot, const juce::MouseEvent& e)
     if (onStrokeActive != nullptr)
         onStrokeActive (true);
 
-    slot.beginBarDrag (e);
+    // Alt opens the stroke on Spread instead of the row on screen -- but only from the Pitch
+    // row, which is the one that draws the window. There the gesture is an edit to what is
+    // already under the cursor, and leaving the row to reach the chip and coming back to see
+    // the result is three actions for one thought. From Vel, Prob or Gate it would be a
+    // modifier that silently rewrites a row you cannot see, which is a trap rather than a
+    // shortcut.
+    //
+    // Sampled once, here, so the stroke keeps writing the row it opened on however the
+    // modifier is held for the rest of it.
+    strokeLayer = e.mods.isAltDown() && currentLayer == StepLayer::value ? StepLayer::spread
+                                                                        : currentLayer;
+
+    slot.beginBarDrag (e, strokeLayer);
 }
 
 void LaneComponent::continueStroke (const juce::MouseEvent& e)
@@ -647,7 +758,7 @@ void LaneComponent::handStrokeTo (StepSlot& slot, const juce::MouseEvent& atPoin
     // step open for the length of the stroke. See onStrokeActive.
     strokeSlot->endBarDrag (atPoint);
     strokeSlot = &slot;
-    strokeSlot->beginBarDrag (atPoint);
+    strokeSlot->beginBarDrag (atPoint, strokeLayer);
 }
 
 void LaneComponent::endStroke (const juce::MouseEvent& e)
@@ -1029,4 +1140,12 @@ void LaneComponent::setPlayingStep (int stepIndex)
 
     for (int i = 0; i < slots.size(); ++i)
         slots.getUnchecked (i)->setPlaying (i == stepIndex);
+}
+
+void LaneComponent::setPlayingValue (float proportion)
+{
+    // Only the step under the playhead is marked, so this needs no loop: every other slot
+    // dropped its mark as the playhead left it. See StepSlot::setPlaying.
+    if (playingStep >= 0 && playingStep < slots.size())
+        slots.getUnchecked (playingStep)->setLandedValue (proportion);
 }

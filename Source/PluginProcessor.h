@@ -74,9 +74,10 @@ private:
         std::atomic<float>* enabled[params::numSteps] {};
         std::atomic<float>* chance[params::numSteps] {};
 
-        // Note lanes only -- a CC lane has neither parameter.
+        // Note lanes only -- a CC lane has none of the three.
         std::atomic<float>* stepVelocity[params::numSteps] {};
         std::atomic<float>* stepGate[params::numSteps] {};
+        std::atomic<float>* stepSpread[params::numSteps] {};
 
         std::atomic<float>* active    = nullptr;
         std::atomic<float>* length    = nullptr;

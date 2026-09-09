@@ -670,7 +670,14 @@ void RavelAudioProcessorEditor::timerCallback()
     presetBar.tick();
 
     for (int lane = 0; lane < noteLanes.size(); ++lane)
+    {
         noteLanes[lane]->setPlayingStep (engine.getCurrentStep (lane, params::LaneKind::note));
+
+        // Where inside its Spread window the step landed. Pushed every frame but only ever
+        // acted on when it has moved, which is once a step -- the value is a function of the
+        // lane's position on the timeline, so it holds still between boundaries.
+        noteLanes[lane]->setPlayingValue (engine.getCurrentValue (lane));
+    }
 
     for (int lane = 0; lane < ccLanes.size(); ++lane)
         ccLanes[lane]->setPlayingStep (engine.getCurrentStep (lane, params::LaneKind::cc));

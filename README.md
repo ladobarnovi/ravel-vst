@@ -25,14 +25,18 @@ they are two separate sequencers sharing one clock, one transport and one plugin
 |---|---|---|
 | What the fold drives | Pitch, over an MPE zone (or one channel) | The Mix CC |
 | Lanes | 1–4, own count | 1–4, own count |
-| Per-step | Value, Velocity, Chance, Gate | Value, Chance |
+| Per-step | Value, Spread, Velocity, Chance, Gate | Value, Chance |
 | Per-lane shaping | Length, Rate, Direction, Mix amount | The same four |
 | Per-lane output | — | Its own Send / Number / Channel / Offset |
 | Swing | Shared — one control, on the Notes page | Shared — driven by the Notes page |
 
 The two differ per *step*, not per lane. Velocity and Gate are only ever arguments to *start a
 note*, and a CC lane never starts one, so it has neither — which also keeps the plugin's
-automatable parameter count from doubling for nothing. Everything a lane does as a lane —
+automatable parameter count from doubling for nothing.  Spread is note-only
+for a related reason: what it widens is a pitch, and the same parameter on a CC lane would
+be step jitter, which is a different feature wearing this one's name.
+
+Everything a lane does as a lane —
 how long it is, how fast it runs, which way it traverses, how much it contributes to its
 stack's fold — is the same on both, because both are the same sequencer with a different
 destination on the end of it.
@@ -47,6 +51,7 @@ destination on the end of it.
 | Length | 1–16 | Shorter lanes phase against longer ones. Steps past the length grey out, and stay editable |
 | Rate | 1/1 … 1/32, incl. triplets | Independent per lane — this is where the polyrhythm comes from |
 | Mix amount | −100 % … +100 % | How much this lane contributes to its stack's fold. Signed, and drawn filling out from a marked centre |
+| 16 spread bars | 0–100 % | *Note lanes only.* How wide a range the step picks its pitch from, centred on its own value. Zero plays the value itself |
 | 16 velocity bars | 0–100 % | *Note lanes only.* Per-step accent, as a trim on the fixed master velocity of 100 (100 % is unity, so a bar only ever pulls a step below it) |
 | 16 gate bars | 5–200 % | *Note lanes only.* How long each step's note is held, as % of the step. Above 100 % overlaps into the next step (see Polyphony) |
 | 16 chance bars | 0–100 % | Per-step probability of firing |
@@ -54,10 +59,11 @@ destination on the end of it.
 | RND / CLR / ⋯ | — | Pattern actions. RND, CLR and Invert act on the **selected row** |
 | ✕ | — | Takes this lane out. The lanes below it move up to close the gap |
 
-On a **Note lane** the sixteen tall bars edit one of four per-step rows at a time, picked with
-the **Pitch / Vel / Prob / Gate** selector down the left of the lane. Only the selected row
-is drawn — the bars show one layer at a time and nothing else, so a lane reads as the pattern
-you are actually editing.
+On a **Note lane** the sixteen tall bars edit one of five per-step rows at a time, picked
+with the **Pitch / Spread / Vel / Prob / Gate** selector down the left of the lane. Only the
+selected row is drawn — the bars show one layer at a time and nothing else, so a lane reads
+as the pattern you are actually editing. The one thing drawn over a row it does not belong
+to is a step's Spread window, and [Spread](#spread) says why.
 
 Switching rows **slides** the bars from the heights they were at to the heights they are going
 to, over about 140 ms, eased out. Sixteen bars changing height at once otherwise reads as the
@@ -75,7 +81,8 @@ nothing reaches the host or the undo history, and a pattern action is still exac
 step.
 
 A **CC lane** gets the same selector with one chip in it: **Val**, latched, because that is the
-only layer its bars have. It is *Val* rather than *Pitch* because a CC lane's value drives a CC
+only layer its bars have. Spread joins Velocity and Gate in being note-only, so a CC
+lane has none of the three. It is *Val* rather than *Pitch* because a CC lane's value drives a CC
 and not a pitch — the row is the same parameter in both stacks, but only one of them is a pitch,
 and the chip says which stack you are in. Velocity and Gate are only ever arguments to *start a note* and a
 CC lane never starts one, so there is genuinely nothing else to offer — but the column stays and
@@ -90,6 +97,60 @@ Everything else on a CC lane's strip is what a Note lane has: Length, Rate, **Di
 amount. Its own **Send / Number / Channel / Offset** are not there, because they are a destination
 rather than a pattern — set once and then left — so they live in the CC tab's footer, one column
 per lane. See [CC outputs](#cc-outputs).
+
+### Spread
+
+A step's **Spread** is how wide a range it picks its pitch from, centred on the step's own
+value: a step at 45 % with a Spread of 30 % plays somewhere in **30–60 %**, and lands somewhere
+else the next time round. At zero — where every step starts, and where every step of a pattern
+written before this existed loads — the window has one value in it and the step plays exactly
+what it is drawn at.
+
+It is a **width**, not a second endpoint, and that is what keeps Value meaning *where this step
+sits*: turning Spread up widens a step in place instead of transposing it, so Invert still
+mirrors centres with their windows intact and Rotate carries each window along with the pitch
+it belongs to. Everywhere a number is shown — the bar's tooltip, on either row — it is said in
+endpoints anyway, because nobody dials a range by half-width.
+
+Near either end of the range the window is **clamped rather than slid**: a step at 5 % with a
+wide Spread wanders only upward. Sliding it inside the range would keep the width at the cost
+of moving the centre off the value the step is drawn at, and a step that plays a pitch it is
+not sitting on is worse than one whose range is narrow.
+
+The draw is a hash of the timeline position, the same mechanism Chance and Random direction
+use, so a loop replays the same wandering pitches rather than drifting. That is not only about
+repeatability here: a lane is re-resolved at the start of every block whether or not it
+advanced, so a running RNG would draw again mid-step and zipper the pitch. A pure function of
+the position gives the same answer however often it is asked.
+
+It happens **before the lane's share is taken**, so Mix amount scales the wander with
+everything else — a lane at half depth moves the fold by half its window — and in **Poly**
+mode each lane draws on its own clock, so a stack of lanes with Spread is a chord that
+re-voices itself.
+
+With **Quantize** on the drawn value lands on a scale degree like any other, so a window wide
+enough to cover three degrees turns that step into *pick one of these three notes*.
+
+#### Reading it and setting it
+
+The window is drawn **on the Pitch row**, as an outlined band around the bar's own top, so a
+pattern and its ranges are visible at once. This is the one place the one-row-at-a-time rule is
+deliberately broken: Vel, Prob and Gate are unrelated quantities that happen to share a
+rectangle, but a Spread is drawn in the same units on the same axis as the bar it belongs to.
+It is an annotation on that bar, not a fifth pattern competing with it. The outline is neutral
+rather than the lane's accent because it has to cross the bar's own fill, and anything drawn
+from the accent is invisible against a solid bar of it.
+
+While the transport is running, a brighter mark inside the band shows **where the current pass
+actually landed**. A band with nothing in it says a step might go anywhere in a range and says
+nothing about where it just did, which is the whole difficulty with drawing randomness: the
+control is legible and its effect is not.
+
+Two ways to set it. The **Spread** chip gives it the sixteen bars, where it behaves like every
+other row — drag, double-click to reset, and RND, CLR and Invert all act on it. Or
+**Alt-drag** on the Pitch row itself, which widens the window without leaving the row it is
+drawn on. Alt-drag only does this *from the Pitch row*; from Vel, Prob or Gate it would be a
+modifier silently rewriting a row you cannot see.
 
 ### Probability
 
@@ -146,7 +207,8 @@ is about to mirror.
 Each acts across that row's *own* range, not over 0–1: Gate runs 5–200, so randomising it spreads
 over 5–200 and inverting it mirrors about 102.5 rather than about 0.5.
 
-**CLR resets rather than zeroes.** Only Value clears to zero. Velocity, Prob and Gate are trims
+**CLR resets rather than zeroes.** Value and Spread clear to zero, because for both of them
+zero is a real position rather than an off switch. Velocity, Prob and Gate are trims
 on something that already works — unity, always-fires, and a normal note length — so zeroing them
 gives silent notes, a lane that never fires, and zero-length notes, which are three ways of
 switching the lane off rather than of clearing it. Each goes back to its own neutral (1, 1 and
@@ -154,9 +216,11 @@ switching the lane off rather than of clearing it. Each goes back to its own neu
 table so they cannot drift apart.
 
 The step toggles are never touched by any of these, so a lane's rhythm survives a re-roll. Rotate
-and Paste are the exception to the whole selected-row rule: they move value, on/off and chance
-together — and, on a Note lane, velocity and gate as well — because rotating only one row would
-slide it out from under the rest of the pattern.
+and Paste are the exception to the whole selected-row rule: they move value, on/off and
+chance together — and, on a Note lane, spread, velocity and gate as well — because rotating
+only one row would slide it out from under the rest of the pattern. Spread in particular has
+to travel with its own value: a window left behind by the pitch it was centred on is a range
+around a note that has gone somewhere else.
 
 The clipboard is per stack: you can paste one Note lane onto another, or one CC lane onto
 another, but not across the two.
@@ -372,6 +436,8 @@ for the same reason continuous pitch does (see [Scales and tunings](#scales-and-
 
 There is no glide or portamento anywhere. Each step is one discrete pitch, held for the step
 and jumping at the next boundary — exactly one pitch bend per note, not a stream of them.
+A step with a [Spread](#spread) is no exception: the draw happens once as the step is resolved
+and holds for the whole of it.
 `Slew` smooths the **CC** output only and never touches pitch, so a repeated step always
 plays the identical pitch no matter how high Slew is set.
 
@@ -517,23 +583,26 @@ out of scope for a plugin only running on your own machine.)
 .\build\RavelProcessorTests_artefacts\Release\RavelProcessorTests.exe
 ```
 
-255 checks across two suites, neither needing a plugin host.
+279 checks across two suites, neither needing a plugin host.
 
-`Tests/EngineTests.cpp` (118 checks) drives `SequencerEngine` over a synthetic timeline. The
+`Tests/EngineTests.cpp` (134 checks) drives `SequencerEngine` over a synthetic timeline. The
 engine takes PPQ positions as plain arguments rather than reading a playhead itself, which is
 what makes that possible. Covers step timing, gate length, per-lane length and rate, disabled
 steps, the fold, transport jumps, stuck-note release on stop, directions, probability,
-swing, per-step velocity, polyphony and poly mode, the Mix CC and each lane's own CC
+swing, per-step velocity, polyphony and poly mode, per-step Spread — that a window is centred
+on its value and clamped rather than slid at the ends of the range, and that the same timeline
+draws the same pitches whatever the block size — the Mix CC and each lane's own CC
 tap (including that the two Offsets stay out of each other's way), and the continuous-pitch
 path — including that note number plus pitch bend reconstructs the intended fractional pitch,
 that non-12 EDO scales land where the tuning says, and that the bend range is actually
 transmitted.
 
-`Tests/ProcessorTests.cpp` (137 checks) drives the real `RavelAudioProcessor::processBlock`
+`Tests/ProcessorTests.cpp` (145 checks) drives the real `RavelAudioProcessor::processBlock`
 through a mock playhead. This covers the layer where the plugin could compile, load and still
 emit nothing: playhead handling, the free-run fallback, the parameter snapshot, state
 round-trip, every pattern action — including that RND, CLR and Invert act on the selected row,
-across that row's own range, and skip a row the lane kind does not have — lane add/remove and its
+across that row's own range, and skip a row the lane kind does not have, that
+Spread travels with its value through Rotate, Paste and a lane removal — lane add/remove and its
 undo behaviour, and the MIDI capability flags a host reads to decide whether to offer the plugin
 as a MIDI source.
 
@@ -560,14 +629,15 @@ cmake --build build --target RavelSnapshot --config Debug
 ```
 
 A fourth argument — the label of a chip on the lane strips, so `Pitch` (`Val` on the CC tab),
-`Vel`, `Prob`, `Gate`, `RND` or `CLR` — clicks that chip on every lane and writes one numbered frame per sample point
+`Spread`, `Vel`, `Prob`, `Gate`, `RND` or `CLR` — clicks that chip on every lane and writes one numbered frame per sample point
 across the slide that follows, so the animation can be reviewed from stills. Build the tool `--config Release` for that: a Debug paint of the window
 costs more wall clock than the slide lasts, so every frame would show it already finished.
 
 The first three arguments are the output file, which tab (`notes` or `cc`) and how many lanes. It dials in a
-fixed patch first — odd lane lengths, a muted lane, some steps switched off — because at its
-defaults the window shows none of the states worth checking: no wrap marker, no out-of-cycle
-steps, no negative Mix amount.
+fixed patch first — odd lane lengths, a muted lane, some steps switched off, a few steps with
+a Spread — because at its defaults the window shows none of the states worth checking: no wrap
+marker, no out-of-cycle steps, no negative Mix amount, no window round a step.
+
 
 ---
 

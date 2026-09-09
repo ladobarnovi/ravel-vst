@@ -12,8 +12,8 @@
 
     Usage:  RavelSnapshot <out.png> [notes|cc] [laneCount] [chipToClick]
 
-    Given a fourth argument -- the label of a chip on the lane strips, so Val, Vel, Prob, Gate,
-    RND or CLR -- it clicks that chip on every lane and writes a numbered frame per sample
+    Given a fourth argument -- the label of a chip on the lane strips, so Val, Spread, Vel,
+    Prob, Gate, RND or CLR -- it clicks that chip on every lane and writes a numbered frame per sample
     point across the slide that follows, so an animation can be reviewed from stills. Without
     it, one still of the window.
 */
@@ -105,6 +105,13 @@ namespace
                 setParameter (state, params::stepValueId (lane, step), random.nextFloat());
                 setParameter (state, params::stepValueId (lane, step, params::LaneKind::cc),
                               random.nextFloat());
+
+                // A few steps per lane with a Spread, so the window the Pitch row draws round
+                // a step is in the picture -- including one wide enough to be clamped by
+                // whichever end of the range its value happens to sit near.
+                if (random.nextFloat() < 0.3f)
+                    setParameter (state, params::stepSpreadId (lane, step),
+                                  0.15f + random.nextFloat() * 0.5f);
 
                 // A couple of gaps per lane, so the off-step treatment appears.
                 if (random.nextFloat() < 0.14f)

@@ -32,6 +32,7 @@ juce::String stepChanceId (int lane, int step, LaneKind kind) { return stepPrefi
 
 juce::String stepVelocityId (int lane, int step) { return notePrefix (lane) + "_s" + juce::String (step + 1) + "_vel"; }
 juce::String stepGateId     (int lane, int step) { return notePrefix (lane) + "_s" + juce::String (step + 1) + "_gate"; }
+juce::String stepSpreadId   (int lane, int step) { return notePrefix (lane) + "_s" + juce::String (step + 1) + "_spread"; }
 
 juce::String laneOnId       (int lane, LaneKind kind) { return lanePrefix (lane, kind) + "_on"; }
 juce::String laneLengthId   (int lane, LaneKind kind) { return lanePrefix (lane, kind) + "_length"; }
@@ -181,6 +182,23 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
                     60.0f,
                     juce::AudioParameterFloatAttributes().withStringFromValueFunction (
                         [] (float v, int) { return juce::String (juce::roundToInt (v)) + " %"; })));
+
+                // How far above its own value this step's pitch may land: the width of the
+                // window, not its top end. A width rather than a second endpoint is what lets
+                // this be a row like any other -- sixteen bars with their own RND, CLR and
+                // Invert, all of which need a quantity per step rather than a pair that has
+                // to stay ordered. The read-outs name both ends anyway, since that is how a
+                // range is read.
+                //
+                // Zero is the default and is not a special case in the engine -- a window of
+                // no width has one value in it, which is the value itself. That is also what
+                // every step of a pattern written before this existed loads with.
+                layout.add (std::make_unique<juce::AudioParameterFloat> (
+                    juce::ParameterID { stepSpreadId (lane, step), versionHint },
+                    stepName + " Spread",
+                    juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f),
+                    0.0f,
+                    juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
             }
 
             // The lane's own mute. True is "playing", and it is what a session saved before
@@ -427,6 +445,7 @@ juce::String stepLayerId (int lane, int step, StepLayer layer, LaneKind kind)
     {
         case StepLayer::velocity: return isCc ? juce::String() : stepVelocityId (lane, step);
         case StepLayer::gate:     return isCc ? juce::String() : stepGateId (lane, step);
+        case StepLayer::spread:   return isCc ? juce::String() : stepSpreadId (lane, step);
         case StepLayer::chance:   return stepChanceId (lane, step, kind);
         case StepLayer::value:
         default:                  return stepValueId (lane, step, kind);
@@ -440,6 +459,7 @@ float stepLayerNeutral (StepLayer layer) noexcept
         case StepLayer::velocity: return 1.0f;    // unity: the trim takes nothing off
         case StepLayer::chance:   return 1.0f;    // always fires
         case StepLayer::gate:     return 60.0f;   // a normal note length, as % of the step
+        case StepLayer::spread:   return 0.0f;    // no wander: the step plays its value
         case StepLayer::value:
         default:                  return 0.0f;
     }
@@ -452,6 +472,7 @@ juce::String stepLayerName (StepLayer layer, LaneKind kind)
         case StepLayer::velocity: return "Velocity";
         case StepLayer::chance:   return "Prob";
         case StepLayer::gate:     return "Gate";
+        case StepLayer::spread:   return "Spread";
         case StepLayer::value:
         default:                  return kind == LaneKind::note ? "Pitch" : "Value";
     }
@@ -464,6 +485,7 @@ juce::String stepLayerShortName (StepLayer layer, LaneKind kind)
         case StepLayer::velocity: return "Vel";
         case StepLayer::chance:   return "Prob";
         case StepLayer::gate:     return "Gate";
+        case StepLayer::spread:   return "Spread";
         case StepLayer::value:
         default:                  return kind == LaneKind::note ? "Pitch" : "Val";
     }
@@ -511,11 +533,13 @@ void rotateLane (juce::AudioProcessorValueTreeState& state, int lane, int direct
         setParam (state, stepOnId     (lane, step, kind), pattern.enabled[source] ? 1.0f : 0.0f);
         setParam (state, stepChanceId (lane, step, kind), pattern.chance[source]);
 
-        // A CC lane has neither -- only a note lane's velocity and gate move with the rest.
+        // A CC lane has none of these -- only a note lane's velocity, gate and spread move
+        // with the rest.
         if (kind == LaneKind::note)
         {
             setParam (state, stepVelocityId (lane, step), pattern.velocity[source]);
             setParam (state, stepGateId     (lane, step), pattern.gate[source]);
+            setParam (state, stepSpreadId   (lane, step), pattern.spread[source]);
         }
     }
 }
@@ -532,7 +556,7 @@ namespace
     std::vector<juce::String> laneParameterIds (int lane, LaneKind kind)
     {
         std::vector<juce::String> ids;
-        ids.reserve ((size_t) (numSteps * 5 + 12));
+        ids.reserve ((size_t) (numSteps * 6 + 12));
 
         for (int step = 0; step < numSteps; ++step)
         {
@@ -544,6 +568,7 @@ namespace
             {
                 ids.push_back (stepVelocityId (lane, step));
                 ids.push_back (stepGateId     (lane, step));
+                ids.push_back (stepSpreadId   (lane, step));
             }
         }
 
@@ -644,6 +669,7 @@ LanePattern copyLane (juce::AudioProcessorValueTreeState& state, int lane, LaneK
         {
             pattern.velocity[step] = getParam (state, stepVelocityId (lane, step));
             pattern.gate[step]     = getParam (state, stepGateId (lane, step));
+            pattern.spread[step]   = getParam (state, stepSpreadId (lane, step));
         }
     }
 
@@ -666,6 +692,7 @@ void pasteLane (juce::AudioProcessorValueTreeState& state, int lane, const LaneP
         {
             setParam (state, stepVelocityId (lane, step), pattern.velocity[step]);
             setParam (state, stepGateId     (lane, step), pattern.gate[step]);
+            setParam (state, stepSpreadId   (lane, step), pattern.spread[step]);
         }
     }
 }

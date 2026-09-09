@@ -569,6 +569,56 @@ void RavelLookAndFeel::drawStepBar (juce::Graphics& g, juce::Rectangle<float> bo
         g.fillRoundedRectangle (fill, cellCorner);
     }
 
+    // The Spread window: the headroom above the fill this step may land anywhere in. Measured
+    // from the height the fill was just drawn to rather than from the slider's own value, so
+    // it rides with the bar through a layer switch instead of sitting still while the bar
+    // slides out from under it.
+    //
+    // Its ceiling is clamped into the bar exactly as the engine clamps its own draw (see
+    // drawWithinSpread), because a band drawn past the top of the range would be promising a
+    // pitch that cannot be played.
+    if (const float spread = theme::stepSpreadOf (slider); spread > 0.001f)
+    {
+        const auto accent = slider.findColour (juce::Slider::trackColourId);
+
+        const float ceiling = juce::jmin (1.0f, (bounds.getBottom() - top) / bounds.getHeight()
+                                                  + spread);
+
+        const auto band = juce::Rectangle<float>::leftTopRightBottom (
+                              bounds.getX(),
+                              bounds.getBottom() - bounds.getHeight() * ceiling,
+                              bounds.getRight(),
+                              juce::jmin (top, bounds.getBottom()));
+
+        if (band.getHeight() > 0.5f)
+        {
+            // The window sits directly on top of the fill and shares its edge, so the bar and
+            // its headroom read as one column: how far the step goes at least, and how far it
+            // might.
+            g.setColour (accent.withMultipliedAlpha (0.24f));
+            g.fillRoundedRectangle (band, cellCorner);
+
+            // The ceiling gets a line of its own because it is the endpoint the read-outs
+            // name, and a wash alone is a smudge at this width. In the accent rather than
+            // anything neutral: it never crosses the bar's own fill, so it cannot get lost
+            // in it, and it belongs to the same control the bar does.
+            g.setColour (accent.withMultipliedAlpha (0.85f));
+            g.fillRect (band.withHeight (1.0f));
+        }
+
+        // Where this pass actually landed. Neutral and at full strength, because it is not
+        // another quantity of the same kind as the bar and the band: those two are the
+        // control, and this is the sequencer answering it.
+        if (const float landed = theme::stepLandedOf (slider); landed >= 0.0f)
+        {
+            g.setColour (theme::textBright.withMultipliedAlpha (accent.getFloatAlpha()));
+            g.fillRect (bounds.getX(),
+                        juce::jlimit (bounds.getY(), bounds.getBottom() - 2.0f,
+                                      bounds.getBottom() - bounds.getHeight() * landed - 1.0f),
+                        bounds.getWidth(), 2.0f);
+        }
+    }
+
     // A hairline round a step that is switched off. The darker ground alone carries the state
     // where there is a fill above it to contrast with; on a step at value zero there is not,
     // and two near-identical dark rectangles is not a difference anyone reads across sixteen

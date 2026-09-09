@@ -280,6 +280,54 @@ namespace theme
         Negative (the default) means "draw your own value", which is the state outside a
         transition.
     */
+    /** The Spread window a step bar draws above its own value, as a proportion of the bar:
+        0.3 means the step may land anywhere in the 30% of the bar directly above the height
+        it is drawn to.
+
+        Carried by the *value* bar rather than by the Spread bar, because a window is only
+        legible against the thing it is a window on -- a band over the Prob bar would be
+        measuring pitch in units of probability. It is the one place the lane's
+        one-row-at-a-time rule is deliberately broken: Velocity, Prob and Gate are unrelated
+        quantities that happen to share a rectangle, but a Spread is drawn in the same units,
+        on the same axis, as the bar it belongs to. It is an annotation on that bar rather
+        than a fifth pattern competing with it.
+
+        Zero -- the default -- is a window with one value in it, so nothing is drawn.
+    */
+    const juce::Identifier stepSpreadProperty { "ravelStepSpread" };
+
+    inline void setStepSpread (juce::Component& component, float proportion)
+    {
+        component.getProperties().set (stepSpreadProperty, (double) proportion);
+    }
+
+    inline float stepSpreadOf (const juce::Component& component)
+    {
+        return (float) (double) component.getProperties()
+                   .getWithDefault (stepSpreadProperty, 0.0);
+    }
+
+    /** Where inside its Spread window the step currently under the playhead actually landed,
+        0..1, or negative for every step that is not sounding one.
+
+        A band with nothing in it says a step might land anywhere in a range and says nothing
+        about where it just did, which is the whole difficulty with drawing randomness: the
+        control is legible and its effect is not. Set only on the playing step, and only while
+        that step has a window worth marking a position inside.
+    */
+    const juce::Identifier stepLandedProperty { "ravelStepLanded" };
+
+    inline void setStepLanded (juce::Component& component, float proportion)
+    {
+        component.getProperties().set (stepLandedProperty, (double) proportion);
+    }
+
+    inline float stepLandedOf (const juce::Component& component)
+    {
+        return (float) (double) component.getProperties()
+                   .getWithDefault (stepLandedProperty, -1.0);
+    }
+
     const juce::Identifier drawProportionProperty { "ravelDrawProportion" };
 
     inline void setDrawProportion (juce::Component& component, float proportion)

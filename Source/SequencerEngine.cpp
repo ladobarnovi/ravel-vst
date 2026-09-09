@@ -39,6 +39,31 @@ namespace
 
     constexpr std::uint64_t probabilitySalt = 31;
 
+    /** A different salt from the probability draw, so a step's two rolls are independent.
+        Sharing one would tie where a step lands inside its Spread window to whether it fired
+        at all -- a step that only played when its roll came up low would only ever play the
+        bottom of its own range. */
+    constexpr std::uint64_t spreadSalt = 74;
+
+    /** Where inside its Spread window a step lands, given the window's floor -- the step's own
+        value -- and its width.
+
+        The window opens upward from the value rather than straddling it, so the bar the editor
+        draws is the lowest pitch the step can play and the window is the headroom above it.
+        The ceiling is clamped into the range; the floor needs no clamp, being a value already
+        in it.
+    */
+    float drawWithinSpread (float value, float spread, std::int64_t globalIndex, int laneIndex) noexcept
+    {
+        const float low  = juce::jlimit (0.0f, 1.0f, value);
+        const float high = juce::jmin (1.0f, low + spread);
+
+        if (high <= low)
+            return low;
+
+        return low + (high - low) * hashToUnitFloat (globalIndex, laneIndex, spreadSalt);
+    }
+
     /** ppq / stepPpq lands a hair under an integer whenever the numbers are not exactly
         representable in binary -- ppqPerSample is 1/24000 at 120bpm/48kHz -- which pushed
         boundaries a sample late and made step lengths alternate between 5999 and 6001
@@ -104,6 +129,7 @@ void SequencerEngine::reset()
         {
             states[lane].lastGlobalIndex = std::numeric_limits<std::int64_t>::min();
             states[lane].step = 0;
+            states[lane].value = noValue;
         }
 
     for (auto& voice : voices)
@@ -151,6 +177,8 @@ void SequencerEngine::publishUiSteps (bool running) noexcept
                                 std::memory_order_relaxed);
         ccUiStep[lane].store   (running ? ccLaneStates[lane].step   : noStep,
                                 std::memory_order_relaxed);
+        noteUiValue[lane].store (running ? noteLaneStates[lane].value : noValue,
+                                 std::memory_order_relaxed);
     }
 }
 
@@ -714,9 +742,15 @@ void SequencerEngine::process (const Snapshot& s,
     /** Re-resolves one lane at sample n and reports whether it actually landed on a new step
         there -- which is what the trigger and the CC latch key off, and what tells a lane that
         merely started a block mid-step from one that just moved.
+
+        @param spread  the lane's own per-step Spread widths, or null for a CC lane, which has
+                       none. Handed in rather than reached for through the snapshot because
+                       this takes the base LaneSnapshot: the two kinds of lane step
+                       identically, and "a CC lane has no Spread" stays a fact about the types
+                       rather than a branch in here.
     */
     const auto refreshLane = [&] (LaneRun& run, const LaneSnapshot& ln, LaneState& state,
-                                  int laneIndex, int n) -> bool
+                                  int laneIndex, int n, const float* spread = nullptr) -> bool
     {
         const double ppq = ppqAtBlockStart + ppqPerSample * (double) n;
 
@@ -742,6 +776,13 @@ void SequencerEngine::process (const Snapshot& s,
         {
             run.value = ln.values[(size_t) run.step];
 
+            // Drawn before the contribution below, so Mix amount scales the wander along with
+            // the rest of the lane's share: a lane at half depth moves the fold by half its
+            // window rather than by all of it.
+            if (spread != nullptr)
+                if (const float width = spread[(size_t) run.step]; width > 1.0e-6f)
+                    run.value = drawWithinSpread (run.value, width, run.globalIndex, laneIndex);
+
             const float chance = ln.chance[(size_t) run.step];
 
             // A step that loses its probability roll behaves exactly like a step that is
@@ -761,6 +802,16 @@ void SequencerEngine::process (const Snapshot& s,
             state.lastGlobalIndex = run.globalIndex;
             state.step = run.step;
         }
+
+        // Outside that guard: a lane re-resolved at a block start without having moved is
+        // still sitting on the value the editor should be showing, and the draw is a pure
+        // function of the global index, so it is the same number either way.
+        //
+        // An inert lane reports nothing rather than the zero the fold reads it as. It keeps
+        // its playhead in the editor -- it is still running, and unmuting it mid-bar should
+        // not be a surprise -- so a zero here would draw a muted lane as landing at the
+        // bottom of every window it has.
+        state.value = ln.active ? run.value : noValue;
 
         run.nextBoundary = nextBoundarySample (run.globalIndex, ppqAtBlockStart, ppqPerSample,
                                                run.stepPpq, s.swing, n, numSamples);
@@ -849,7 +900,8 @@ void SequencerEngine::process (const Snapshot& s,
 
             const auto& ln = s.noteLanes[laneIndex];
 
-            if (! refreshLane (run, ln, noteLaneStates[laneIndex], laneIndex, n) || ! run.stepOn)
+            if (! refreshLane (run, ln, noteLaneStates[laneIndex], laneIndex, n, ln.spread)
+                  || ! run.stepOn)
                 continue;
 
             if (s.polyMode)
