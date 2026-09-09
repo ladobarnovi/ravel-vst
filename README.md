@@ -192,9 +192,15 @@ A column for a lane the instance does not currently have is greyed rather than t
 four lanes' parameters exist from the moment the plugin loads, and a column that vanished and
 reappeared as the lane count changed would shuffle everything to its right each time.
 
-The two Offsets never cross: the CC tab's Offset shifts the Mix CC, and a lane's Offset shifts
-only that lane's tap, so one lane can be recentred without moving the rest. Inactive steps latch
-the previous level rather than dropping to zero. All CC streams share the global **Slew**.
+The two Offsets never cross — the CC tab's Offset moves the Mix CC, a lane's Offset moves only
+that lane's tap, so one lane can be recentred without touching the rest — but they are not the
+same operation. The Mix CC's Offset **adds**: it lifts the fold, and the top of the range clamps.
+A lane's Offset **raises that tap's floor**, and the step value then spans whatever is left above
+it — at Offset 50 % a step at 50 % is half of the remaining half, so the tap lands on 75 %, while a
+step at 100 % still reaches 100 %. Adding there would push every step above the Offset into the
+same clamped ceiling and flatten the top of the pattern; scaling into the headroom keeps the
+whole shape, compressed. Inactive steps latch the previous level rather than dropping to zero.
+All CC streams share the global **Slew**.
 
 ### Pattern actions
 
@@ -353,16 +359,18 @@ the distinction is worth; the tooltip carries it instead.
 
 Swing is not repeated here — it is shared, and lives on the Notes page.
 
-The two Offsets are not the same control. The **CC** one shifts that stack's fold before it
-becomes the Mix CC, 0–100 %. The **Notes** one transposes in whole octaves, −3 … +3, and applies
-*after* Root, Range and the scale have resolved a pitch — so a pattern keeps its shape and its
-scale degrees and simply moves, instead of being squashed against the fold's 0–100 % clamp.
-Notes still clamp to the MIDI range, so how much of a ±3 octave shift is reachable depends on
-Root and Range. **Slew** only ever smooths CC — the Mix CC and every
-lane's own tap — and never touches pitch, so it lives on the CC tab. **Free run** is one shared
-switch for both stacks, because splitting it would mean running two independent timelines
-through the whole engine for a narrow benefit. **Trigger** picks which Note lane's advance fires
-the shared note, and dims in Poly mode, where every lane triggers itself.
+These Offsets are not the same control — there are three of them, and no two behave alike. The
+**CC** one adds to that stack's fold before it becomes the Mix CC, 0–100 %; a **lane's** own
+Offset, in that lane's own column, instead raises its tap's floor and scales the step into the
+headroom above it (see [CC outputs](#cc-outputs)). The **Notes** one transposes in whole octaves,
+−3 … +3, and applies *after* Root, Range and the scale have resolved a pitch — so a pattern keeps
+its shape and its scale degrees and simply moves, instead of being squashed against the fold's
+0–100 % clamp. Notes still clamp to the MIDI range, so how much of a ±3 octave shift is reachable
+depends on Root and Range. **Slew** only ever smooths CC — the Mix CC and every lane's own tap —
+and never touches pitch, so it lives on the CC tab. **Free run** is one shared switch for both
+stacks, because splitting it would mean running two independent timelines through the whole engine
+for a narrow benefit. **Trigger** picks which Note lane's advance fires the shared note, and dims
+in Poly mode, where every lane triggers itself.
 
 ### Root and Range
 
@@ -410,8 +418,9 @@ pitch uses — so with Quantize on, a non-12 scale is subject to the same limit:
 at a time per channel.** Overlapping notes (a step's Gate over 100 %, Voices above 1, or four
 poly lanes at once) share the channel's wheel, so they can't hold different microtones. Keep to
 one voice for microtonal work, or give the lanes separate instances. `Bend range` becomes live
-and is announced by RPN just as it is in continuous mode; the residual never exceeds half a
-semitone, so the ±2 default is plenty.
+and is announced by RPN just as it is in continuous mode, and the same rule applies: it has to
+agree with what the instrument is actually reading — see
+[Quantize and continuous pitch](#quantize-and-continuous-pitch).
 
 ### Quantize and continuous pitch
 
@@ -441,21 +450,37 @@ and holds for the whole of it.
 `Slew` smooths the **CC** output only and never touches pitch, so a repeated step always
 plays the identical pitch no matter how high Slew is set.
 
-**Bend Range** is transmitted, not assumed: whenever the range, the target channel, or
-*whether pitch bends at all* changes — Quantize, or switching to or from a non-12 scale —
-Ravel sends pitch bend sensitivity (RPN 0) on a member channel just before that channel's
-first note. Changing the range — or changing *whether pitch bends at all*, via Quantize or a
-switch to or from a non-12 scale — marks every channel unprimed, so each one is re-sent the
-range the next time it is used. Smaller Bend Range means
-finer resolution; ±2 is the default and is plenty, since the residual never exceeds half a
-semitone.
+**Bend Range** is transmitted, not assumed: Ravel sends pitch bend sensitivity (RPN 0) on a
+channel just before that channel's first note. Changing the range, the target channel, or
+*whether pitch bends at all* — Quantize, or a switch to or from a non-12 scale — marks every
+channel unprimed, so each one is re-sent the range the next time it is used.
+
+**It defaults to ±48, and with MPE on you want to leave it there.** The number is a promise
+about how the receiver will read the residual, and the two ends have to agree or the interval
+comes out wrong. Announcing a zone (RPN 6) is precisely what makes an instrument's own
+bend-range setting stop applying: its member channels revert to the MPE default of ±48, and the
+RPN 0 sent to talk them back down is the least reliably implemented corner of the spec. A ±2
+default against an instrument reading ±48 scales the residual by 24× and flips its sign at every
+half semitone — so the pitch stops rising with the mix altogether. The default is therefore the
+number MPE already agrees on rather than the tidier-looking one.
+
+With **MPE off** the trade reverses. RPN 0 on an ordinary channel is the oldest and
+best-supported RPN there is, so a smaller range is honoured there, and smaller means finer
+resolution. The residual never exceeds half a semitone, so anything from ±1 up covers it.
 
 Turning bending off again — Quantize back on with a 12-EDO scale — explicitly recentres the
 wheel. Nothing in that mode ever writes the wheel again, so the bend the last note left on
 the channel would otherwise detune every note that followed.
 
 That RPN is written out as a raw controller event rather than via a JUCE helper that returns
-a `MidiBuffer` by value and would allocate on the audio thread.
+a `MidiBuffer` by value and would allocate on the audio thread. It goes out as a complete,
+self-closing transaction — parameter LSB and MSB, data entry MSB, an explicit data entry LSB of
+zero, then the Null RPN that deselects it again. The explicit LSB stops a stale fine value from
+whatever RPN the receiver handled last riding along with ours. The Null RPN matters more: without
+it the parameter stays selected on that channel indefinitely, and every later CC 6 or CC 38 on it
+is swallowed as data for this RPN instead of reaching the instrument. On a plugin where any lane
+can be pointed at CC 6, that would turn a routine modulation into a silent rewrite of the
+instrument's pitch bend range.
 
 **Free Run** (off by default) keeps the sequencer moving while the transport is stopped, so
 you can audition patterns without pressing play. Off, the sequencer follows the host
@@ -528,15 +553,34 @@ winget install --id Microsoft.VisualStudio.2022.BuildTools -e --accept-package-a
 winget install --id Kitware.CMake -e --accept-package-agreements --accept-source-agreements
 ```
 
+**JUCE is not committed to this repo** — it is in `.gitignore` — so a fresh clone has to fetch it
+before anything will configure. Clone it into `JUCE/` beside `CMakeLists.txt`, at the tag CI
+pins, so that a local build and a CI build are the same build:
+
+```powershell
+git clone --depth 1 --branch 9.0.1 https://github.com/juce-framework/JUCE.git JUCE
+```
+
 Then, from a normal shell:
 
 ```powershell
 .\build.ps1
 ```
 
+`build.ps1` configures on the first run and builds on every run; `-Config Debug` switches
+configuration. It stops with a message of its own if CMake is off `PATH` or `JUCE/` is missing,
+rather than letting CMake fail further in.
+
 The build drops `Ravel.vst3` into `%USERPROFILE%\Documents\VST3`. That folder is used
 instead of `C:\Program Files\Common Files\VST3` because the latter needs an elevated shell
 to write to on every build. Change it by passing `-DRAVEL_VST3_DIR=...` at configure time.
+
+A **standalone** build comes out alongside it, at
+`build\Ravel_artefacts\Release\Standalone\Ravel.exe`. It is the same plugin hosting itself, and
+because Ravel writes to a MIDI port directly (see
+[MPE into Live](#mpe-into-live-the-virtual-port-route)) it is useful on its own: point its **MIDI
+output** at a virtual port, switch **Free run** on, and it drives an instrument in another
+application with no DAW in the loop. Nothing installs it — run it from the build tree.
 
 In Live: **Preferences → Plug-Ins → VST3 Plug-In Custom Folder**, point it at
 `Documents\VST3`, and hit **Rescan**.
@@ -560,12 +604,21 @@ bundle. Unzip, then move each bundle into the standard per-user plugin folder so
 Logic find it without any custom-folder setup:
 
 ```bash
+mkdir -p ~/Library/Audio/Plug-Ins/VST3 ~/Library/Audio/Plug-Ins/Components
 mv Ravel.vst3 ~/Library/Audio/Plug-Ins/VST3/
 mv Ravel.component ~/Library/Audio/Plug-Ins/Components/
 ```
 
-The build is unsigned — there's no Apple Developer certificate in this pipeline, so Gatekeeper
-will refuse to load it on first launch of Live. Clear the quarantine flag once, from Terminal:
+The `mkdir` is not decoration. `Components/` exists on essentially every Mac — macOS, GarageBand
+and Logic all create it — but `VST3/` is only created by whichever VST3 installer ran first, so on
+a Mac that has never had one it is simply absent. Without it that `mv` fails, the AU installs and
+the VST3 silently does not, and the result looks exactly like a broken VST3. Dragging in Finder
+has the same trap.
+
+The build is **ad-hoc signed** — enough for Apple Silicon to load it at all, since arm64 refuses
+unsigned code outright, but there is no Apple Developer certificate behind it and no
+notarisation. Gatekeeper therefore refuses anything still flagged as downloaded, and the plugin
+either fails its scan or never appears. Clear the quarantine flag once, from Terminal:
 
 ```bash
 xattr -cr ~/Library/Audio/Plug-Ins/VST3/Ravel.vst3
@@ -592,10 +645,11 @@ steps, the fold, transport jumps, stuck-note release on stop, directions, probab
 swing, per-step velocity, polyphony and poly mode, per-step Spread — that a step's value is
 the floor of its window rather than its middle, that the ceiling is clamped into the range, and
 that the same timeline draws the same pitches whatever the block size — the Mix CC and each lane's own CC
-tap (including that the two Offsets stay out of each other's way), and the continuous-pitch
-path — including that note number plus pitch bend reconstructs the intended fractional pitch,
-that non-12 EDO scales land where the tuning says, and that the bend range is actually
-transmitted.
+tap (that the Offsets stay out of each other's way, and that a lane's own scales the step into
+the headroom above its floor rather than adding and clamping the pattern's top flat), and the
+continuous-pitch path — including that note number plus pitch bend reconstructs the intended
+fractional pitch, that non-12 EDO scales land where the tuning says, and that the bend range is
+actually transmitted.
 
 `Tests/ProcessorTests.cpp` (145 checks) drives the real `RavelAudioProcessor::processBlock`
 through a mock playhead. This covers the layer where the plugin could compile, load and still
@@ -780,6 +834,17 @@ already includes M4L, and its modulation API can target any parameter directly.
 | `Tests/EngineTests.cpp` | Engine tests, run as a standalone console app |
 | `Tests/ProcessorTests.cpp` | Processor tests, driven through a mock playhead |
 | `Tests/Snapshot.cpp` | Renders the editor to a PNG with no host — see [Looking at the UI](#looking-at-the-ui) |
+| `CMakeLists.txt` | The three plugin formats, the test and snapshot targets, the per-format macOS bundle IDs |
+| `build.ps1` | Configure-and-build wrapper for Windows — see [Building](#building) |
+| `.github/workflows/build-macos.yml` | The macOS cross-build — see [Building on macOS via CI](#building-on-macos-via-ci) |
+| `Ravel-Setup.txt` | Installing and MPE routing, written for someone handed a build — see below |
+
+`Ravel-Setup.txt` is the one file here aimed at a **user rather than a reader of this repo**:
+plain text, no build steps, covering installation on macOS and Windows and then the virtual-port
+routing in [MPE into Live](#mpe-into-live-the-virtual-port-route). It ships next to a build so
+whoever receives one has the routing instructions without this README. It overlaps this document
+on purpose — when the two disagree about behaviour, this one is written against the source and
+wins, and the other should be corrected to match.
 
 Both lane kinds are the same `LaneComponent`, told at construction which `params::LaneKind` it
 is; the same goes for the pattern actions and the engine's lane fold. That is what keeps the two
