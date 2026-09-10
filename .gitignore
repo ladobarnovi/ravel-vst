@@ -5,3 +5,6 @@ JUCE/
 .vs/
 *.user
 CMakeUserPresets.json
+
+# Packaged installers
+dist/

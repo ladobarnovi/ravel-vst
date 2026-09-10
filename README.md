@@ -589,6 +589,56 @@ In Live: **Preferences → Plug-Ins → VST3 Plug-In Custom Folder**, point it a
 > and the next build dies with `LNK1104: cannot open file ... Ravel.vst3`. That is a file
 > lock, not a code error — quit Live and build again.
 
+### Packaging a Windows installer
+
+`build.ps1` is the development loop: it drops the plugin straight into `Documents\VST3`, which
+needs no elevation and no install step. Handing the plugin to someone else is a different job —
+they want one file to double-click, not a folder to place and a preference to set — and that is
+what `package.ps1` produces:
+
+```powershell
+.\package.ps1
+```
+
+It builds Release, then compiles `Installer\Ravel.iss` with
+[Inno Setup](https://jrsoftware.org/isinfo.php) and leaves `dist\Ravel-0.1.0-Windows-x64.exe`
+behind. Inno Setup is the one extra prerequisite, and the script stops with this command if it
+cannot find it:
+
+```powershell
+winget install --id JRSoftware.InnoSetup -e --accept-package-agreements --accept-source-agreements
+```
+
+`-SkipBuild` compiles the installer from whatever is already in `build\`, for when only the
+`.iss` changed.
+
+What the installer does differently from a build:
+
+| | `build.ps1` | The installer |
+|---|---|---|
+| VST3 lands in | `%USERPROFILE%\Documents\VST3` | `C:\Program Files\Common Files\VST3` |
+| Elevation | None | Asked for once, before the wizard |
+| Setup in Live | Custom VST3 folder, then Rescan | None — Live scans that folder already |
+| Standalone | Run it out of the build tree | Optional component, with a Start Menu entry |
+| Removal | Delete the folder | Apps & features → Ravel |
+
+The version comes from the `project()` line in `CMakeLists.txt`, so bumping it there is enough —
+nothing under `Installer\` keeps a second copy. What never changes is `AppId`, the GUID in the
+script's `[Setup]` section: Windows decides "upgrade, or second product?" off that value alone,
+so it is fixed for the life of the plugin for the same reason `PLUGIN_CODE` is.
+
+Two things worth knowing before sending the file to anyone:
+
+- **It is unsigned.** SmartScreen shows *"Windows protected your PC"* on any installer it has not
+  seen before, and the way past it is **More info → Run anyway** — which is a lot to ask of
+  someone who was expecting a plugin. Signing needs an Authenticode certificate from a CA (a few
+  hundred a year), or a cloud signing service such as Azure Trusted Signing, which costs less but
+  has its own eligibility rules. Either way the only change here is a `SignTool` line in
+  `[Setup]`; the rest of the script stands.
+- **A machine that has built Ravel already has a copy in `Documents\VST3`.** If Live is scanning
+  that folder as well as the system one it finds the plugin twice and lists it twice, so the
+  installer checks for it at the end and offers to remove it.
+
 ### Building on macOS via CI
 
 There's no Mac in this project's development loop, so Ravel is cross-built for macOS in CI
@@ -836,6 +886,8 @@ already includes M4L, and its modulation API can target any parameter directly.
 | `Tests/Snapshot.cpp` | Renders the editor to a PNG with no host — see [Looking at the UI](#looking-at-the-ui) |
 | `CMakeLists.txt` | The three plugin formats, the test and snapshot targets, the per-format macOS bundle IDs |
 | `build.ps1` | Configure-and-build wrapper for Windows — see [Building](#building) |
+| `package.ps1` | Build, then compile the installer — see [Packaging a Windows installer](#packaging-a-windows-installer) |
+| `Installer/Ravel.iss` | The Inno Setup script the installer is compiled from |
 | `.github/workflows/build-macos.yml` | The macOS cross-build — see [Building on macOS via CI](#building-on-macos-via-ci) |
 | `Ravel-Setup.txt` | Installing and MPE routing, written for someone handed a build — see below |
 
