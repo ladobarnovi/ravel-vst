@@ -480,6 +480,40 @@ int main()
             togglesIntact = togglesIntact && stepEnabled (0, step);
 
         check (togglesIntact, "neither action disturbs the step on/off toggles");
+
+        //----------------------------------------------------------------------
+        // The trig randomiser is the mirror image: it rewrites the toggles and nothing else.
+        float valuesBefore[params::numSteps];
+
+        for (int step = 0; step < params::numSteps; ++step)
+            valuesBefore[step] = stepValue (0, step);
+
+        bool mixed = false;
+        bool valuesIntact = true;
+
+        // Over a handful of rolls, both states must show up -- one roll can legitimately come
+        // back all-on (1 in 65536), and a stuck randomiser would look the same on that roll.
+        for (int roll = 0; roll < 8 && ! mixed; ++roll)
+        {
+            params::randomiseLaneTrigs (processor.apvts, 0, random);
+
+            bool anyOn = false, anyOff = false;
+
+            for (int step = 0; step < params::numSteps; ++step)
+            {
+                if (stepEnabled (0, step)) anyOn = true;
+                else                       anyOff = true;
+            }
+
+            mixed = anyOn && anyOff;
+        }
+
+        for (int step = 0; step < params::numSteps; ++step)
+            valuesIntact = valuesIntact
+                             && std::abs (stepValue (0, step) - valuesBefore[step]) < 1.0e-6f;
+
+        check (mixed, "randomising trigs leaves some steps on and some off");
+        check (valuesIntact, "randomising trigs leaves the step values alone");
     }
 
     //==========================================================================

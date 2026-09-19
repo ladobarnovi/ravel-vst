@@ -380,10 +380,14 @@ private:
     // 46px column beside the steps, and the tooltips carry the full names.
     juce::TextButton layerButtons[numStepLayers];
 
-    // Abbreviated for the same reason: the action row has 190px to hold four controls, and
+    // Abbreviated for the same reason: the action row has 190px to hold five controls, and
     // the two destructive ones are glyphs rather than words so they cannot be misread at a
     // glance as more of the same.
-    juce::TextButton randomiseButton { "RND" }, clearButton { "CLR" };
+    //
+    // TRG is the odd one of the three chips -- RND and CLR rewrite whichever row the selector
+    // is showing, TRG always rewrites the on/off strip -- so it sits last, after the pair that
+    // belong together, rather than between them.
+    juce::TextButton randomiseButton { "RND" }, clearButton { "CLR" }, trigButton { "TRG" };
     juce::TextButton menuButton { "More" }, removeButton { "Remove" };
 
     juce::Random random;

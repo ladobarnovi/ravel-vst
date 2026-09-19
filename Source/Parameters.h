@@ -179,8 +179,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 //==============================================================================
 // Pattern actions. These live here rather than in the button callbacks so they go
 // through the host properly (change gestures, automation, undo) and can be tested
-// without a UI. Both touch step *values* only -- the on/off toggles are left alone,
-// so a lane's rhythm survives a re-roll.
+// without a UI. The row actions touch step *values* only -- the on/off toggles are left
+// alone, so a lane's rhythm survives a re-roll. randomiseLaneTrigs is the one that goes
+// the other way and rewrites only the rhythm.
 
 // All three act on one row of the lane -- whichever the lane's bars are currently showing --
 // rather than always on Value. Randomizing the row you are looking at is the only reading of
@@ -193,6 +194,19 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 /** Gives every step in the row a new random value, anywhere in that row's range. */
 void randomiseLaneRow (juce::AudioProcessorValueTreeState& state, int lane, juce::Random& random,
                        LaneKind kind = LaneKind::note, StepLayer layer = StepLayer::value);
+
+/** Flips every step in the lane on or off at random, leaving all five value rows alone.
+
+    A button of its own rather than a sixth row RND could be pointed at: re-rolling the rhythm
+    and re-rolling what that rhythm plays are separate wishes, and the rows are selected by a
+    chip the trigs have no place in -- the trigs are always on screen, under whichever row is.
+
+    An even coin per step. Not a density the caller passes in, because the control behind this
+    is one chip with no room for a knob beside it, and half-on is the only density that is not
+    an arbitrary choice presented as a default.
+*/
+void randomiseLaneTrigs (juce::AudioProcessorValueTreeState& state, int lane, juce::Random& random,
+                         LaneKind kind = LaneKind::note);
 
 /** Puts every step in the row back to its neutral -- see stepLayerNeutral. */
 void clearLaneRow (juce::AudioProcessorValueTreeState& state, int lane,

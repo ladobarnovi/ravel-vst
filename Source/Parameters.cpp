@@ -499,6 +499,13 @@ void randomiseLaneRow (juce::AudioProcessorValueTreeState& state, int lane, juce
             setParamNormalised (state, id, random.nextFloat());
 }
 
+void randomiseLaneTrigs (juce::AudioProcessorValueTreeState& state, int lane, juce::Random& random,
+                         LaneKind kind)
+{
+    for (int step = 0; step < numSteps; ++step)
+        setParam (state, stepOnId (lane, step, kind), random.nextBool() ? 1.0f : 0.0f);
+}
+
 void clearLaneRow (juce::AudioProcessorValueTreeState& state, int lane, LaneKind kind, StepLayer layer)
 {
     const float neutral = stepLayerNeutral (layer);

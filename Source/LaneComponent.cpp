@@ -618,6 +618,17 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
     };
     addAndMakeVisible (clearButton);
 
+    // Not slid through: a slide animates the bars from where they were to where they land, and
+    // nothing here moves a bar. The trigs redraw as they flip.
+    trigButton.setTooltip ("Randomize which of the sixteen steps are on. The values under them "
+                           "are left as they are");
+    theme::setRole (trigButton, theme::Role::laneAction);
+    trigButton.onClick = [this, kind]
+    {
+        params::randomiseLaneTrigs (apvts, lane, random, kind);
+    };
+    addAndMakeVisible (trigButton);
+
     theme::setRole (menuButton, theme::Role::laneMenu);
     menuButton.onClick = [this] { showActionsMenu(); };
     addAndMakeVisible (menuButton);
@@ -1117,7 +1128,7 @@ void LaneComponent::resized()
     // way to the ones that do.
     removeButton.setBounds (actionRow.removeFromRight (26));
 
-    for (auto* button : { &randomiseButton, &clearButton })
+    for (auto* button : { &randomiseButton, &clearButton, &trigButton })
     {
         button->setBounds (actionRow.removeFromLeft (theme::chipWidth (button->getButtonText())));
         actionRow.removeFromLeft (4);
