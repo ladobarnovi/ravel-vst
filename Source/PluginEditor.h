@@ -7,6 +7,9 @@
 #include "PluginProcessor.h"
 #include "RavelLookAndFeel.h"
 
+#include <cmath>
+#include <utility>
+
 //==============================================================================
 class RavelAudioProcessorEditor final : public juce::AudioProcessorEditor,
                                           private juce::Timer
@@ -120,39 +123,6 @@ private:
         own. */
     PresetBar presetBar { processorRef };
 
-    // One clipboard per pool: pasting a Note lane's pattern onto a CC lane (or the reverse) is
-    // a cross-domain operation that doesn't mean anything -- a CC lane never reads velocity or
-    // gate -- so the two kinds don't share one.
-    params::LanePattern noteClipboard, ccClipboard;
-
-    // Every lane in both pools is built up front, because their parameters exist up front; each
-    // pool's own count only decides how many of its own lanes are shown and heard.
-    juce::OwnedArray<LaneComponent> noteLanes, ccLanes;
-
-    juce::TextButton addNoteLaneButton { "+ Add lane" }, addCcLaneButton { "+ Add lane" };
-
-    /** Writes the new count through the parameter rather than straight into the members, so the
-        host records it as an edit and the editor picks it up on the next tick like any other
-        parameter change. */
-    void setNoteLaneCount (int newCount);
-    void setCcLaneCount (int newCount);
-
-    /** Shows that many lanes of the given pool, and resizes the window to fit if that pool's
-        workspace is the one currently selected. */
-    void applyNoteLaneCount (int newCount);
-    void applyCcLaneCount (int newCount);
-
-    /** Takes out the lane a lane's own Remove button belongs to. Lives here rather than in
-        LaneComponent because it is the stack that changes: every lane above this one moves
-        down, and the window shrinks by one lane. */
-    void removeNoteLane (int laneIndex);
-    void removeCcLane (int laneIndex);
-
-    std::atomic<float>* noteLaneCountParam = nullptr;
-    std::atomic<float>* ccLaneCountParam   = nullptr;
-    int noteLaneCount = 0;
-    int ccLaneCount   = 0;
-
     /** A workspace: the lane stack, the add-lane bar, and the settings footer under both.
 
         Paints the footer's own band. Drawn by the workspace rather than by content because its
@@ -176,16 +146,74 @@ private:
         juce::Rectangle<int> settingsArea;
     };
 
-    WorkspaceComponent notesWorkspace, ccWorkspace;
+    /** One of the two stacks -- Notes or CC -- and everything the editor holds per stack.
+
+        Every member in here used to be half of a note-/cc- prefixed pair, with a pair of
+        methods over each pair. LaneKind already runs through Parameters and the engine, so
+        indexing by it here draws the same distinction those layers already draw, rather than
+        inventing a second one: the six methods below became three, and nothing else in the
+        editor has to name a stack twice to do a thing to both.
+    */
+    struct Stack
+    {
+        /** The settings page is the only thing in here that needs the parameter tree.
+            Deliberately not explicit, so the editor's member-init list can build both stacks
+            from one braced initialiser each. */
+        Stack (juce::AudioProcessorValueTreeState& state) : settingsPage (state) {}
+
+        WorkspaceComponent workspace;
+        TabPage settingsPage;
+
+        // Every lane in both stacks is built up front, because its parameters exist up front:
+        // a VST3 cannot add parameters later. The count only decides how many of them are
+        // shown and heard.
+        juce::OwnedArray<LaneComponent> lanes;
+
+        juce::TextButton addButton { "+ Add lane" };
+
+        // One clipboard per stack: pasting a Note lane's pattern onto a CC lane (or the
+        // reverse) is a cross-domain operation that doesn't mean anything -- a CC lane never
+        // reads velocity or gate -- so the two kinds don't share one.
+        params::LanePattern clipboard;
+
+        std::atomic<float>* countParam = nullptr;
+        int count = 0;
+    };
+
+    /** Indexed by LaneKind. The tab strip is built in the same order, so a kind and its tab
+        index are the same number -- which is what lets applyLaneCount ask whether the stack it
+        is changing is the one on screen without a second mapping. */
+    Stack stacks[2];
+
+    Stack& stackFor (params::LaneKind kind) noexcept { return stacks[(int) kind]; }
+
+    /** Writes the new count through the parameter rather than straight into the member, so the
+        host records it as an edit and the editor picks it up on the next tick like any other
+        parameter change. */
+    void setLaneCount (params::LaneKind kind, int newCount);
+
+    /** Shows that many lanes of the given stack, and resizes the window to fit if that stack's
+        workspace is the one currently selected. */
+    void applyLaneCount (params::LaneKind kind, int newCount);
+
+    /** Takes out the lane a lane's own Remove button belongs to. Lives here rather than in
+        LaneComponent because it is the stack that changes: every lane above this one moves
+        down, and the window shrinks by one lane. */
+    void removeLane (params::LaneKind kind, int laneIndex);
+
+    /** The lane-stack-plus-add-button-plus-footer layout, run once per stack against that
+        stack's own bounds. Both stacks get this same shape, and lanes of both kinds are the
+        same height, so it does not need to know which one it is laying out. */
+    void layoutWorkspace (Stack& stack);
+
     TabStrip outputTabs;
 
     // Watched on the timer, the same way lane count and the output switches already are, so a
     // tab switch resizes the window through the same path a lane-count change does.
     int lastOutputTab = -1;
 
-    TabPage notesSettingsPage, ccSettingsPage;
-
-    // Non-owning; point into notesSettingsPage. Dimmed when the current mode ignores them.
+    // Non-owning; point into the Notes stack's settings page. Dimmed when the current mode
+    // ignores them.
     ControlRow* scaleRow = nullptr;
     ControlRow* bendRangeRow = nullptr;
     ControlRow* triggerRow = nullptr;
@@ -202,27 +230,46 @@ private:
         parameter block twice the height of a Note lane's, which is what forced the two
         workspaces to different lane heights for no reason the user could see.
 
-        Non-owning; they belong to ccSettingsPage. Held so the columns for lanes this instance
-        does not currently have can be greyed rather than hidden -- the parameters still exist,
+        Non-owning; they belong to the CC stack's settings page. Held so the columns for lanes
+        this instance does not currently have can be greyed rather than hidden -- the
+        parameters still exist,
         and a column that vanishes and reappears as the lane count changes is harder to read
         than one that dims.
     */
     ControlGroup* ccLaneColumns[params::numLanes] {};
     int appliedCcLaneColumns = -1;
 
-    std::atomic<float>* quantizeParam = nullptr;
-    int lastQuantize = -1;
+    /** A parameter read on the timer, and the value the UI was last brought into line with.
 
-    // Watched alongside Quantize because the scale decides whether Bend Range is in play: a
-    // 19-, 23-, 31-, 41- or 53-EDO scale rides on the wheel even with Quantize on.
-    std::atomic<float>* scaleParam = nullptr;
-    int lastScale = -1;
+        Polled rather than listened to: a parameter listener's callback arrives on the audio
+        thread and must not touch components. Every one of these decides whether some row is
+        dimmed, and dimming repaints, so the work has to happen on the change rather than on
+        each of the thirty ticks a second that find it unchanged.
+    */
+    struct Watched
+    {
+        std::atomic<float>* param = nullptr;
 
-    std::atomic<float>* polyModeParam = nullptr;
-    int lastPolyMode = -1;
+        /** Last value acted on. Starts at -1, which no parameter holds, so the first tick
+            after the editor opens always counts as a change and sets the initial state. */
+        int last = -1;
 
-    std::atomic<float>* mpeEnabledParam = nullptr;
-    int lastMpeEnabled = -1;
+        /** True once per change, false on every tick in between. Rounded to the int the UI
+            actually switches on: a bool parameter lands on 0 or 1, a choice on its index. */
+        bool changed() noexcept
+        {
+            if (param == nullptr)
+                return false;
+
+            const int current = (int) std::lround (param->load());
+            return std::exchange (last, current) != current;
+        }
+    };
+
+    // Quantize and Scale are a pair: the scale decides whether Bend Range is in play, because
+    // a 19-, 23-, 31-, 41- or 53-EDO scale rides on the wheel even with Quantize on. Either
+    // one moving re-dims the same two rows.
+    Watched quantize, pitchScale, polyMode, mpeEnabled;
 
     /** The header's MIDI-output chooser. Its own component now: enumerating ports, remembering
         which one is open and laying out its own two controls were three things the editor had

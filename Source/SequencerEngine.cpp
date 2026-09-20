@@ -289,15 +289,6 @@ int SequencerEngine::nextBoundarySample (std::int64_t currentIndex,
 }
 
 //==============================================================================
-bool SequencerEngine::anyVoiceActive() const noexcept
-{
-    for (const auto& voice : voices)
-        if (voice.note >= 0)
-            return true;
-
-    return false;
-}
-
 void SequencerEngine::releaseVoice (juce::MidiBuffer& out, int sampleOffset, int slot)
 {
     if (voices[slot].note < 0)

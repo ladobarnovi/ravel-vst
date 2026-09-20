@@ -177,10 +177,6 @@ public:
     /** Height the tallest column needs, plus the padding above and below it. */
     int getPreferredHeight() const;
 
-    /** Total width of every column added so far. The footer is left-aligned and does not
-        stretch, so this is what it actually occupies. */
-    int getPreferredWidth() const;
-
     void paint (juce::Graphics&) override;
     void resized() override;
 

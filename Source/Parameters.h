@@ -106,6 +106,11 @@ juce::String stepLayerName (StepLayer layer, LaneKind kind = LaneKind::note);
 /** The same, abbreviated for the chips beside the steps, which have 46px to fit it in. */
 juce::String stepLayerShortName (StepLayer layer, LaneKind kind = LaneKind::note);
 
+/** Which pool's lane-count parameter a kind addresses. The two counts are separate
+    parameters -- growing one stack costs the other nothing -- so anything that works on
+    either stack picks between them here rather than branching at the call site. */
+const char* laneCountIdFor (LaneKind kind);
+
 juce::String laneOnId       (int lane, LaneKind kind = LaneKind::note);
 juce::String laneLengthId   (int lane, LaneKind kind = LaneKind::note);
 juce::String laneDivId      (int lane, LaneKind kind = LaneKind::note);

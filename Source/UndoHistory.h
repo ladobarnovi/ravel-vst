@@ -76,6 +76,12 @@ private:
     Snapshot takeSnapshot() const;
     void restore (const Snapshot& snapshot);
 
+    /** One move between the two stacks, which is all undo and redo each are: take the top of
+        `from`, push where you were onto `to`, restore. The pair are mirror images, so they
+        are one function called twice with the stacks swapped rather than two that have to be
+        kept in step by hand. */
+    bool step (std::deque<Snapshot>& from, std::deque<Snapshot>& to);
+
     void captureBeforeEdit();
 
     juce::AudioProcessor& processor;

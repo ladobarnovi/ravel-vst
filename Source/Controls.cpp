@@ -310,16 +310,6 @@ int TabPage::getPreferredHeight() const
     return paddingTop + tallest + paddingBottom;
 }
 
-int TabPage::getPreferredWidth() const
-{
-    int total = 0;
-
-    for (auto width : columnWidths)
-        total += width;
-
-    return total;
-}
-
 void TabPage::paint (juce::Graphics& g)
 {
     // A hairline between each pair of columns, full height of the footer rather than only as

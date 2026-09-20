@@ -1,15 +1,15 @@
 {
   "Source/Controls.cpp": {
-    "mtime": 1788912223.839224,
-    "seen": 1789077320.51359,
-    "ast_hash": "23c8c52d5b47e775bfbe8a0d53edcdd2",
-    "semantic_hash": "23c8c52d5b47e775bfbe8a0d53edcdd2"
+    "mtime": 1789919459.9614656,
+    "seen": 1789920079.8246114,
+    "ast_hash": "0a572690bd3264fa0618d0390d7cec84",
+    "semantic_hash": ""
   },
   "Source/Controls.h": {
-    "mtime": 1788912223.8402212,
-    "seen": 1789077320.5135953,
-    "ast_hash": "e867cf33accce13579fc11c56b40d792",
-    "semantic_hash": "e867cf33accce13579fc11c56b40d792"
+    "mtime": 1789919451.669814,
+    "seen": 1789920079.8246167,
+    "ast_hash": "12448ec28fe512f63ba54c4f66cc1739",
+    "semantic_hash": ""
   },
   "Source/ExternalMidiOutput.cpp": {
     "mtime": 1788697470.2369187,
@@ -54,28 +54,28 @@
     "semantic_hash": "bf4b084a8bee02125235a0b5b983af84"
   },
   "Source/Parameters.cpp": {
-    "mtime": 1789825739.7914264,
-    "seen": 1789825971.032367,
-    "ast_hash": "56e829024f5c297f201bd4e9c1453ae0",
+    "mtime": 1789919623.7638786,
+    "seen": 1789920079.824635,
+    "ast_hash": "65a4b13cb84dfd230c2015b7b23540ec",
     "semantic_hash": ""
   },
   "Source/Parameters.h": {
-    "mtime": 1789825733.398268,
-    "seen": 1789825971.0323684,
-    "ast_hash": "855adad154b409f31957b7d8f59fafe7",
+    "mtime": 1789919617.8720987,
+    "seen": 1789920079.8246367,
+    "ast_hash": "3cfeb8bc0c1f2e38e7788a35e36df85f",
     "semantic_hash": ""
   },
   "Source/PluginEditor.cpp": {
-    "mtime": 1788974250.2516036,
-    "seen": 1789077320.5136085,
-    "ast_hash": "16470d99f7f61bd86caf7e622d733bdd",
-    "semantic_hash": "16470d99f7f61bd86caf7e622d733bdd"
+    "mtime": 1789919823.1460779,
+    "seen": 1789920079.8246381,
+    "ast_hash": "137cb5b74564b76ffd7ff0cd5fcac6b4",
+    "semantic_hash": ""
   },
   "Source/PluginEditor.h": {
-    "mtime": 1788912223.8492863,
-    "seen": 1789077320.5136096,
-    "ast_hash": "9ca55f4ad1f731c016d2151f2a005f4b",
-    "semantic_hash": "9ca55f4ad1f731c016d2151f2a005f4b"
+    "mtime": 1789919823.1450822,
+    "seen": 1789920079.8246398,
+    "ast_hash": "d267125ddd274158b88504bfac314118",
+    "semantic_hash": ""
   },
   "Source/PluginProcessor.cpp": {
     "mtime": 1788974250.2531104,
@@ -126,16 +126,16 @@
     "semantic_hash": "a4c62f95c3c146b2a23c5a70c0830f7c"
   },
   "Source/SequencerEngine.cpp": {
-    "mtime": 1788976017.4468522,
-    "seen": 1789077320.5136201,
-    "ast_hash": "d3b8da7a1271c24b2eec992f35d0eddc",
-    "semantic_hash": "d3b8da7a1271c24b2eec992f35d0eddc"
+    "mtime": 1789919458.510646,
+    "seen": 1789920079.8246546,
+    "ast_hash": "1889d84571a5862982a112d826d3a80f",
+    "semantic_hash": ""
   },
   "Source/SequencerEngine.h": {
-    "mtime": 1788976017.4458516,
-    "seen": 1789077320.5136216,
-    "ast_hash": "552dc492ce95d774dd86b8d8de89aee1",
-    "semantic_hash": "552dc492ce95d774dd86b8d8de89aee1"
+    "mtime": 1789919449.6775458,
+    "seen": 1789920079.824656,
+    "ast_hash": "d17480c1c89a41bc45e277f0ff6710a9",
+    "semantic_hash": ""
   },
   "Source/Theme.cpp": {
     "mtime": 1788912223.855795,
@@ -144,22 +144,22 @@
     "semantic_hash": "f6d9a658455fc927111a3e4bcce2d3c6"
   },
   "Source/Theme.h": {
-    "mtime": 1788976017.4499135,
-    "seen": 1789077320.5136237,
-    "ast_hash": "6d82f870a0cad161803e7abd2c4fdfaf",
-    "semantic_hash": "6d82f870a0cad161803e7abd2c4fdfaf"
+    "mtime": 1789919472.196399,
+    "seen": 1789920079.824659,
+    "ast_hash": "1ca671ef2ad80dae0475d72ef238a038",
+    "semantic_hash": ""
   },
   "Source/UndoHistory.cpp": {
-    "mtime": 1788697470.2619104,
-    "seen": 1789077320.5136251,
-    "ast_hash": "17af6b5f36ffa093e1fe5fb3b2f5ccbd",
-    "semantic_hash": "17af6b5f36ffa093e1fe5fb3b2f5ccbd"
+    "mtime": 1789919519.1969724,
+    "seen": 1789920079.8246608,
+    "ast_hash": "26c24c0bcd159859e1b983cacaffd567",
+    "semantic_hash": ""
   },
   "Source/UndoHistory.h": {
-    "mtime": 1788697470.2629163,
-    "seen": 1789077320.513626,
-    "ast_hash": "840f4d502186a66fd1551c85110d689a",
-    "semantic_hash": "840f4d502186a66fd1551c85110d689a"
+    "mtime": 1789919513.0696092,
+    "seen": 1789920079.824662,
+    "ast_hash": "1701199c547972c37483bfbcd26dc2b5",
+    "semantic_hash": ""
   },
   "Tests/EngineTests.cpp": {
     "mtime": 1788976046.5740306,

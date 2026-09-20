@@ -318,8 +318,6 @@ private:
 
     MpeChannelSlot mpeChannels[mpeMemberChannels];
 
-    bool anyVoiceActive() const noexcept;
-
     /** Counts `samples` off every sounding voice and emits note-off for those that run out.
 
         Takes a span rather than always stepping by one because the sample loop no longer

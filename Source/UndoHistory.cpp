@@ -121,35 +121,25 @@ void UndoHistory::restore (const Snapshot& snapshot)
 }
 
 //==============================================================================
-bool UndoHistory::undo()
+bool UndoHistory::step (std::deque<Snapshot>& from, std::deque<Snapshot>& to)
 {
-    if (undoStack.empty())
+    if (from.empty())
         return false;
 
-    // Taken before the restore, so redo returns to what is on screen right now rather than to
-    // whatever the next entry down happens to hold.
-    redoStack.push_back (takeSnapshot());
+    // Taken before the restore, so the other side returns to what is on screen right now
+    // rather than to whatever the next entry down happens to hold.
+    to.push_back (takeSnapshot());
 
-    const auto target = undoStack.back();
-    undoStack.pop_back();
+    // Copied rather than moved from: restore() reads it after the pop.
+    const auto target = from.back();
+    from.pop_back();
 
     restore (target);
     return true;
 }
 
-bool UndoHistory::redo()
-{
-    if (redoStack.empty())
-        return false;
-
-    undoStack.push_back (takeSnapshot());
-
-    const auto target = redoStack.back();
-    redoStack.pop_back();
-
-    restore (target);
-    return true;
-}
+bool UndoHistory::undo() { return step (undoStack, redoStack); }
+bool UndoHistory::redo() { return step (redoStack, undoStack); }
 
 void UndoHistory::clear()
 {

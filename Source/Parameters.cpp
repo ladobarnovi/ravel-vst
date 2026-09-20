@@ -19,9 +19,6 @@ namespace
         return lanePrefix (lane, kind) + "_s" + juce::String (step + 1);
     }
 
-    // Always the note-lane prefix: stepVelocityId/stepGateId are note-only.
-    juce::String notePrefix (int lane) { return lanePrefix (lane, LaneKind::note); }
-
     // laneCcOnId etc. always address the CC pool.
     juce::String ccPrefix (int lane) { return lanePrefix (lane, LaneKind::cc); }
 }
@@ -30,9 +27,12 @@ juce::String stepValueId  (int lane, int step, LaneKind kind) { return stepPrefi
 juce::String stepOnId     (int lane, int step, LaneKind kind) { return stepPrefix (lane, step, kind) + "_on"; }
 juce::String stepChanceId (int lane, int step, LaneKind kind) { return stepPrefix (lane, step, kind) + "_chance"; }
 
-juce::String stepVelocityId (int lane, int step) { return notePrefix (lane) + "_s" + juce::String (step + 1) + "_vel"; }
-juce::String stepGateId     (int lane, int step) { return notePrefix (lane) + "_s" + juce::String (step + 1) + "_gate"; }
-juce::String stepSpreadId   (int lane, int step) { return notePrefix (lane) + "_s" + juce::String (step + 1) + "_spread"; }
+// Always the note-lane prefix -- all three of these are note-only -- but built by the same
+// stepPrefix as the shared ones above, so the step half of an ID cannot come out spelled two
+// different ways.
+juce::String stepVelocityId (int lane, int step) { return stepPrefix (lane, step, LaneKind::note) + "_vel"; }
+juce::String stepGateId     (int lane, int step) { return stepPrefix (lane, step, LaneKind::note) + "_gate"; }
+juce::String stepSpreadId   (int lane, int step) { return stepPrefix (lane, step, LaneKind::note) + "_spread"; }
 
 juce::String laneOnId       (int lane, LaneKind kind) { return lanePrefix (lane, kind) + "_on"; }
 juce::String laneLengthId   (int lane, LaneKind kind) { return lanePrefix (lane, kind) + "_length"; }
@@ -465,31 +465,32 @@ float stepLayerNeutral (StepLayer layer) noexcept
     }
 }
 
-juce::String stepLayerName (StepLayer layer, LaneKind kind)
+namespace
 {
-    switch (layer)
+    /** Both names of a row, in one table.
+
+        Only two of the five actually have a short form -- Prob, Gate and Spread are already
+        as short as they go, and Pitch is the same word on a chip as in a tooltip. Two switches
+        meant three of the five strings written twice, where the only thing a reader wants to
+        know is which ones differ.
+    */
+    juce::String layerName (StepLayer layer, LaneKind kind, bool shortForm)
     {
-        case StepLayer::velocity: return "Velocity";
-        case StepLayer::chance:   return "Prob";
-        case StepLayer::gate:     return "Gate";
-        case StepLayer::spread:   return "Spread";
-        case StepLayer::value:
-        default:                  return kind == LaneKind::note ? "Pitch" : "Value";
+        switch (layer)
+        {
+            case StepLayer::velocity: return shortForm ? "Vel" : "Velocity";
+            case StepLayer::chance:   return "Prob";
+            case StepLayer::gate:     return "Gate";
+            case StepLayer::spread:   return "Spread";
+            case StepLayer::value:
+            default:                  return kind == LaneKind::note ? "Pitch"
+                                             : (shortForm ? "Val" : "Value");
+        }
     }
 }
 
-juce::String stepLayerShortName (StepLayer layer, LaneKind kind)
-{
-    switch (layer)
-    {
-        case StepLayer::velocity: return "Vel";
-        case StepLayer::chance:   return "Prob";
-        case StepLayer::gate:     return "Gate";
-        case StepLayer::spread:   return "Spread";
-        case StepLayer::value:
-        default:                  return kind == LaneKind::note ? "Pitch" : "Val";
-    }
-}
+juce::String stepLayerName      (StepLayer layer, LaneKind kind) { return layerName (layer, kind, false); }
+juce::String stepLayerShortName (StepLayer layer, LaneKind kind) { return layerName (layer, kind, true); }
 
 void randomiseLaneRow (juce::AudioProcessorValueTreeState& state, int lane, juce::Random& random,
                        LaneKind kind, StepLayer layer)
@@ -638,10 +639,11 @@ namespace
         }
     }
 
-    const char* laneCountIdFor (LaneKind kind)
-    {
-        return kind == LaneKind::cc ? ccLaneCountId : noteLaneCountId;
-    }
+}
+
+const char* laneCountIdFor (LaneKind kind)
+{
+    return kind == LaneKind::cc ? ccLaneCountId : noteLaneCountId;
 }
 
 void removeLane (juce::AudioProcessorValueTreeState& state, int lane, LaneKind kind)

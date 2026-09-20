@@ -264,22 +264,6 @@ namespace theme
         return (bool) component.getProperties().getWithDefault (stepOffProperty, false);
     }
 
-    /** Overrides the height a step bar draws its fill to, as a proportion of the bar, while a
-        layer switch is animating.
-
-        Switching a lane from Value to Prob replaces every bar's height at once, and sixteen
-        bars jumping together reads as the grid being replaced rather than as the same grid
-        showing a different row of itself. Sliding them across says the pattern stayed put and
-        you changed what you are looking at.
-
-        An override rather than driving the Slider's own value, because the value belongs to
-        the parameter: writing to it to animate would send sixteen bogus gestures to the host
-        and land in the undo history. The bar keeps drawing itself, its colours and its off
-        ring; only the one number it draws to is borrowed.
-
-        Negative (the default) means "draw your own value", which is the state outside a
-        transition.
-    */
     /** The Spread window a step bar draws above its own value, as a proportion of the bar:
         0.3 means the step may land anywhere in the 30% of the bar directly above the height
         it is drawn to.
@@ -328,6 +312,22 @@ namespace theme
                    .getWithDefault (stepLandedProperty, -1.0);
     }
 
+    /** Overrides the height a step bar draws its fill to, as a proportion of the bar, while a
+        layer switch is animating.
+
+        Switching a lane from Value to Prob replaces every bar's height at once, and sixteen
+        bars jumping together reads as the grid being replaced rather than as the same grid
+        showing a different row of itself. Sliding them across says the pattern stayed put and
+        you changed what you are looking at.
+
+        An override rather than driving the Slider's own value, because the value belongs to
+        the parameter: writing to it to animate would send sixteen bogus gestures to the host
+        and land in the undo history. The bar keeps drawing itself, its colours and its off
+        ring; only the one number it draws to is borrowed.
+
+        Negative (the default) means "draw your own value", which is the state outside a
+        transition.
+    */
     const juce::Identifier drawProportionProperty { "ravelDrawProportion" };
 
     inline void setDrawProportion (juce::Component& component, float proportion)

@@ -1,16 +1,16 @@
-# Graph Report - vst  (2026-09-19)
+# Graph Report - vst  (2026-09-20)
 
 ## Corpus Check
-- 33 files · ~86,627 words
+- 33 files · ~86,993 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 895 nodes · 1637 edges · 50 communities (41 shown, 7 thin omitted)
-- Extraction: 91% EXTRACTED · 9% INFERRED · 0% AMBIGUOUS · INFERRED: 151 edges (avg confidence: 0.85)
+- 886 nodes · 1624 edges · 49 communities (43 shown, 4 thin omitted)
+- Extraction: 91% EXTRACTED · 9% INFERRED · 0% AMBIGUOUS · INFERRED: 141 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `0d7af5d5`
+- Built from commit: `8f1b0266`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -38,18 +38,18 @@
 - ContentComponent
 - MouseEvent
 - Snapshot.cpp
-- PluginProcessor.h
+- Stack
+- UndoHistory.cpp
 - LaneSnapshot
 - main
+- LanePattern
 - EngineTests.cpp
 - int64_t
-- Event
-- layoutWorkspace
+- Watched
+- layoutContent
 - StepLayer
 - MockPlayHead
-- Tab
 - Counts
-- CcLaneSnapshot
 - LaneState
 - Graphics
 - String
@@ -60,18 +60,17 @@
 - MpeChannelSlot
 - PitchResult
 - RavelFonts binary-data target
-- SequencerEngine.h
 - LaneComponent::slideThrough
 - StepSlot::barArea
 
 ## God Nodes (most connected - your core abstractions)
-1. `RavelAudioProcessorEditor` - 81 edges
-2. `RavelAudioProcessor` - 69 edges
-3. `SequencerEngine` - 68 edges
+1. `RavelAudioProcessor` - 69 edges
+2. `SequencerEngine` - 67 edges
+3. `RavelAudioProcessorEditor` - 59 edges
 4. `PresetManager` - 43 edges
-5. `Snapshot` - 35 edges
+5. `Snapshot` - 36 edges
 6. `RavelLookAndFeel` - 29 edges
-7. `UndoHistory` - 28 edges
+7. `UndoHistory` - 29 edges
 8. `PresetBar` - 27 edges
 9. `ExternalMidiOutput` - 25 edges
 10. `createParameterLayout()` - 23 edges
@@ -96,7 +95,7 @@
 - **macOS cross-build, bundle identity and install flow** — _github_workflows_build_macos_build_macos, _github_workflows_build_macos_universal_binary, _github_workflows_build_macos_artifact_upload, cmakelists_per_format_bundle_ids, readme_macos_ci_build, ravel_setup_macos_install, ravel_setup_quarantine_flag [EXTRACTED 1.00]
 - **Keeping MPE channels intact from plugin to instrument** — readme_mpe, readme_bend_range, readme_live_channel_collapse, readme_external_midi_output, ravel_setup_virtual_port_route, ravel_setup_port_caveats, readme_polyphony [EXTRACTED 1.00]
 
-## Communities (50 total, 7 thin omitted)
+## Communities (49 total, 4 thin omitted)
 
 ### Community 0 - "PresetManager"
 Cohesion: 0.08
@@ -107,20 +106,20 @@ Cohesion: 0.05
 Nodes (56): Bundle artifact upload path convention, build-macos CI job, JUCE_TAG pin (9.0.1), Universal binary configure (arm64 + x86_64), EDITOR_WANTS_KEYBOARD_FOCUS, IS_SYNTH + NEEDS_MIDI_OUTPUT plugin classification, Per-format macOS CFBundleIdentifier patch, PLUGIN_CODE Trln (frozen 4-char code) (+48 more)
 
 ### Community 2 - "RavelAudioProcessorEditor"
-Cohesion: 0.04
-Nodes (56): ComponentBoundsConstrainer, ControlGroup, atomic, AudioProcessorEditor, ControlRow, JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR, OwnedArray, TabPage (+48 more)
+Cohesion: 0.06
+Nodes (35): ComponentBoundsConstrainer, ControlGroup, AudioProcessorEditor, ControlRow, JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR, RavelAudioProcessorEditor, appliedCanRedo, appliedCanUndo (+27 more)
 
 ### Community 3 - "Theme.h"
 Cohesion: 0.08
 Nodes (51): MouseCursor, Ptr, accentOf(), chipFont(), chipWidth(), clearDrawProportion(), Font, cursorForRole() (+43 more)
 
 ### Community 4 - "Parameters.cpp"
-Cohesion: 0.16
+Cohesion: 0.17
 Nodes (51): ParameterLayout, Random, ccPrefix(), clearLaneRow(), copyLane(), copyLaneParameters(), AudioProcessorValueTreeState, LaneKind (+43 more)
 
 ### Community 5 - "RavelLookAndFeel"
-Cohesion: 0.11
-Nodes (47): Button, LookAndFeel_V4, SliderStyle, StepSlot::drawnProportion(), StepSlot::setValueSlideProgress(), centredStrip(), Colour, ComboBox (+39 more)
+Cohesion: 0.12
+Nodes (45): Button, LookAndFeel_V4, SliderStyle, centredStrip(), Colour, ComboBox, Component, Font (+37 more)
 
 ### Community 6 - "Controls.cpp"
 Cohesion: 0.07
@@ -132,23 +131,27 @@ Nodes (32): AudioProcessor, AudioProcessorValueTreeState, JUCE_DECLARE_NON_COPYA
 
 ### Community 8 - "SequencerEngine"
 Cohesion: 0.06
-Nodes (32): atomic, SequencerEngine, ccCountdown, ccIntervalSamples, ccLaneHeldValue, ccLaneLastCcValue, ccLaneSlewedValue, ccLaneStates (+24 more)
+Nodes (33): atomic, atomic, SequencerEngine, ccCountdown, ccIntervalSamples, ccLaneHeldValue, ccLaneLastCcValue, ccLaneSlewedValue (+25 more)
 
 ### Community 9 - "ExternalMidiOutput"
 Cohesion: 0.08
 Nodes (29): AbstractFifo, CriticalSection, MidiOutput, String, ExternalMidiOutput, currentIdentifier, device, deviceLock (+21 more)
 
 ### Community 10 - "UndoHistory"
-Cohesion: 0.10
-Nodes (23): deque, vector, AudioProcessor, AudioProcessor, AudioProcessorParameter::Listener, JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR, JUCE_DECLARE_WEAK_REFERENCEABLE, UndoHistory (+15 more)
+Cohesion: 0.11
+Nodes (13): vector, AudioProcessor, AudioProcessorParameter::Listener, deque, JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR, JUCE_DECLARE_WEAK_REFERENCEABLE, UndoHistory, editHeld (+5 more)
+
+### Community 11 - "LaneComponent.cpp"
+Cohesion: 0.08
+Nodes (4): easeOut(), LaneComponent::applyValueSlide(), StepSlot::drawnProportion(), StepSlot::setValueSlideProgress()
 
 ### Community 12 - "ParameterTables.h"
-Cohesion: 0.06
-Nodes (33): array, maxScaleSize, AudioProcessorValueTreeState, LaneKind, LaneComponent::LaneComponent(), StepSlot::StepSlot(), directionNameList(), StringArray (+25 more)
+Cohesion: 0.09
+Nodes (18): array, maxScaleSize, DivisionDef, name, ppq, divisionNameList(), edoChromatic(), StringArray (+10 more)
 
 ### Community 13 - "SequencerEngine.cpp"
-Cohesion: 0.23
-Nodes (21): addRpn(), MidiBuffer, drawWithinSpread(), advanceVoices, allocateMpeChannel, allocateVoice, anyVoiceActive, gateFor (+13 more)
+Cohesion: 0.29
+Nodes (18): addRpn(), MidiBuffer, advanceVoices, allocateMpeChannel, allocateVoice, gateFor, process, publishUiSteps (+10 more)
 
 ### Community 14 - "Snapshot"
 Cohesion: 0.10
@@ -167,12 +170,12 @@ Cohesion: 0.13
 Nodes (14): AudioBuffer, BusesLayout, AudioProcessor, AudioProcessorEditor, MidiBuffer, JUCE_CALLTYPE createPluginFilter(), buildSnapshot, createEditor (+6 more)
 
 ### Community 18 - "ExternalMidiSelector"
-Cohesion: 0.12
-Nodes (18): Graphics, ExternalMidiSelector, box, deviceIds, ExternalMidiSelector::ExternalMidiSelector(), paint, preferredWidth, refresh (+10 more)
+Cohesion: 0.07
+Nodes (28): Component, Rectangle, String, Tab, bounds, name, page, TabStrip() (+20 more)
 
 ### Community 19 - "PluginEditor.cpp"
 Cohesion: 0.27
-Nodes (17): KeyPress, applyCcLaneCount, applyNoteLaneCount, buildWorkspaces, keyPressed, parentHierarchyChanged, RavelAudioProcessorEditor::RavelAudioProcessorEditor(), removeCcLane (+9 more)
+Nodes (15): KeyPress, LaneKind, applyLaneCount, buildWorkspaces, keyPressed, parentHierarchyChanged, RavelAudioProcessorEditor::RavelAudioProcessorEditor(), removeLane (+7 more)
 
 ### Community 20 - "ContentComponent"
 Cohesion: 0.15
@@ -186,29 +189,41 @@ Nodes (14): MouseWheelDetails, MouseEvent, LaneComponent::continueStroke(), Lane
 Cohesion: 0.28
 Nodes (12): ComponentType, collectDescendants(), AudioProcessorValueTreeState, Component, String, vector, dialInDemoPattern(), findDescendant() (+4 more)
 
-### Community 25 - "LaneSnapshot"
+### Community 23 - "Stack"
 Cohesion: 0.15
-Nodes (13): LaneSnapshot, active, chance, depth, direction, division, enabled, length (+5 more)
+Nodes (12): OwnedArray, AudioProcessorValueTreeState, TextButton, Stack, addButton, clipboard, count, countParam (+4 more)
+
+### Community 24 - "UndoHistory.cpp"
+Cohesion: 0.21
+Nodes (12): AudioProcessor, deque, captureBeforeEdit, clear, parameterGestureChanged, redo, restore, setEditHeldOpen (+4 more)
+
+### Community 25 - "LaneSnapshot"
+Cohesion: 0.11
+Nodes (18): CcLaneSnapshot, ccChannel, ccNumber, ccOffset, ccOn, LaneSnapshot, active, chance (+10 more)
 
 ### Community 26 - "main"
 Cohesion: 0.24
 Nodes (8): MemoryBlock, getStateInformation, check(), String, defaultOf(), main(), section(), setChoice()
 
+### Community 27 - "LanePattern"
+Cohesion: 0.18
+Nodes (12): AudioProcessorValueTreeState, LaneKind, LaneComponent::LaneComponent(), StepSlot::StepSlot(), LanePattern, chance, enabled, gate (+4 more)
+
 ### Community 28 - "EngineTests.cpp"
-Cohesion: 0.29
-Nodes (10): prepare, baseSnapshot(), check(), vector, dumpSamples(), main(), run(), section() (+2 more)
+Cohesion: 0.17
+Nodes (18): EventType, prepare, baseSnapshot(), check(), vector, dumpSamples(), Event, channel (+10 more)
 
 ### Community 29 - "int64_t"
-Cohesion: 0.42
-Nodes (9): int64_t, hashToUnitFloat(), positiveMod(), nextBoundarySample, resolveGlobalIndex, stepIndexFor, timingOffsetFor, splitmix64() (+1 more)
+Cohesion: 0.38
+Nodes (10): int64_t, drawWithinSpread(), hashToUnitFloat(), positiveMod(), nextBoundarySample, resolveGlobalIndex, stepIndexFor, timingOffsetFor (+2 more)
 
-### Community 30 - "Event"
-Cohesion: 0.29
-Nodes (8): EventType, Event, channel, number, sample, type, value, only()
-
-### Community 31 - "layoutWorkspace"
+### Community 30 - "Watched"
 Cohesion: 0.40
-Nodes (5): OwnedArray, TabPage, TextButton, layoutWorkspace(), WorkspaceType
+Nodes (4): atomic, Watched, last, param
+
+### Community 31 - "layoutContent"
+Cohesion: 0.67
+Nodes (3): layoutContent, layoutWorkspace, preferredWidth
 
 ### Community 32 - "StepLayer"
 Cohesion: 0.29
@@ -218,17 +233,9 @@ Nodes (8): StepLayer, String, LaneComponent::setLayer(), layerTooltip(), spreadR
 Cohesion: 0.33
 Nodes (6): AudioPlayHead, Optional, PositionInfo, MockPlayHead, info, runProcessor()
 
-### Community 34 - "Tab"
-Cohesion: 0.29
-Nodes (7): Component, Rectangle, String, Tab, bounds, name, page
-
 ### Community 35 - "Counts"
 Cohesion: 0.29
 Nodes (7): Counts, controllers, firstCcNumber, firstNote, firstVelocity, noteOffs, noteOns
-
-### Community 36 - "CcLaneSnapshot"
-Cohesion: 0.40
-Nodes (5): CcLaneSnapshot, ccChannel, ccNumber, ccOffset, ccOn
 
 ### Community 37 - "LaneState"
 Cohesion: 0.40
@@ -259,28 +266,28 @@ Cohesion: 0.67
 Nodes (3): MpeChannelSlot, rangeSent, voiceSlot
 
 ### Community 45 - "PitchResult"
-Cohesion: 0.67
-Nodes (3): PitchResult, bend, note
+Cohesion: 0.50
+Nodes (4): PitchResult, bend, note, pitchFor
 
 ## Knowledge Gaps
-- **240 isolated node(s):** `name`, `page`, `bounds`, `data`, `length` (+235 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 399 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **7 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **232 isolated node(s):** `name`, `page`, `bounds`, `data`, `length` (+227 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 387 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **4 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `RavelAudioProcessor` connect `RavelAudioProcessor` to `PresetManager`, `MockPlayHead`, `RavelAudioProcessorEditor`, `String`, `SequencerEngine`, `ExternalMidiOutput`, `UndoHistory`, `PresetBar`, `LaneParams`, `PluginProcessor.cpp`, `ExternalMidiSelector`, `PluginEditor.cpp`, `PluginProcessor.h`, `main`?**
-  _High betweenness centrality (0.411) - this node is a cross-community bridge._
-- **Why does `RavelAudioProcessorEditor` connect `RavelAudioProcessorEditor` to `RavelLookAndFeel`, `RavelAudioProcessor`, `paint`, `ParameterTables.h`, `PresetBar`, `ExternalMidiSelector`, `PluginEditor.cpp`, `ContentComponent`, `PluginProcessor.h`?**
-  _High betweenness centrality (0.292) - this node is a cross-community bridge._
-- **Why does `SequencerEngine` connect `SequencerEngine` to `CcLaneSnapshot`, `LaneState`, `RavelAudioProcessor`, `Voice`, `MpeChannelSlot`, `PitchResult`, `SequencerEngine.cpp`, `Snapshot`, `SequencerEngine.h`, `LaneSnapshot`, `EngineTests.cpp`, `int64_t`?**
+- **Why does `RavelAudioProcessor` connect `RavelAudioProcessor` to `PresetManager`, `MockPlayHead`, `RavelAudioProcessorEditor`, `String`, `SequencerEngine`, `ExternalMidiOutput`, `UndoHistory`, `PresetBar`, `LaneParams`, `PluginProcessor.cpp`, `ExternalMidiSelector`, `PluginEditor.cpp`, `main`?**
+  _High betweenness centrality (0.405) - this node is a cross-community bridge._
+- **Why does `RavelAudioProcessorEditor` connect `RavelAudioProcessorEditor` to `RavelLookAndFeel`, `RavelAudioProcessor`, `paint`, `PresetBar`, `ExternalMidiSelector`, `PluginEditor.cpp`, `ContentComponent`, `Stack`, `Watched`, `layoutContent`?**
+  _High betweenness centrality (0.249) - this node is a cross-community bridge._
+- **Why does `SequencerEngine` connect `SequencerEngine` to `LaneState`, `RavelAudioProcessor`, `Voice`, `MpeChannelSlot`, `PitchResult`, `SequencerEngine.cpp`, `Snapshot`, `LaneSnapshot`, `EngineTests.cpp`, `int64_t`?**
   _High betweenness centrality (0.199) - this node is a cross-community bridge._
 - **What connects `name`, `page`, `bounds` to the rest of the system?**
-  _240 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _232 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `PresetManager` be split into smaller, more focused modules?**
   _Cohesion score 0.07622504537205081 - nodes in this community are weakly interconnected._
 - **Should `build-macos CI job` be split into smaller, more focused modules?**
   _Cohesion score 0.05194805194805195 - nodes in this community are weakly interconnected._
 - **Should `RavelAudioProcessorEditor` be split into smaller, more focused modules?**
-  _Cohesion score 0.03571428571428571 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.05714285714285714 - nodes in this community are weakly interconnected._
