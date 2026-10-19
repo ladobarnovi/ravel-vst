@@ -1,5 +1,7 @@
 #include "UndoHistory.h"
 
+#include "Parameters.h"
+
 UndoHistory::UndoHistory (juce::AudioProcessor& processorToTrack)
     : processor (processorToTrack)
 {
@@ -114,9 +116,7 @@ void UndoHistory::restore (const Snapshot& snapshot)
 
         // Gestures so the write reads to the host as a deliberate edit, the same as the one
         // being undone did -- which is also what lets the host's own undo see it.
-        parameter->beginChangeGesture();
-        parameter->setValueNotifyingHost (target);
-        parameter->endChangeGesture();
+        params::writeWithGesture (*parameter, target);
     }
 }
 

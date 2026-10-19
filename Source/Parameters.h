@@ -179,7 +179,19 @@ inline constexpr auto mpeEnabledId   = "mpe_on";
 inline constexpr auto noteLaneCountId = "note_lane_count";
 inline constexpr auto ccLaneCountId   = "cc_lane_count";
 
+// Not parameters: plain properties on the state tree beside them, saved with the session but
+// never automated or recalled through undo. PresetManager strips them back out of a preset.
+inline constexpr auto externalMidiDeviceKey = "externalMidiDevice";
+inline constexpr auto editorWidthKey        = "editorWidth";
+inline constexpr auto editorHeightKey       = "editorHeight";
+
 juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+
+//==============================================================================
+/** Writes a normalised value the way an edit from the editor does: inside a change gesture,
+    so the host records it as a deliberate edit and UndoHistory captures the value it
+    replaces. Every write the plugin makes on the user's behalf goes through here. */
+void writeWithGesture (juce::AudioProcessorParameter& parameter, float normalised);
 
 //==============================================================================
 // Pattern actions. These live here rather than in the button callbacks so they go

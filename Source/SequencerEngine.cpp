@@ -24,18 +24,30 @@ namespace
         return x ^ (x >> 31);
     }
 
+    /** A repeatable hash of one lane's position on the timeline. The salt keeps draws that
+        share a position -- a step's direction, its probability roll, its Spread -- independent
+        of each other. */
+    std::uint64_t hashPosition (std::int64_t globalIndex, int laneIndex, std::uint64_t salt) noexcept
+    {
+        return splitmix64 ((std::uint64_t) globalIndex * 0x9E3779B97F4A7C15ull
+                           + (std::uint64_t) (laneIndex + 1) * 0xD1B54A32D192ED03ull
+                           + salt * 0xA24BAED4963EE407ull);
+    }
+
     /** Deterministic 0..1 draw from a timeline position. Used for probability and
         humanize, so both are functions of *where* you are rather than of a running RNG --
         a loop replays identically instead of drifting.
     */
     float hashToUnitFloat (std::int64_t globalIndex, int laneIndex, std::uint64_t salt) noexcept
     {
-        const auto h = splitmix64 ((std::uint64_t) globalIndex * 0x9E3779B97F4A7C15ull
-                                   + (std::uint64_t) (laneIndex + 1) * 0xD1B54A32D192ED03ull
-                                   + salt * 0xA24BAED4963EE407ull);
-
-        return (float) ((double) (h >> 11) / 9007199254740992.0);   // 2^53
+        return (float) ((double) (hashPosition (globalIndex, laneIndex, salt) >> 11)
+                          / 9007199254740992.0);   // 2^53
     }
+
+    /** Zero, because the Random direction predates the salt: it hashed the position alone,
+        which is exactly what a zero salt adds up to. Any other value would change the order
+        every saved Random pattern plays in. */
+    constexpr std::uint64_t directionSalt = 0;
 
     constexpr std::uint64_t probabilitySalt = 31;
 
@@ -204,11 +216,7 @@ int SequencerEngine::stepIndexFor (std::int64_t globalIndex, int length, int dir
         }
 
         case 3: // Random
-        {
-            const auto h = splitmix64 ((std::uint64_t) globalIndex * 0x9E3779B97F4A7C15ull
-                                       + (std::uint64_t) (laneIndex + 1) * 0xD1B54A32D192ED03ull);
-            return (int) (h % (std::uint64_t) length);
-        }
+            return (int) (hashPosition (globalIndex, laneIndex, directionSalt) % (std::uint64_t) length);
 
         default:
             return (int) positiveMod (globalIndex, length);
@@ -543,6 +551,99 @@ void SequencerEngine::startNote (juce::MidiBuffer& out, int sampleOffset, const 
 }
 
 //==============================================================================
+void SequencerEngine::configurePitchBend (juce::MidiBuffer& out, const Snapshot& s,
+                                         int noteChannel, int bendRange)
+{
+    // Pitch rides on the wheel whenever it can land between semitones: in continuous mode
+    // always, and in quantized mode when the scale divides the octave into something other
+    // than 12.
+    const bool wantsBend  = ! s.quantize || params::scaleNeedsBend (s.scale);
+    const int  wantedMode = wantsBend ? 0 : 1;
+
+    // The receiving instrument has to be told the bend range: an instrument left at its own
+    // default while we scale for +/-2 semitones plays the wrong interval.
+    if (! s.mpeEnabled)
+    {
+        const bool changed = configuredMode != wantedMode
+                          || configuredBendRange != bendRange
+                          || configuredChannel != noteChannel;
+
+        if (changed)
+        {
+            if (wantsBend)
+            {
+                sendPitchBendRange (out, 0, noteChannel, bendRange);
+            }
+            else if (configuredMode == 0)
+            {
+                // Leaving a mode that bends -- Quantize turned back on, or a switch from a
+                // microtonal scale to a 12-EDO one. The channel is still holding whatever
+                // bend the last note set, and nothing in this mode ever writes the wheel
+                // again, so every note that follows would play detuned by that leftover
+                // amount. Centre it on the channel the bends actually went to.
+                const int staleChannel = configuredChannel >= 1 ? configuredChannel : noteChannel;
+
+                out.addEvent (juce::MidiMessage::pitchWheel (staleChannel, params::pitchBendCentre), 0);
+            }
+
+            configuredMode      = wantedMode;
+            configuredBendRange = bendRange;
+            configuredChannel   = noteChannel;
+        }
+    }
+    else
+    {
+        if (! configuredMpeOn)
+        {
+            addRpn (out, 0, mpeMasterChannel, params::mpeConfigurationRpn, mpeMemberChannels);
+            configuredMpeOn = true;
+
+            // A fresh zone announcement means the receiver's per-channel state is unknown,
+            // so force everything below to re-prime instead of trusting whatever these held
+            // from the last time MPE was on.
+            configuredMpeWantedMode = -1;
+            configuredMpeBendRange  = -1;
+        }
+
+        const bool changed = configuredMpeWantedMode != wantedMode
+                          || configuredMpeBendRange   != bendRange;
+
+        if (changed)
+        {
+            if (wantedMode == 1 && configuredMpeWantedMode == 0)
+            {
+                // Leaving a mode that bends -- recentre the whole zone. Cheap (16 messages,
+                // no allocation) and simpler than tracking exactly which member channels a
+                // bend was ever written to.
+                out.addEvent (juce::MidiMessage::pitchWheel (mpeMasterChannel, params::pitchBendCentre), 0);
+
+                for (int i = 0; i < mpeMemberChannels; ++i)
+                    out.addEvent (juce::MidiMessage::pitchWheel (mpeMemberChannelBase + i,
+                                                                  params::pitchBendCentre), 0);
+            }
+
+            configuredMpeWantedMode = wantedMode;
+            configuredMpeBendRange  = bendRange;
+
+            // The zone's range, announced where the zone itself was announced. Strictly, MPE
+            // sets the member range from any *member* channel -- which is what startNote()
+            // does, lazily, the first time each channel is used -- and the master
+            // channel's own range is a separate parameter. But a receiver that takes RPN 0 on
+            // the master as the zone's range is common enough, and the ones that ignore
+            // per-member RPN 0 entirely are exactly the ones that strand us at the MPE
+            // default of +/-48 while we scale for something else. Four messages, once per
+            // range change, buys agreement with both readings.
+            sendPitchBendRange (out, 0, mpeMasterChannel, bendRange);
+
+            // The member channels get theirs lazily, the first time each is actually used --
+            // see startNote(). Most patterns never touch more than a few.
+            for (auto& mc : mpeChannels)
+                mc.rangeSent = false;
+        }
+    }
+}
+
+//==============================================================================
 void SequencerEngine::process (const Snapshot& s,
                                juce::MidiBuffer& out,
                                int numSamples,
@@ -593,96 +694,8 @@ void SequencerEngine::process (const Snapshot& s,
     const int noteChannel = juce::jlimit (1, 16, s.midiChannel);
     const int bendRange   = juce::jlimit (1, 48, s.bendRange);
 
-    // Pitch rides on the wheel whenever it can land between semitones: in continuous mode
-    // always, and in quantized mode when the scale divides the octave into something other
-    // than 12.
-    const bool wantsBend = ! s.quantize || params::scaleNeedsBend (s.scale);
+    configurePitchBend (out, s, noteChannel, bendRange);
 
-    // The receiving instrument has to be told the bend range: an instrument left at its own
-    // default while we scale for +/-2 semitones plays the wrong interval.
-    if (! s.mpeEnabled)
-    {
-        const int wantedMode = wantsBend ? 0 : 1;
-
-        const bool changed = configuredMode != wantedMode
-                          || configuredBendRange != bendRange
-                          || configuredChannel != noteChannel;
-
-        if (changed)
-        {
-            if (wantsBend)
-            {
-                sendPitchBendRange (out, 0, noteChannel, bendRange);
-            }
-            else if (configuredMode == 0)
-            {
-                // Leaving a mode that bends -- Quantize turned back on, or a switch from a
-                // microtonal scale to a 12-EDO one. The channel is still holding whatever
-                // bend the last note set, and nothing in this mode ever writes the wheel
-                // again, so every note that follows would play detuned by that leftover
-                // amount. Centre it on the channel the bends actually went to.
-                const int staleChannel = configuredChannel >= 1 ? configuredChannel : noteChannel;
-
-                out.addEvent (juce::MidiMessage::pitchWheel (staleChannel, params::pitchBendCentre), 0);
-            }
-
-            configuredMode      = wantedMode;
-            configuredBendRange = bendRange;
-            configuredChannel   = noteChannel;
-        }
-    }
-    else
-    {
-        const int wantedMode = wantsBend ? 0 : 1;
-
-        if (! configuredMpeOn)
-        {
-            addRpn (out, 0, mpeMasterChannel, params::mpeConfigurationRpn, mpeMemberChannels);
-            configuredMpeOn = true;
-
-            // A fresh zone announcement means the receiver's per-channel state is unknown,
-            // so force everything below to re-prime instead of trusting whatever these held
-            // from the last time MPE was on.
-            configuredMpeWantedMode = -1;
-            configuredMpeBendRange  = -1;
-        }
-
-        const bool changed = configuredMpeWantedMode != wantedMode
-                          || configuredMpeBendRange   != bendRange;
-
-        if (changed)
-        {
-            if (wantedMode == 1 && configuredMpeWantedMode == 0)
-            {
-                // Leaving a mode that bends -- recentre the whole zone. Cheap (16 messages,
-                // no allocation) and simpler than tracking exactly which member channels a
-                // bend was ever written to.
-                out.addEvent (juce::MidiMessage::pitchWheel (mpeMasterChannel, params::pitchBendCentre), 0);
-
-                for (int i = 0; i < mpeMemberChannels; ++i)
-                    out.addEvent (juce::MidiMessage::pitchWheel (mpeMemberChannelBase + i,
-                                                                  params::pitchBendCentre), 0);
-            }
-
-            configuredMpeWantedMode = wantedMode;
-            configuredMpeBendRange  = bendRange;
-
-            // The zone's range, announced where the zone itself was announced. Strictly, MPE
-            // sets the member range from any *member* channel -- which is what startNote()
-            // does below, lazily, the first time each channel is used -- and the master
-            // channel's own range is a separate parameter. But a receiver that takes RPN 0 on
-            // the master as the zone's range is common enough, and the ones that ignore
-            // per-member RPN 0 entirely are exactly the ones that strand us at the MPE
-            // default of +/-48 while we scale for something else. Four messages, once per
-            // range change, buys agreement with both readings.
-            sendPitchBendRange (out, 0, mpeMasterChannel, bendRange);
-
-            // The member channels get theirs lazily, the first time each is actually used --
-            // see startNote(). Most patterns never touch more than a few.
-            for (auto& mc : mpeChannels)
-                mc.rangeSent = false;
-        }
-    }
     // One-pole slew coefficient, computed per block rather than per sample. Shared by the
     // Mix CC and every CC lane's own tap -- Slew never touches pitch.
     const float slewCoeff = s.slewMs <= 0.01f
@@ -814,26 +827,15 @@ void SequencerEngine::process (const Snapshot& s,
     // by the difference: the sum has to land on the same float it used to, and floating-point
     // addition does not associate. Skipping a silent lane rather than adding its zero is part
     // of that -- it is what the per-sample loop did.
-    const auto foldNoteLanes = [&]
+    const auto fold = [] (const auto& runs, float offset)
     {
         float accumulator = 0.0f;
 
-        for (const auto& run : noteRuns)
+        for (const auto& run : runs)
             if (run.stepOn)
                 accumulator += run.contribution;
 
-        return juce::jlimit (0.0f, 1.0f, accumulator);
-    };
-
-    const auto foldCcLanes = [&]
-    {
-        float accumulator = 0.0f;
-
-        for (const auto& run : ccRuns)
-            if (run.stepOn)
-                accumulator += run.contribution;
-
-        return juce::jlimit (0.0f, 1.0f, accumulator + s.ccOffset);
+        return juce::jlimit (0.0f, 1.0f, accumulator + offset);
     };
 
     float noteMix = 0.0f;
@@ -926,7 +928,7 @@ void SequencerEngine::process (const Snapshot& s,
         }
 
         if (noteLanesMoved)
-            noteMix = foldNoteLanes();
+            noteMix = fold (noteRuns, 0.0f);
 
         //----------------------------------------------------------------------
         // CC-lane fold. Same shape as the note-lane fold above -- each active step adds its
@@ -952,7 +954,7 @@ void SequencerEngine::process (const Snapshot& s,
         }
 
         if (ccLanesMoved)
-            ccMix = foldCcLanes();
+            ccMix = fold (ccRuns, s.ccOffset);
 
         slewedValue += (ccMix - slewedValue) * slewCoeff;
 

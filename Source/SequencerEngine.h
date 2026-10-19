@@ -275,6 +275,12 @@ private:
     */
     void sendPitchBendRange (juce::MidiBuffer& out, int sampleOffset, int channel, int bendRange);
 
+    /** Tells the receiver what it needs to read this block's pitch bends: the bend range, the
+        MPE zone, and a recentred wheel when leaving a mode that bends. Writes only when the
+        mode, range or channel has changed since the last block -- see the configured* fields
+        below -- so a steady patch costs nothing here. */
+    void configurePitchBend (juce::MidiBuffer& out, const Snapshot& s, int noteChannel, int bendRange);
+
     struct LaneState
     {
         std::int64_t lastGlobalIndex = std::numeric_limits<std::int64_t>::min();

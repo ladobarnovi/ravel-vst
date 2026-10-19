@@ -298,7 +298,7 @@ void RavelAudioProcessor::setStateInformation (const void* data, int sizeInBytes
             // session was saved. A missing or now-absent identifier (a fresh instance, or a
             // loopMIDI port that doesn't exist on this machine) just leaves it closed --
             // openDevice() already handles that by returning nullptr.
-            externalMidiOutput.setDevice (apvts.state.getProperty ("externalMidiDevice", "").toString());
+            externalMidiOutput.setDevice (apvts.state.getProperty (params::externalMidiDeviceKey, "").toString());
         }
     }
 }

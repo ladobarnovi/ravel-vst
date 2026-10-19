@@ -184,8 +184,8 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
     // rather than as a parameter: it's UI state, not something a host should automate or
     // recall through undo. Absent on a session saved before this existed, in which case the
     // 100% size applyNoteLaneCount() just set is already correct.
-    const int savedWidth  = (int) state.state.getProperty ("editorWidth",  0);
-    const int savedHeight = (int) state.state.getProperty ("editorHeight", 0);
+    const int savedWidth  = (int) state.state.getProperty (params::editorWidthKey,  0);
+    const int savedHeight = (int) state.state.getProperty (params::editorHeightKey, 0);
 
     if (savedWidth > 0 && savedHeight > 0)
     {
@@ -348,14 +348,10 @@ void RavelAudioProcessorEditor::setLaneCount (params::LaneKind kind, int newCoun
 {
     newCount = juce::jlimit (1, params::numLanes, newCount);
 
+    // Through the parameter rather than straight into the member, so the host records it as
+    // an edit and can automate and undo it like anything else.
     if (auto* parameter = processorRef.apvts.getParameter (params::laneCountIdFor (kind)))
-    {
-        // Through the parameter rather than straight into the member, so the host records
-        // it as an edit and can automate and undo it like anything else.
-        parameter->beginChangeGesture();
-        parameter->setValueNotifyingHost (parameter->convertTo0to1 ((float) newCount));
-        parameter->endChangeGesture();
-    }
+        params::writeWithGesture (*parameter, parameter->convertTo0to1 ((float) newCount));
 
     applyLaneCount (kind, newCount);
 }
@@ -481,8 +477,8 @@ void RavelAudioProcessorEditor::storeEditorSize()
 
     // Persisted as plain state-tree properties (see the restore in the constructor) so the
     // window reopens at the size it was left, not back at 100%.
-    processorRef.apvts.state.setProperty ("editorWidth",  getWidth(),  nullptr);
-    processorRef.apvts.state.setProperty ("editorHeight", getHeight(), nullptr);
+    processorRef.apvts.state.setProperty (params::editorWidthKey,  getWidth(),  nullptr);
+    processorRef.apvts.state.setProperty (params::editorHeightKey, getHeight(), nullptr);
 }
 
 void RavelAudioProcessorEditor::layoutWorkspace (Stack& stack)

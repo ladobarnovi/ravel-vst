@@ -1,5 +1,7 @@
 #include "PresetManager.h"
 
+#include "Parameters.h"
+
 #include <algorithm>
 #include <iterator>
 
@@ -24,7 +26,7 @@ namespace
     // machine and the window; the two above describe which preset this instance is sitting
     // on, which is the session's business and not the patch's. See PresetManager.h.
     const juce::Identifier nonPatchProperties[]
-        { "externalMidiDevice", "editorWidth", "editorHeight",
+        { params::externalMidiDeviceKey, params::editorWidthKey, params::editorHeightKey,
           sessionPresetPath, sessionPresetDirty };
 }
 
@@ -227,9 +229,7 @@ void PresetManager::applyValues (const std::map<juce::String, float>& plainValue
         // Gestures, so the write reads to the host and to UndoHistory as a deliberate edit.
         // See the class comment for why this is the whole reason we are not using
         // replaceState().
-        parameter->beginChangeGesture();
-        parameter->setValueNotifyingHost (target);
-        parameter->endChangeGesture();
+        params::writeWithGesture (*parameter, target);
     }
 
     applying.store (false);

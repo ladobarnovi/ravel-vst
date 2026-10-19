@@ -393,17 +393,19 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
 }
 
 //==============================================================================
+void writeWithGesture (juce::AudioProcessorParameter& parameter, float normalised)
+{
+    parameter.beginChangeGesture();
+    parameter.setValueNotifyingHost (normalised);
+    parameter.endChangeGesture();
+}
+
 namespace
 {
     void setParam (juce::AudioProcessorValueTreeState& state, const juce::String& paramID, float value)
     {
         if (auto* parameter = state.getParameter (paramID))
-        {
-            // Gestures so hosts treat each write as a deliberate automation edit.
-            parameter->beginChangeGesture();
-            parameter->setValueNotifyingHost (parameter->convertTo0to1 (value));
-            parameter->endChangeGesture();
-        }
+            writeWithGesture (*parameter, parameter->convertTo0to1 (value));
     }
 
     float getParam (juce::AudioProcessorValueTreeState& state, const juce::String& paramID)
@@ -421,11 +423,7 @@ namespace
                              float normalised)
     {
         if (auto* parameter = state.getParameter (paramID))
-        {
-            parameter->beginChangeGesture();
-            parameter->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, normalised));
-            parameter->endChangeGesture();
-        }
+            writeWithGesture (*parameter, juce::jlimit (0.0f, 1.0f, normalised));
     }
 
     float getParamNormalised (juce::AudioProcessorValueTreeState& state, const juce::String& paramID)
@@ -598,12 +596,8 @@ namespace
             auto* source = state.getParameter (sourceIds[(size_t) i]);
             auto* target = state.getParameter (targetIds[(size_t) i]);
 
-            if (source == nullptr || target == nullptr)
-                continue;
-
-            target->beginChangeGesture();
-            target->setValueNotifyingHost (source->getValue());
-            target->endChangeGesture();
+            if (source != nullptr && target != nullptr)
+                writeWithGesture (*target, source->getValue());
         }
     }
 
@@ -615,14 +609,8 @@ namespace
     void resetLaneParameters (juce::AudioProcessorValueTreeState& state, int lane, LaneKind kind)
     {
         for (const auto& id : laneParameterIds (lane, kind))
-        {
             if (auto* parameter = state.getParameter (id))
-            {
-                parameter->beginChangeGesture();
-                parameter->setValueNotifyingHost (parameter->getDefaultValue());
-                parameter->endChangeGesture();
-            }
-        }
+                writeWithGesture (*parameter, parameter->getDefaultValue());
     }
 
 }

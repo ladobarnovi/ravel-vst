@@ -39,7 +39,7 @@ ExternalMidiSelector::ExternalMidiSelector (RavelAudioProcessor& processor)
 
         // Plain state-tree property rather than an APVTS parameter -- see this class's own
         // header -- restored in PluginProcessor::setStateInformation.
-        processorRef.apvts.state.setProperty ("externalMidiDevice", identifier, nullptr);
+        processorRef.apvts.state.setProperty (params::externalMidiDeviceKey, identifier, nullptr);
     };
 
     addAndMakeVisible (box);
