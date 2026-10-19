@@ -79,7 +79,7 @@ juce::String ExternalMidiOutput::getCurrentDeviceIdentifier() const
 }
 
 //==============================================================================
-void ExternalMidiOutput::pushMessage (const juce::uint8* data, int numBytes)
+void ExternalMidiOutput::pushMessage (const juce::uint8* data, int numBytes, double sendAtMs)
 {
     if (! deviceOpen.load (std::memory_order_acquire))
         return;
@@ -101,7 +101,8 @@ void ExternalMidiOutput::pushMessage (const juce::uint8* data, int numBytes)
 
     auto& event = queue[(size_t) index];
     std::memcpy (event.data, data, (size_t) numBytes);
-    event.length = (uint8_t) numBytes;
+    event.length   = (uint8_t) numBytes;
+    event.sendAtMs = sendAtMs;
 
     wakeUp.signal();
 }
@@ -109,40 +110,47 @@ void ExternalMidiOutput::pushMessage (const juce::uint8* data, int numBytes)
 //==============================================================================
 void ExternalMidiOutput::run()
 {
+    // Never more than this between checks of threadShouldExit() while idle.
+    constexpr int pollMs = 50;
+
     while (! threadShouldExit())
     {
-        // Normally this sleeps until pushMessage() signals it; the timeout is only a safety
-        // net against a signal landing in the instant before wait() is called.
-        wakeUp.wait (50);
+        int start1, size1, start2, size2;
+        fifo.prepareToRead (1, start1, size1, start2, size2);
 
-        // Checked here as well as at the top: the wait above is what the destructor signals,
-        // and draining a queue nobody is listening to only delays the close.
-        if (threadShouldExit())
-            break;
-
-        const auto scope = fifo.read (fifo.getNumReady());
-
-        auto sendRange = [this] (int start, int count)
+        if (size1 + size2 == 0)
         {
-            for (int i = 0; i < count; ++i)
-            {
-                // Taken per message rather than once around the whole range. setDevice() has
-                // to wait for this lock, and holding it across a run of driver calls made
-                // changing the port stall the UI for as long as the queue was deep.
-                const juce::ScopedLock sl (deviceLock);
+            // Nothing queued: sleep until pushMessage() signals. The timeout is only a safety
+            // net against a signal landing in the instant before wait() is called.
+            wakeUp.wait (pollMs);
+            continue;
+        }
 
-                if (device == nullptr)
-                    return;
+        const auto& event = queue[(size_t) (size1 > 0 ? start1 : start2)];
+        const double dueInMs = event.sendAtMs - juce::Time::getMillisecondCounterHiRes();
 
-                const auto& event = queue[(size_t) (start + i)];
+        if (dueInMs >= 1.0)
+        {
+            // Not due yet. wait() takes whole milliseconds and rounds this down, so the send
+            // lands within about a millisecond of its time -- JUCE raises the Windows timer
+            // resolution to 1 ms (timeBeginPeriod) the first time the hi-res counter is read,
+            // which is what keeps a 1 ms wait from being a 15.6 ms one. A push in the meantime
+            // wakes this early, which is harmless: the head of the queue is checked again.
+            // ponytail: ~1 ms send granularity; spin the last millisecond if that is ever audible.
+            wakeUp.wait (juce::jmin ((int) dueInMs, pollMs));
+            continue;
+        }
+
+        {
+            // Taken per message rather than around a run of them. setDevice() has to wait for
+            // this lock, and holding it across a run of driver calls made changing the port
+            // stall the UI for as long as the queue was deep.
+            const juce::ScopedLock sl (deviceLock);
+
+            if (device != nullptr)
                 device->sendMessageNow (juce::MidiMessage (event.data, (int) event.length));
-            }
-        };
+        }
 
-        if (scope.blockSize1 > 0)
-            sendRange (scope.startIndex1, scope.blockSize1);
-
-        if (scope.blockSize2 > 0)
-            sendRange (scope.startIndex2, scope.blockSize2);
+        fifo.finishedRead (1);
     }
 }

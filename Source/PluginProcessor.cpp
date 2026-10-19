@@ -245,8 +245,17 @@ void RavelAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::
     // the buffer above -- the host still gets every event exactly as before, so leaving the
     // track's own "MIDI To" disconnected in Ableton is what actually makes this the only path
     // an event takes, not anything this plugin decides on its own.
+    //
+    // Each event is held back by one block plus its offset into this one (see
+    // ExternalMidiOutput::sendTimeMs), so the port gets a steady delay rather than a whole
+    // block's worth of events at once. getBlockSize() rather than numSamples: the delay has to
+    // stay the same when the host hands over a short block, or the timing would wobble anyway.
+    const double blockStartMs = juce::Time::getMillisecondCounterHiRes();
+
     for (const auto metadata : midiMessages)
-        externalMidiOutput.pushMessage (metadata.data, metadata.numBytes);
+        externalMidiOutput.pushMessage (metadata.data, metadata.numBytes,
+                                        ExternalMidiOutput::sendTimeMs (blockStartMs, metadata.samplePosition,
+                                                                        sampleRate, getBlockSize()));
 }
 
 //==============================================================================

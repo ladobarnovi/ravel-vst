@@ -327,7 +327,7 @@
       "file_type": "code",
       "norm_label": "watched",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L247"
+      "source_location": "L249"
     },
     {
       "id": "tests_processortests_mockplayhead",
@@ -470,7 +470,7 @@
       "file_type": "code",
       "norm_label": "queuedevent",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L54"
+      "source_location": "L80"
     },
     {
       "id": "source_presetmanager_entry_isfolder",
@@ -1230,7 +1230,7 @@
       "file_type": "code",
       "norm_label": "juce_calltype createpluginfilter()",
       "source_file": "Source/PluginProcessor.cpp",
-      "source_location": "L298"
+      "source_location": "L307"
     },
     {
       "id": "source_controls_getselectedindex",
@@ -1843,6 +1843,40 @@
       "norm_label": "main()",
       "source_file": "Tests/ProcessorTests.cpp",
       "source_location": "L151"
+    },
+    {
+      "id": "tests_processortests_runprocessor",
+      "label": "runProcessor()",
+      "_callable": true,
+      "_origin": "ast",
+      "community": 26,
+      "community_name": "main",
+      "file_type": "code",
+      "metadata": {
+        "unresolved_calls": [
+          {
+            "callee": "clear",
+            "receiver_type": "AudioBuffer<float>",
+            "lang": "cpp",
+            "line": "L82"
+          },
+          {
+            "callee": "clear",
+            "receiver_type": "MidiBuffer",
+            "lang": "cpp",
+            "line": "L83"
+          },
+          {
+            "callee": "getArrayOfWritePointers",
+            "receiver_type": "AudioBuffer<float>",
+            "lang": "cpp",
+            "line": "L88"
+          }
+        ]
+      },
+      "norm_label": "runprocessor()",
+      "source_file": "Tests/ProcessorTests.cpp",
+      "source_location": "L60"
     },
     {
       "id": "tests_processortests_section",
@@ -2612,7 +2646,7 @@
       "file_type": "code",
       "norm_label": ".changed()",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L257"
+      "source_location": "L259"
     },
     {
       "id": "source_lanecomponent_lanecomponent_setlayer",
@@ -2699,38 +2733,16 @@
       "source_location": "L43"
     },
     {
-      "id": "tests_processortests_runprocessor",
-      "label": "runProcessor()",
+      "id": "source_externalmidioutput_externalmidioutput_sendtimems",
+      "label": ".sendTimeMs()",
       "_callable": true,
       "_origin": "ast",
-      "community": 33,
-      "community_name": "MockPlayHead",
+      "community": 34,
+      "community_name": "processBlock",
       "file_type": "code",
-      "metadata": {
-        "unresolved_calls": [
-          {
-            "callee": "clear",
-            "receiver_type": "AudioBuffer<float>",
-            "lang": "cpp",
-            "line": "L82"
-          },
-          {
-            "callee": "clear",
-            "receiver_type": "MidiBuffer",
-            "lang": "cpp",
-            "line": "L83"
-          },
-          {
-            "callee": "getArrayOfWritePointers",
-            "receiver_type": "AudioBuffer<float>",
-            "lang": "cpp",
-            "line": "L88"
-          }
-        ]
-      },
-      "norm_label": "runprocessor()",
-      "source_file": "Tests/ProcessorTests.cpp",
-      "source_location": "L60"
+      "norm_label": ".sendtimems()",
+      "source_file": "Source/ExternalMidiOutput.h",
+      "source_location": "L54"
     },
     {
       "id": "source_lanecomponent_lanecomponent_paint",
@@ -4552,7 +4564,7 @@
       "source_location": ""
     },
     {
-      "id": "source_presetbar_h_vector",
+      "id": "source_externalmidioutput_h_vector",
       "label": "vector",
       "_origin": "ast",
       "community": 10,
@@ -5557,6 +5569,17 @@
       "source_location": ""
     },
     {
+      "id": "source_presetbar_h_vector",
+      "label": "vector",
+      "_origin": "ast",
+      "community": 15,
+      "community_name": "PresetBar",
+      "file_type": "code",
+      "norm_label": "vector",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
       "id": "source_presetbar_presetbar_applieddirty",
       "label": "appliedDirty",
       "_origin": "ast",
@@ -5821,30 +5844,30 @@
       "source_location": "L73"
     },
     {
-      "id": "source_pluginprocessor_ravelaudioprocessor_processblock",
-      "label": "processBlock",
-      "_origin": "ast",
-      "community": 17,
-      "community_name": "PluginProcessor.cpp",
-      "definition_file": "Source/PluginProcessor.cpp",
-      "definition_location": "L188",
-      "file_type": "code",
-      "norm_label": "processblock",
-      "source_file": "Source/PluginProcessor.h",
-      "source_location": "L20"
-    },
-    {
       "id": "source_pluginprocessor_ravelaudioprocessor_createeditor",
       "label": "createEditor",
       "_origin": "ast",
       "community": 17,
       "community_name": "PluginProcessor.cpp",
       "definition_file": "Source/PluginProcessor.cpp",
-      "definition_location": "L253",
+      "definition_location": "L262",
       "file_type": "code",
       "norm_label": "createeditor",
       "source_file": "Source/PluginProcessor.h",
       "source_location": "L23"
+    },
+    {
+      "id": "source_pluginprocessor_ravelaudioprocessor_getstateinformation",
+      "label": "getStateInformation",
+      "_origin": "ast",
+      "community": 17,
+      "community_name": "PluginProcessor.cpp",
+      "definition_file": "Source/PluginProcessor.cpp",
+      "definition_location": "L267",
+      "file_type": "code",
+      "norm_label": "getstateinformation",
+      "source_file": "Source/PluginProcessor.h",
+      "source_location": "L39"
     },
     {
       "id": "source_pluginprocessor_ravelaudioprocessor_setstateinformation",
@@ -5853,7 +5876,7 @@
       "community": 17,
       "community_name": "PluginProcessor.cpp",
       "definition_file": "Source/PluginProcessor.cpp",
-      "definition_location": "L268",
+      "definition_location": "L277",
       "file_type": "code",
       "norm_label": "setstateinformation",
       "source_file": "Source/PluginProcessor.h",
@@ -5912,30 +5935,6 @@
       "source_location": "L19"
     },
     {
-      "id": "source_pluginprocessor_ravelaudioprocessor_buildsnapshot",
-      "label": "buildSnapshot",
-      "_origin": "ast",
-      "community": 17,
-      "community_name": "PluginProcessor.cpp",
-      "definition_file": "Source/PluginProcessor.cpp",
-      "definition_location": "L96",
-      "file_type": "code",
-      "norm_label": "buildsnapshot",
-      "source_file": "Source/PluginProcessor.h",
-      "source_location": "L95"
-    },
-    {
-      "id": "audiobuffer",
-      "label": "AudioBuffer",
-      "_origin": "ast",
-      "community": 17,
-      "community_name": "PluginProcessor.cpp",
-      "file_type": "code",
-      "norm_label": "audiobuffer",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
       "id": "buseslayout",
       "label": "BusesLayout",
       "_origin": "ast",
@@ -5943,6 +5942,17 @@
       "community_name": "PluginProcessor.cpp",
       "file_type": "code",
       "norm_label": "buseslayout",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "memoryblock",
+      "label": "MemoryBlock",
+      "_origin": "ast",
+      "community": 17,
+      "community_name": "PluginProcessor.cpp",
+      "file_type": "code",
+      "norm_label": "memoryblock",
       "source_file": "",
       "source_location": ""
     },
@@ -5965,17 +5975,6 @@
       "community_name": "PluginProcessor.cpp",
       "file_type": "code",
       "norm_label": "audioprocessoreditor",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
-      "id": "source_pluginprocessor_cpp_midibuffer",
-      "label": "MidiBuffer",
-      "_origin": "ast",
-      "community": 17,
-      "community_name": "PluginProcessor.cpp",
-      "file_type": "code",
-      "norm_label": "midibuffer",
       "source_file": "",
       "source_location": ""
     },
@@ -6579,7 +6578,7 @@
       "file_type": "code",
       "norm_label": "appliedcclanecolumns",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L238"
+      "source_location": "L240"
     },
     {
       "id": "source_plugineditor_ravelaudioprocessoreditor_bendrangerow",
@@ -6590,7 +6589,7 @@
       "file_type": "code",
       "norm_label": "bendrangerow",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L217"
+      "source_location": "L218"
     },
     {
       "id": "source_plugineditor_ravelaudioprocessoreditor_cclanecolumns",
@@ -6601,7 +6600,7 @@
       "file_type": "code",
       "norm_label": "cclanecolumns",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L237"
+      "source_location": "L239"
     },
     {
       "id": "source_plugineditor_ravelaudioprocessoreditor_content",
@@ -6656,7 +6655,7 @@
       "file_type": "code",
       "norm_label": "externalmidiselector",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L275"
+      "source_location": "L277"
     },
     {
       "id": "source_plugineditor_ravelaudioprocessoreditor_lastoutputtab",
@@ -6689,7 +6688,7 @@
       "file_type": "code",
       "norm_label": "mpeenabled",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L270"
+      "source_location": "L272"
     },
     {
       "id": "source_plugineditor_ravelaudioprocessoreditor_nativecontentheight",
@@ -6711,7 +6710,7 @@
       "file_type": "code",
       "norm_label": "notechannelrow",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L221"
+      "source_location": "L222"
     },
     {
       "id": "source_plugineditor_ravelaudioprocessoreditor_outputtabs",
@@ -6733,7 +6732,7 @@
       "file_type": "code",
       "norm_label": "pitchscale",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L270"
+      "source_location": "L272"
     },
     {
       "id": "source_plugineditor_ravelaudioprocessoreditor_polymode",
@@ -6744,7 +6743,7 @@
       "file_type": "code",
       "norm_label": "polymode",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L270"
+      "source_location": "L272"
     },
     {
       "id": "source_plugineditor_ravelaudioprocessoreditor_presetbar",
@@ -6766,7 +6765,7 @@
       "file_type": "code",
       "norm_label": "quantize",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L270"
+      "source_location": "L272"
     },
     {
       "id": "source_plugineditor_ravelaudioprocessoreditor_redobutton",
@@ -6788,7 +6787,7 @@
       "file_type": "code",
       "norm_label": "scalerow",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L216"
+      "source_location": "L217"
     },
     {
       "id": "source_plugineditor_ravelaudioprocessoreditor_sizeconstrainer",
@@ -6832,7 +6831,7 @@
       "file_type": "code",
       "norm_label": "triggerrow",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L218"
+      "source_location": "L219"
     },
     {
       "id": "source_plugineditor_ravelaudioprocessoreditor_undobutton",
@@ -7534,30 +7533,6 @@
       "source_location": "L62"
     },
     {
-      "id": "source_pluginprocessor_ravelaudioprocessor_getstateinformation",
-      "label": "getStateInformation",
-      "_origin": "ast",
-      "community": 26,
-      "community_name": "main",
-      "definition_file": "Source/PluginProcessor.cpp",
-      "definition_location": "L258",
-      "file_type": "code",
-      "norm_label": "getstateinformation",
-      "source_file": "Source/PluginProcessor.h",
-      "source_location": "L39"
-    },
-    {
-      "id": "memoryblock",
-      "label": "MemoryBlock",
-      "_origin": "ast",
-      "community": 26,
-      "community_name": "main",
-      "file_type": "code",
-      "norm_label": "memoryblock",
-      "source_file": "",
-      "source_location": ""
-    },
-    {
       "id": "tests_processortests",
       "label": "ProcessorTests.cpp",
       "_origin": "ast",
@@ -8016,7 +7991,7 @@
       "file_type": "code",
       "norm_label": "last",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L253"
+      "source_location": "L255"
     },
     {
       "id": "source_plugineditor_watched_param",
@@ -8027,7 +8002,7 @@
       "file_type": "code",
       "norm_label": "param",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L249"
+      "source_location": "L251"
     },
     {
       "id": "source_plugineditor_ravelaudioprocessoreditor_layoutworkspace",
@@ -8133,6 +8108,54 @@
       "norm_label": "info",
       "source_file": "Tests/ProcessorTests.cpp",
       "source_location": "L44"
+    },
+    {
+      "id": "source_pluginprocessor_ravelaudioprocessor_processblock",
+      "label": "processBlock",
+      "_origin": "ast",
+      "community": 34,
+      "community_name": "processBlock",
+      "definition_file": "Source/PluginProcessor.cpp",
+      "definition_location": "L188",
+      "file_type": "code",
+      "norm_label": "processblock",
+      "source_file": "Source/PluginProcessor.h",
+      "source_location": "L20"
+    },
+    {
+      "id": "source_pluginprocessor_ravelaudioprocessor_buildsnapshot",
+      "label": "buildSnapshot",
+      "_origin": "ast",
+      "community": 34,
+      "community_name": "processBlock",
+      "definition_file": "Source/PluginProcessor.cpp",
+      "definition_location": "L96",
+      "file_type": "code",
+      "norm_label": "buildsnapshot",
+      "source_file": "Source/PluginProcessor.h",
+      "source_location": "L95"
+    },
+    {
+      "id": "audiobuffer",
+      "label": "AudioBuffer",
+      "_origin": "ast",
+      "community": 34,
+      "community_name": "processBlock",
+      "file_type": "code",
+      "norm_label": "audiobuffer",
+      "source_file": "",
+      "source_location": ""
+    },
+    {
+      "id": "source_pluginprocessor_cpp_midibuffer",
+      "label": "MidiBuffer",
+      "_origin": "ast",
+      "community": 34,
+      "community_name": "processBlock",
+      "file_type": "code",
+      "norm_label": "midibuffer",
+      "source_file": "",
+      "source_location": ""
     },
     {
       "id": "tests_processortests_counts_controllers",
@@ -9969,11 +9992,11 @@
       "community": 9,
       "community_name": "ExternalMidiOutput",
       "definition_file": "Source/ExternalMidiOutput.cpp",
-      "definition_location": "L110",
+      "definition_location": "L111",
       "file_type": "code",
       "norm_label": "run",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L39"
+      "source_location": "L65"
     },
     {
       "id": "source_externalmidioutput_externalmidioutput_silence",
@@ -9986,7 +10009,7 @@
       "file_type": "code",
       "norm_label": "silence",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L52"
+      "source_location": "L78"
     },
     {
       "id": "source_externalmidioutput_externalmidioutput_setdevice",
@@ -10025,7 +10048,7 @@
       "file_type": "code",
       "norm_label": "pushmessage",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L36"
+      "source_location": "L40"
     },
     {
       "id": "abstractfifo",
@@ -10091,7 +10114,7 @@
       "file_type": "code",
       "norm_label": "currentidentifier",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L78"
+      "source_location": "L107"
     },
     {
       "id": "source_externalmidioutput_externalmidioutput_device",
@@ -10102,7 +10125,7 @@
       "file_type": "code",
       "norm_label": "device",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L77"
+      "source_location": "L106"
     },
     {
       "id": "source_externalmidioutput_externalmidioutput_devicelock",
@@ -10113,7 +10136,7 @@
       "file_type": "code",
       "norm_label": "devicelock",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L76"
+      "source_location": "L105"
     },
     {
       "id": "source_externalmidioutput_externalmidioutput_deviceopen",
@@ -10124,7 +10147,7 @@
       "file_type": "code",
       "norm_label": "deviceopen",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L69"
+      "source_location": "L98"
     },
     {
       "id": "source_externalmidioutput_externalmidioutput_fifo",
@@ -10135,7 +10158,7 @@
       "file_type": "code",
       "norm_label": "fifo",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L63"
+      "source_location": "L90"
     },
     {
       "id": "source_externalmidioutput_externalmidioutput_fifocapacity",
@@ -10146,7 +10169,7 @@
       "file_type": "code",
       "norm_label": "fifocapacity",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L62"
+      "source_location": "L89"
     },
     {
       "id": "source_externalmidioutput_externalmidioutput_queue",
@@ -10157,7 +10180,7 @@
       "file_type": "code",
       "norm_label": "queue",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L64"
+      "source_location": "L93"
     },
     {
       "id": "source_externalmidioutput_externalmidioutput_wakeup",
@@ -10168,7 +10191,7 @@
       "file_type": "code",
       "norm_label": "wakeup",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L74"
+      "source_location": "L103"
     },
     {
       "id": "source_externalmidioutput_h_juce_declare_non_copyable_with_leak_detector",
@@ -10234,7 +10257,7 @@
       "file_type": "code",
       "norm_label": "data",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L56"
+      "source_location": "L83"
     },
     {
       "id": "source_externalmidioutput_queuedevent_length",
@@ -10245,7 +10268,18 @@
       "file_type": "code",
       "norm_label": "length",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L57"
+      "source_location": "L84"
+    },
+    {
+      "id": "source_externalmidioutput_queuedevent_sendatms",
+      "label": "sendAtMs",
+      "_origin": "ast",
+      "community": 9,
+      "community_name": "ExternalMidiOutput",
+      "file_type": "code",
+      "norm_label": "sendatms",
+      "source_file": "Source/ExternalMidiOutput.h",
+      "source_location": "L82"
     },
     {
       "id": "thread",
@@ -12471,6 +12505,18 @@
       "weight": 1.0
     },
     {
+      "source": "source_pluginprocessor_ravelaudioprocessor_processblock",
+      "target": "source_externalmidioutput_externalmidioutput_sendtimems",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "Source/PluginProcessor.cpp",
+      "source_location": "L257",
+      "weight": 1.0
+    },
+    {
       "source": "source_presetbar_presetbar_handlemenuresult",
       "target": "source_presetmanager_presetmanager_getpresetdirectory",
       "relation": "calls",
@@ -12880,6 +12926,18 @@
     },
     {
       "source": "tests_processortests_main",
+      "target": "source_externalmidioutput_externalmidioutput_sendtimems",
+      "relation": "calls",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "call",
+      "source_file": "Tests/ProcessorTests.cpp",
+      "source_location": "L1570",
+      "weight": 1.0
+    },
+    {
+      "source": "tests_processortests_main",
       "target": "tests_processortests_section",
       "relation": "calls",
       "_origin": "ast",
@@ -13036,6 +13094,54 @@
     },
     {
       "source": "source_externalmidioutput_externalmidioutput",
+      "target": "source_externalmidioutput_externalmidioutput_wakeup",
+      "relation": "defines",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "field",
+      "source_file": "Source/ExternalMidiOutput.h",
+      "source_location": "L103",
+      "weight": 1.0
+    },
+    {
+      "source": "source_externalmidioutput_externalmidioutput",
+      "target": "source_externalmidioutput_externalmidioutput_devicelock",
+      "relation": "defines",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "field",
+      "source_file": "Source/ExternalMidiOutput.h",
+      "source_location": "L105",
+      "weight": 1.0
+    },
+    {
+      "source": "source_externalmidioutput_externalmidioutput",
+      "target": "source_externalmidioutput_externalmidioutput_device",
+      "relation": "defines",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "field",
+      "source_file": "Source/ExternalMidiOutput.h",
+      "source_location": "L106",
+      "weight": 1.0
+    },
+    {
+      "source": "source_externalmidioutput_externalmidioutput",
+      "target": "source_externalmidioutput_externalmidioutput_currentidentifier",
+      "relation": "defines",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "field",
+      "source_file": "Source/ExternalMidiOutput.h",
+      "source_location": "L107",
+      "weight": 1.0
+    },
+    {
+      "source": "source_externalmidioutput_externalmidioutput",
       "target": "source_externalmidioutput_externalmidioutput_setdevice",
       "relation": "defines",
       "_origin": "ast",
@@ -13067,7 +13173,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L36",
+      "source_location": "L40",
       "weight": 1.0
     },
     {
@@ -13079,7 +13185,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L39",
+      "source_location": "L65",
       "weight": 1.0
     },
     {
@@ -13091,7 +13197,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L52",
+      "source_location": "L78",
       "weight": 1.0
     },
     {
@@ -13103,7 +13209,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L62",
+      "source_location": "L89",
       "weight": 1.0
     },
     {
@@ -13115,7 +13221,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L63",
+      "source_location": "L90",
       "weight": 1.0
     },
     {
@@ -13127,7 +13233,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L64",
+      "source_location": "L93",
       "weight": 1.0
     },
     {
@@ -13139,55 +13245,19 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L69",
+      "source_location": "L98",
       "weight": 1.0
     },
     {
-      "source": "source_externalmidioutput_externalmidioutput",
-      "target": "source_externalmidioutput_externalmidioutput_wakeup",
+      "source": "source_externalmidioutput_queuedevent",
+      "target": "source_externalmidioutput_queuedevent_sendatms",
       "relation": "defines",
       "_origin": "ast",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L74",
-      "weight": 1.0
-    },
-    {
-      "source": "source_externalmidioutput_externalmidioutput",
-      "target": "source_externalmidioutput_externalmidioutput_devicelock",
-      "relation": "defines",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "field",
-      "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L76",
-      "weight": 1.0
-    },
-    {
-      "source": "source_externalmidioutput_externalmidioutput",
-      "target": "source_externalmidioutput_externalmidioutput_device",
-      "relation": "defines",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "field",
-      "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L77",
-      "weight": 1.0
-    },
-    {
-      "source": "source_externalmidioutput_externalmidioutput",
-      "target": "source_externalmidioutput_externalmidioutput_currentidentifier",
-      "relation": "defines",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "field",
-      "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L78",
+      "source_location": "L82",
       "weight": 1.0
     },
     {
@@ -13199,7 +13269,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L56",
+      "source_location": "L83",
       "weight": 1.0
     },
     {
@@ -13211,7 +13281,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L57",
+      "source_location": "L84",
       "weight": 1.0
     },
     {
@@ -13751,7 +13821,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L216",
+      "source_location": "L217",
       "weight": 1.0
     },
     {
@@ -13763,7 +13833,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L217",
+      "source_location": "L218",
       "weight": 1.0
     },
     {
@@ -13775,7 +13845,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L218",
+      "source_location": "L219",
       "weight": 1.0
     },
     {
@@ -13799,7 +13869,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L221",
+      "source_location": "L222",
       "weight": 1.0
     },
     {
@@ -13811,7 +13881,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L237",
+      "source_location": "L239",
       "weight": 1.0
     },
     {
@@ -13823,7 +13893,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L238",
+      "source_location": "L240",
       "weight": 1.0
     },
     {
@@ -13847,7 +13917,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L270",
+      "source_location": "L272",
       "weight": 1.0
     },
     {
@@ -13859,7 +13929,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L270",
+      "source_location": "L272",
       "weight": 1.0
     },
     {
@@ -13871,7 +13941,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L270",
+      "source_location": "L272",
       "weight": 1.0
     },
     {
@@ -13883,7 +13953,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L270",
+      "source_location": "L272",
       "weight": 1.0
     },
     {
@@ -13895,7 +13965,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L275",
+      "source_location": "L277",
       "weight": 1.0
     },
     {
@@ -14123,7 +14193,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L249",
+      "source_location": "L251",
       "weight": 1.0
     },
     {
@@ -14135,7 +14205,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L253",
+      "source_location": "L255",
       "weight": 1.0
     },
     {
@@ -17152,30 +17222,6 @@
     },
     {
       "source": "source_externalmidioutput_externalmidioutput",
-      "target": "abstractfifo",
-      "relation": "references",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "field",
-      "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L63",
-      "weight": 1.0
-    },
-    {
-      "source": "source_externalmidioutput_externalmidioutput",
-      "target": "source_externalmidioutput_h_atomic",
-      "relation": "references",
-      "_origin": "ast",
-      "confidence": "EXTRACTED",
-      "confidence_score": 1.0,
-      "context": "field",
-      "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L69",
-      "weight": 1.0
-    },
-    {
-      "source": "source_externalmidioutput_externalmidioutput",
       "target": "waitableevent",
       "relation": "references",
       "_origin": "ast",
@@ -17183,7 +17229,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L74",
+      "source_location": "L103",
       "weight": 1.0
     },
     {
@@ -17195,7 +17241,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L76",
+      "source_location": "L105",
       "weight": 1.0
     },
     {
@@ -17207,7 +17253,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L77",
+      "source_location": "L106",
       "weight": 1.0
     },
     {
@@ -17219,7 +17265,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L78",
+      "source_location": "L107",
       "weight": 1.0
     },
     {
@@ -17231,7 +17277,43 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L80",
+      "source_location": "L109",
+      "weight": 1.0
+    },
+    {
+      "source": "source_externalmidioutput_externalmidioutput",
+      "target": "abstractfifo",
+      "relation": "references",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "field",
+      "source_file": "Source/ExternalMidiOutput.h",
+      "source_location": "L90",
+      "weight": 1.0
+    },
+    {
+      "source": "source_externalmidioutput_externalmidioutput",
+      "target": "source_externalmidioutput_h_vector",
+      "relation": "references",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "field",
+      "source_file": "Source/ExternalMidiOutput.h",
+      "source_location": "L93",
+      "weight": 1.0
+    },
+    {
+      "source": "source_externalmidioutput_externalmidioutput",
+      "target": "source_externalmidioutput_h_atomic",
+      "relation": "references",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "context": "field",
+      "source_file": "Source/ExternalMidiOutput.h",
+      "source_location": "L98",
       "weight": 1.0
     },
     {
@@ -17375,7 +17457,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L216",
+      "source_location": "L217",
       "weight": 1.0
     },
     {
@@ -17387,7 +17469,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L237",
+      "source_location": "L239",
       "weight": 1.0
     },
     {
@@ -17399,7 +17481,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L275",
+      "source_location": "L277",
       "weight": 1.0
     },
     {
@@ -17411,7 +17493,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L277",
+      "source_location": "L279",
       "weight": 1.0
     },
     {
@@ -17543,7 +17625,7 @@
       "confidence_score": 1.0,
       "context": "field",
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L249",
+      "source_location": "L251",
       "weight": 1.0
     },
     {
@@ -17975,7 +18057,7 @@
       "confidence_score": 1.0,
       "context": "generic_arg",
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L77",
+      "source_location": "L106",
       "weight": 1.0
     },
     {
@@ -18304,7 +18386,7 @@
     },
     {
       "source": "source_parameters_cpp_source_parameters",
-      "target": "source_presetbar_h_vector",
+      "target": "source_externalmidioutput_h_vector",
       "relation": "imports",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -18328,7 +18410,7 @@
     },
     {
       "source": "source_parameters_h_source_parameters",
-      "target": "source_presetbar_h_vector",
+      "target": "source_externalmidioutput_h_vector",
       "relation": "imports",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -18592,7 +18674,7 @@
     },
     {
       "source": "source_presetmanager_h_source_presetmanager",
-      "target": "source_presetbar_h_vector",
+      "target": "source_externalmidioutput_h_vector",
       "relation": "imports",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -18700,7 +18782,7 @@
     },
     {
       "source": "source_undohistory_h_source_undohistory",
-      "target": "source_presetbar_h_vector",
+      "target": "source_externalmidioutput_h_vector",
       "relation": "imports",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -18724,7 +18806,7 @@
     },
     {
       "source": "tests_enginetests",
-      "target": "source_presetbar_h_vector",
+      "target": "source_externalmidioutput_h_vector",
       "relation": "imports",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -18736,7 +18818,7 @@
     },
     {
       "source": "tests_processortests",
-      "target": "source_presetbar_h_vector",
+      "target": "source_externalmidioutput_h_vector",
       "relation": "imports",
       "_origin": "ast",
       "confidence": "EXTRACTED",
@@ -20291,7 +20373,7 @@
       "confidence_score": 1.0,
       "context": "parameter_type",
       "source_file": "Source/PluginProcessor.cpp",
-      "source_location": "L258",
+      "source_location": "L267",
       "weight": 1.0
     },
     {
@@ -22667,7 +22749,7 @@
       "confidence_score": 1.0,
       "context": "return_type",
       "source_file": "Source/PluginProcessor.cpp",
-      "source_location": "L298",
+      "source_location": "L307",
       "weight": 1.0
     },
     {
@@ -22691,7 +22773,7 @@
       "confidence_score": 1.0,
       "context": "return_type",
       "source_file": "Source/PluginProcessor.cpp",
-      "source_location": "L253",
+      "source_location": "L262",
       "weight": 1.0
     },
     {
@@ -23520,7 +23602,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "Source/ExternalMidiOutput.cpp",
-      "source_location": "L110",
+      "source_location": "L111",
       "weight": 1.0
     },
     {
@@ -23586,7 +23668,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "Source/ExternalMidiOutput.h",
-      "source_location": "L54",
+      "source_location": "L80",
       "weight": 1.0
     },
     {
@@ -25170,7 +25252,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L247",
+      "source_location": "L249",
       "weight": 1.0
     },
     {
@@ -25203,7 +25285,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "Source/PluginProcessor.cpp",
-      "source_location": "L253",
+      "source_location": "L262",
       "weight": 1.0
     },
     {
@@ -25214,7 +25296,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "Source/PluginProcessor.cpp",
-      "source_location": "L258",
+      "source_location": "L267",
       "weight": 1.0
     },
     {
@@ -25225,7 +25307,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "Source/PluginProcessor.cpp",
-      "source_location": "L268",
+      "source_location": "L277",
       "weight": 1.0
     },
     {
@@ -25236,7 +25318,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "Source/PluginProcessor.cpp",
-      "source_location": "L298",
+      "source_location": "L307",
       "weight": 1.0
     },
     {
@@ -27407,6 +27489,17 @@
       "weight": 1.0
     },
     {
+      "source": "source_externalmidioutput_externalmidioutput",
+      "target": "source_externalmidioutput_externalmidioutput_sendtimems",
+      "relation": "method",
+      "_origin": "ast",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "Source/ExternalMidiOutput.h",
+      "source_location": "L54",
+      "weight": 1.0
+    },
+    {
       "source": "source_plugineditor_contentcomponent",
       "target": "source_plugineditor_contentcomponent_resized",
       "relation": "method",
@@ -27436,7 +27529,7 @@
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
       "source_file": "Source/PluginEditor.h",
-      "source_location": "L257",
+      "source_location": "L259",
       "weight": 1.0
     },
     {
@@ -30250,5 +30343,5 @@
       "source_file": "Ravel-Setup.txt"
     }
   ],
-  "built_at_commit": "8f1b02663182d3c5716a39f166963106a451b14d"
+  "built_at_commit": "50d545aaeda4fd8594fc8aef90a2e75e554c4faf"
 }

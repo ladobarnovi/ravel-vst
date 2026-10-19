@@ -818,11 +818,13 @@ macOS ships loopMIDI's equivalent under a worse name; there is nothing to instal
 
 - **Do not close the loop.** The Ravel track's **MIDI From** must not be that port, and the
   instrument track's **MIDI To** must not be either.
-- **Timing is block-granular, not sample-accurate.** Events leave for the port as the audio
-  block that produced them is processed, and their sample offset within that block is dropped,
-  so a note can land up to one buffer away from where the host's own copy of it lands — under
-  3 ms at 128 samples / 48 kHz. Live's input port adds its own latency on top. Fine for playing
-  parts; the host output stays the sample-accurate path.
+- **The port runs one buffer late, steadily.** Each event is held back by one audio buffer plus
+  its position within the block that produced it, so the spacing between notes survives the
+  trip, to within about a millisecond — about 2.7 ms of delay at 128 samples / 48 kHz. Live's
+  input port adds its own latency on top. To line it up with the rest of the set, give the
+  instrument track a small **negative Track Delay** (the **D** toggle in the mixer section),
+  starting at about −(buffer in ms + 2) and adjusting by ear. The host output stays the
+  sample-accurate path.
 - **The choice is saved with the session, by port.** Open that session on a machine where the
   port does not exist and Ravel quietly stays on host output rather than failing.
 - **One port per instance.** Two instances writing to the same port both allocate out of the

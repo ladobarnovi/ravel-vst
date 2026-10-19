@@ -32,8 +32,34 @@ public:
         Raw bytes rather than a juce::MidiMessage because the caller is iterating a MidiBuffer,
         whose metadata already exposes exactly these two things -- building a MidiMessage from
         them only to read them straight back out is work with nothing at the end of it.
+
+        sendAtMs is a juce::Time::getMillisecondCounterHiRes() time: the drain thread holds the
+        event until then (see sendTimeMs()). Events must be pushed in non-decreasing sendAtMs
+        order, which they are when they come from consecutive blocks through sendTimeMs().
     */
-    void pushMessage (const juce::uint8* data, int numBytes);
+    void pushMessage (const juce::uint8* data, int numBytes, double sendAtMs);
+
+    /** When an event at sampleOffset into a block that started processing at blockStartMs
+        should leave for the port.
+
+        The audio thread runs a block in a burst, well before that block is heard, so sending
+        each event the instant it is produced would collapse its position within the block --
+        every event in it leaves at once, and lands anywhere up to a buffer early or late
+        relative to the grid. Spacing them out by their offset keeps the intervals the engine
+        computed, and adding one whole block of delay on top is what makes that possible: the
+        last event of a block cannot be sent at its true time until the block has been
+        produced. The result is a constant one-buffer delay instead of a jittery zero-to-one,
+        which Live's Track Delay can then cancel exactly.
+    */
+    static double sendTimeMs (double blockStartMs, int sampleOffset, double sampleRate, int blockSize)
+    {
+        // An unprepared rate would make this infinite, and an event due never sits at the head
+        // of the queue holding back every one behind it.
+        if (sampleRate <= 0.0)
+            return blockStartMs;
+
+        return blockStartMs + 1000.0 * (double) (blockSize + sampleOffset) / sampleRate;
+    }
 
 private:
     void run() override;
@@ -53,6 +79,7 @@ private:
 
     struct QueuedEvent
     {
+        double  sendAtMs = 0.0;
         uint8_t data[3] {};
         uint8_t length = 0;
     };
@@ -61,14 +88,16 @@ private:
     // this is generous headroom, not a tuned figure.
     static constexpr int fifoCapacity = 2048;
     juce::AbstractFifo fifo { fifoCapacity };
-    QueuedEvent queue[(size_t) fifoCapacity];
+    // On the heap, allocated once here: at 16 bytes an event it is 32 KB, too much to carry
+    // inline in a processor that hosts and tests are free to construct on the stack.
+    std::vector<QueuedEvent> queue = std::vector<QueuedEvent> ((size_t) fifoCapacity);
 
     // Checked by pushMessage() before it touches the fifo at all, so selecting no device (the
     // default) costs the audio thread one relaxed load rather than a queue push and a thread
     // wake it knows nobody will read.
     std::atomic<bool> deviceOpen { false };
 
-    // Signalled after every push, so the background thread wakes with near-zero latency instead
+    // Signalled after every push, so the background thread notices a newly queued event instead
     // of waiting out its poll interval; the timeout on wait() in run() is only a safety net for
     // the case where a signal lands just before the thread starts waiting.
     juce::WaitableEvent wakeUp;

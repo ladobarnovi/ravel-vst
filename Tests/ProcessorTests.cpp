@@ -1563,6 +1563,21 @@ int main()
                "it is signalled awake rather than left to time out");
     }
 
+    //==========================================================================
+    section ("External MIDI events leave one block late, spaced by their offset");
+    {
+        // 480 samples at 48 kHz is 10 ms, so every figure below is a round number.
+        const double first = ExternalMidiOutput::sendTimeMs (1000.0, 0,   48000.0, 480);
+        const double later = ExternalMidiOutput::sendTimeMs (1000.0, 240, 48000.0, 480);
+        const double next  = ExternalMidiOutput::sendTimeMs (1010.0, 0,   48000.0, 480);
+
+        check (std::abs (first - 1010.0) < 1.0e-9, "the start of a block leaves one block later");
+        check (std::abs (later - first - 5.0) < 1.0e-9, "an event mid-block keeps its spacing");
+        check (next > later, "the next block's events queue behind this block's");
+        check (ExternalMidiOutput::sendTimeMs (1000.0, 240, 0.0, 480) == 1000.0,
+               "an unprepared sample rate sends at once rather than never");
+    }
+
     std::printf ("\n%d checks, %d failed\n", checksRun, checksFailed);
 
     return checksFailed == 0 ? 0 : 1;

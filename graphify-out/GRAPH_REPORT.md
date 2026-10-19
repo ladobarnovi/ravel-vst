@@ -1,16 +1,16 @@
-# Graph Report - vst  (2026-09-20)
+# Graph Report - vst  (2026-10-19)
 
 ## Corpus Check
-- 33 files · ~86,993 words
+- 33 files · ~87,583 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 886 nodes · 1624 edges · 49 communities (43 shown, 4 thin omitted)
+- 889 nodes · 1629 edges · 50 communities (44 shown, 4 thin omitted)
 - Extraction: 91% EXTRACTED · 9% INFERRED · 0% AMBIGUOUS · INFERRED: 141 edges (avg confidence: 0.85)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `8f1b0266`
+- Built from commit: `50d545aa`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -49,6 +49,7 @@
 - layoutContent
 - StepLayer
 - MockPlayHead
+- processBlock
 - Counts
 - LaneState
 - Graphics
@@ -71,8 +72,8 @@
 5. `Snapshot` - 36 edges
 6. `RavelLookAndFeel` - 29 edges
 7. `UndoHistory` - 29 edges
-8. `PresetBar` - 27 edges
-9. `ExternalMidiOutput` - 25 edges
+8. `ExternalMidiOutput` - 27 edges
+9. `PresetBar` - 27 edges
 10. `createParameterLayout()` - 23 edges
 
 ## Surprising Connections (you probably didn't know these)
@@ -95,7 +96,7 @@
 - **macOS cross-build, bundle identity and install flow** — _github_workflows_build_macos_build_macos, _github_workflows_build_macos_universal_binary, _github_workflows_build_macos_artifact_upload, cmakelists_per_format_bundle_ids, readme_macos_ci_build, ravel_setup_macos_install, ravel_setup_quarantine_flag [EXTRACTED 1.00]
 - **Keeping MPE channels intact from plugin to instrument** — readme_mpe, readme_bend_range, readme_live_channel_collapse, readme_external_midi_output, ravel_setup_virtual_port_route, ravel_setup_port_caveats, readme_polyphony [EXTRACTED 1.00]
 
-## Communities (49 total, 4 thin omitted)
+## Communities (50 total, 4 thin omitted)
 
 ### Community 0 - "PresetManager"
 Cohesion: 0.08
@@ -135,7 +136,7 @@ Nodes (33): atomic, atomic, SequencerEngine, ccCountdown, ccIntervalSamples, ccL
 
 ### Community 9 - "ExternalMidiOutput"
 Cohesion: 0.08
-Nodes (29): AbstractFifo, CriticalSection, MidiOutput, String, ExternalMidiOutput, currentIdentifier, device, deviceLock (+21 more)
+Nodes (30): AbstractFifo, CriticalSection, MidiOutput, String, ExternalMidiOutput, currentIdentifier, device, deviceLock (+22 more)
 
 ### Community 10 - "UndoHistory"
 Cohesion: 0.11
@@ -159,15 +160,15 @@ Nodes (21): Snapshot, bendRange, ccChannel, ccLanes, ccNumber, ccOffset, ccOn, m
 
 ### Community 15 - "PresetBar"
 Cohesion: 0.09
-Nodes (29): AlertWindow, PopupMenu, function, Graphics, String, vector, Component, File (+21 more)
+Nodes (30): AlertWindow, PopupMenu, function, Graphics, String, vector, Component, File (+22 more)
 
 ### Community 16 - "LaneParams"
 Cohesion: 0.12
 Nodes (17): atomic, LaneParams, active, ccChannel, ccNumber, ccOffset, ccOn, chance (+9 more)
 
 ### Community 17 - "PluginProcessor.cpp"
-Cohesion: 0.13
-Nodes (14): AudioBuffer, BusesLayout, AudioProcessor, AudioProcessorEditor, MidiBuffer, JUCE_CALLTYPE createPluginFilter(), buildSnapshot, createEditor (+6 more)
+Cohesion: 0.14
+Nodes (12): BusesLayout, MemoryBlock, AudioProcessor, AudioProcessorEditor, JUCE_CALLTYPE createPluginFilter(), createEditor, getStateInformation, isBusesLayoutSupported (+4 more)
 
 ### Community 18 - "ExternalMidiSelector"
 Cohesion: 0.07
@@ -202,8 +203,8 @@ Cohesion: 0.11
 Nodes (18): CcLaneSnapshot, ccChannel, ccNumber, ccOffset, ccOn, LaneSnapshot, active, chance (+10 more)
 
 ### Community 26 - "main"
-Cohesion: 0.24
-Nodes (8): MemoryBlock, getStateInformation, check(), String, defaultOf(), main(), section(), setChoice()
+Cohesion: 0.29
+Nodes (7): check(), String, defaultOf(), main(), runProcessor(), section(), setChoice()
 
 ### Community 27 - "LanePattern"
 Cohesion: 0.18
@@ -230,8 +231,12 @@ Cohesion: 0.29
 Nodes (8): StepLayer, String, LaneComponent::setLayer(), layerTooltip(), spreadRangeText(), StepSlot::beginBarDrag(), StepSlot::getTooltip(), StepSlot::setLayer()
 
 ### Community 33 - "MockPlayHead"
-Cohesion: 0.33
-Nodes (6): AudioPlayHead, Optional, PositionInfo, MockPlayHead, info, runProcessor()
+Cohesion: 0.40
+Nodes (5): AudioPlayHead, Optional, PositionInfo, MockPlayHead, info
+
+### Community 34 - "processBlock"
+Cohesion: 0.40
+Nodes (4): AudioBuffer, MidiBuffer, buildSnapshot, processBlock
 
 ### Community 35 - "Counts"
 Cohesion: 0.29
@@ -270,21 +275,21 @@ Cohesion: 0.50
 Nodes (4): PitchResult, bend, note, pitchFor
 
 ## Knowledge Gaps
-- **232 isolated node(s):** `name`, `page`, `bounds`, `data`, `length` (+227 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 387 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **233 isolated node(s):** `name`, `page`, `bounds`, `sendAtMs`, `data` (+228 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 389 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
 - **4 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `RavelAudioProcessor` connect `RavelAudioProcessor` to `PresetManager`, `MockPlayHead`, `RavelAudioProcessorEditor`, `String`, `SequencerEngine`, `ExternalMidiOutput`, `UndoHistory`, `PresetBar`, `LaneParams`, `PluginProcessor.cpp`, `ExternalMidiSelector`, `PluginEditor.cpp`, `main`?**
-  _High betweenness centrality (0.405) - this node is a cross-community bridge._
+- **Why does `RavelAudioProcessor` connect `RavelAudioProcessor` to `PresetManager`, `RavelAudioProcessorEditor`, `processBlock`, `String`, `SequencerEngine`, `ExternalMidiOutput`, `UndoHistory`, `PresetBar`, `LaneParams`, `PluginProcessor.cpp`, `ExternalMidiSelector`, `PluginEditor.cpp`, `main`?**
+  _High betweenness centrality (0.408) - this node is a cross-community bridge._
 - **Why does `RavelAudioProcessorEditor` connect `RavelAudioProcessorEditor` to `RavelLookAndFeel`, `RavelAudioProcessor`, `paint`, `PresetBar`, `ExternalMidiSelector`, `PluginEditor.cpp`, `ContentComponent`, `Stack`, `Watched`, `layoutContent`?**
-  _High betweenness centrality (0.249) - this node is a cross-community bridge._
+  _High betweenness centrality (0.245) - this node is a cross-community bridge._
 - **Why does `SequencerEngine` connect `SequencerEngine` to `LaneState`, `RavelAudioProcessor`, `Voice`, `MpeChannelSlot`, `PitchResult`, `SequencerEngine.cpp`, `Snapshot`, `LaneSnapshot`, `EngineTests.cpp`, `int64_t`?**
-  _High betweenness centrality (0.199) - this node is a cross-community bridge._
+  _High betweenness centrality (0.200) - this node is a cross-community bridge._
 - **What connects `name`, `page`, `bounds` to the rest of the system?**
-  _232 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _233 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `PresetManager` be split into smaller, more focused modules?**
   _Cohesion score 0.07622504537205081 - nodes in this community are weakly interconnected._
 - **Should `build-macos CI job` be split into smaller, more focused modules?**
