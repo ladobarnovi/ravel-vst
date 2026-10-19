@@ -124,10 +124,9 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
     auto& state = processorRef.apvts;
 
     //--------------------------------------------------------------------------
-    // Note lanes and CC lanes are two completely separate stacks, each built up front for
-    // the same reason the old single stack was: a VST3 cannot add parameters later, so both
-    // pools exist at full size from the start and each pool's own count decides how many of
-    // its own lanes are shown and heard.
+    // Note lanes and CC lanes are two completely separate stacks, each built up front because
+    // a VST3 cannot add parameters later: both pools exist at full size from the start and
+    // each pool's own count decides how many of its own lanes are shown and heard.
     for (auto kind : { params::LaneKind::note, params::LaneKind::cc })
     {
         auto& stack = stackFor (kind);
@@ -281,8 +280,8 @@ void RavelAudioProcessorEditor::buildWorkspaces()
     ccMix.add (params::slewId, "Slew", RowStyle::slider)
          ->setTooltip ("Smooths the Mix CC and every CC lane's own tap. Never touches pitch");
 
-    // One column per CC lane, carrying the destination that used to sit on the lane strip. See
-    // ccLaneColumns in the header for why it moved.
+    // One column per CC lane, carrying that lane's destination. See ccLaneColumns in the header
+    // for why it lives here rather than on the lane strip.
     for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
     {
         auto& column = cc.settingsPage.addColumn ("Lane " + juce::String (laneIndex + 1), ccLaneColumn);
@@ -419,7 +418,7 @@ void RavelAudioProcessorEditor::removeLane (params::LaneKind kind, int laneIndex
 void RavelAudioProcessorEditor::paint (juce::Graphics& g)
 {
     // The one ground the whole window sits on. content draws no rectangle of its own over
-    // it any more, so this is not a base coat under a panel -- it is the surface, and it
+    // it, so this is not a base coat under a panel -- it is the surface, and it
     // reaches the window's edges rather than leaving a darker margin framing them.
     g.fillAll (theme::surface);
 }

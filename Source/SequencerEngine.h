@@ -52,9 +52,8 @@ public:
     /** A Note lane: the pattern above, plus the two things only a note has.
 
         Split from the CC lane rather than one struct carrying both sets of fields with half of
-        them inert. That cost 512 bytes of a ~2.5 KB snapshot rebuilt every block on nothing --
-        but the reason to fix it is that "a CC lane never reads velocity" was a comment, and is
-        now a fact about the type.
+        them inert, so that "a CC lane never reads velocity" is a fact about the type rather
+        than a comment. It also keeps 512 inert bytes out of a snapshot rebuilt every block.
     */
     struct NoteLaneSnapshot : LaneSnapshot
     {
@@ -112,7 +111,7 @@ public:
         int   rangeOctaves  = 2;
         int   scale         = 4;
         // The master velocity each step's accent scales down from. The plugin always passes
-        // params::fixedVelocity -- there is no parameter behind this any more. It stays a
+        // params::fixedVelocity -- there is no parameter behind it. It stays a
         // field so the engine's own tests can still prove the accent scales against it.
         int   velocity      = 100;
         int   midiChannel   = 1;
@@ -148,10 +147,9 @@ public:
         bool  polyMode      = false;
 
         /** True: every simultaneously-sounding note gets its own MIDI channel (a standard
-            MPE Lower Zone) instead of sharing the Note Channel's one pitch wheel. Off
-            reproduces the single-channel behaviour that predated it, where overlapping notes
-            share one wheel and so cannot hold different microtones -- midiChannel is read
-            only on that path.
+            MPE Lower Zone) instead of sharing the Note Channel's one pitch wheel. Off sends
+            everything on that single channel, where overlapping notes share one wheel and so
+            cannot hold different microtones -- midiChannel is read only on that path.
 
             The parameter behind it defaults to on; this field defaults to off so the
             engine's own tests start from the simpler allocation path and opt in.
@@ -200,10 +198,9 @@ public:
     /** Hands the editor's timer the step each lane is sitting on, or -1 on every lane while
         nothing is playing.
 
-        Called on the way out of every path through process(), the stopped one included --
-        which used to return before reaching the store, leaving the playhead marker parked on
-        whatever step the transport happened to halt on as though the sequencer were still
-        running there.
+        Called on the way out of every path through process(), the stopped one included, so
+        the playhead marker clears when the transport halts rather than staying parked on
+        the last step as though the sequencer were still running there.
     */
     void publishUiSteps (bool running) noexcept;
 
@@ -261,8 +258,8 @@ private:
         less often.
 
         Exact, not approximate: it inverts the same inequality resolveGlobalIndex() tests, then
-        confirms the result against resolveGlobalIndex() itself, so a lane can never step on a
-        different sample than it used to.
+        confirms the result against resolveGlobalIndex() itself, so a lane steps on exactly
+        the sample a per-sample check would have put it on.
     */
     static int nextBoundarySample (std::int64_t currentIndex,
                                    double ppqAtBlockStart, double ppqPerSample,
@@ -326,11 +323,11 @@ private:
 
     /** Counts `samples` off every sounding voice and emits note-off for those that run out.
 
-        Takes a span rather than always stepping by one because the sample loop no longer
-        calls it on every sample. Walking all 32 slots 48000 times a second, almost always to
-        find that none of them had expired, was pure overhead: the loop now counts down to the
-        soonest expiry and only comes here when it actually arrives. Passing 1 reproduces the
-        per-sample behaviour exactly.
+        Takes a span rather than always stepping by one because the sample loop does not call
+        it on every sample: walking all 32 slots 48000 times a second, almost always to find
+        that none of them had expired, would be pure overhead. The loop counts down to the
+        soonest expiry instead and only comes here when it arrives. Passing 1 is the per-sample
+        behaviour exactly.
     */
     void advanceVoices (juce::MidiBuffer& out, int sampleOffset, int samples);
 
@@ -377,7 +374,7 @@ private:
     void retireUnownedVoices (juce::MidiBuffer& out, int sampleOffset, int voiceLimit, bool polyMode);
 
     /** The note and pitch bend a 0..1 value maps to under the current pitch setting. Channel
-        is resolved separately, by startNote() -- it is no longer a function of pitch mapping,
+        is resolved separately, by startNote() -- it is not a function of pitch mapping,
         since MPE picks it from the member-channel pool rather than the fixed note channel.
     */
     struct PitchResult

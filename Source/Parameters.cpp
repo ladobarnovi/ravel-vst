@@ -8,8 +8,8 @@ namespace params
 
 namespace
 {
-    // "n"/"c" rather than the old shared "l": the two pools' parameters are entirely
-    // separate VST3 parameters, not the same lane wearing two hats.
+    // "n" or "c": the two pools' parameters are entirely separate VST3 parameters, not the
+    // same lane wearing two hats.
     juce::String lanePrefix (int lane, LaneKind kind)
     {
         return (kind == LaneKind::cc ? "c" : "n") + juce::String (lane + 1);
@@ -76,7 +76,7 @@ namespace
     // starting point that cannot demonstrate what the plugin is for.
     constexpr int   defaultDivision[numLanes] { divIndex_1_16, divIndex_1_8, divIndex_1_4, divIndex_1_8 };
 
-    // Every lane starts at full depth. Adding a lane is now a deliberate act, so it has to
+    // Every lane starts at full depth. Adding a lane is a deliberate act, so it has to
     // do something audible on the click -- a new lane at zero depth would look like the
     // button had failed. Depth is the first control in the lane's own block when it is too
     // much.
@@ -286,9 +286,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     // the residual is scaled wrong. Announcing a zone (RPN 6) is what makes the instrument's
     // own bend-range setting stop applying: its member channels revert to the MPE default of
     // +/-48, and the RPN 0 we send to talk them back down is the least reliably implemented
-    // corner of the spec. Defaulting to 2 while announcing a zone meant a stock instance
-    // scaled for +/-2 against an instrument reading +/-48 -- a 24x error on the residual,
-    // flipping sign at every half semitone, so the pitch stopped rising with the mix.
+    // corner of the spec. Defaulting to 2 while announcing a zone would leave a stock instance
+    // scaling for +/-2 against an instrument reading +/-48 -- a 24x error on the residual,
+    // flipping sign at every half semitone, so the pitch stops rising with the mix.
     //
     // The other direction is safe: with MPE off, RPN 0 on an ordinary channel is the oldest
     // and best-supported RPN there is, so 48 is honoured there too.

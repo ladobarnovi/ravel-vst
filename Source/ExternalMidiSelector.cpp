@@ -92,7 +92,7 @@ void ExternalMidiSelector::refresh()
 //==============================================================================
 void ExternalMidiSelector::paint (juce::Graphics& g)
 {
-    // No pill behind it any more. The header is its own band, and a raised rectangle inside a
+    // No pill behind it: the header is its own band, and a raised rectangle inside a
     // band that is already raised off the window reads as a third level of depth for something
     // that is only a caption and two controls.
     const int captionWidth = (int) std::ceil (

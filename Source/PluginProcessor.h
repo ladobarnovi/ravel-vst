@@ -85,7 +85,7 @@ private:
         std::atomic<float>* direction = nullptr;
         std::atomic<float>* depth     = nullptr;
 
-        // CC lanes only -- a note lane no longer has a CC output of its own.
+        // CC lanes only -- a note lane has no CC output of its own.
         std::atomic<float>* ccOn      = nullptr;
         std::atomic<float>* ccNumber  = nullptr;
         std::atomic<float>* ccChannel = nullptr;

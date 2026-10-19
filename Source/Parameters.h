@@ -117,8 +117,8 @@ juce::String laneDivId      (int lane, LaneKind kind = LaneKind::note);
 juce::String laneDirId      (int lane, LaneKind kind = LaneKind::note);
 juce::String laneDepthId    (int lane, LaneKind kind = LaneKind::note);
 
-// A CC lane's own destination -- not an optional tap on any lane any more, but the whole
-// reason a CC lane exists. Note lanes never have these.
+// A CC lane's own destination -- the whole reason a CC lane exists. Note lanes never have
+// these.
 juce::String laneCcOnId     (int lane);
 juce::String laneCcNumId    (int lane);
 juce::String laneCcChanId   (int lane);
@@ -252,8 +252,8 @@ void rotateLane (juce::AudioProcessorValueTreeState& state, int lane, int direct
     rather than a second copy of the one that just moved down.
 
     Removal is destructive: the removed lane's data is overwritten by the lane above it, and
-    the only way back is the undo history. Keeping it was only ever possible while lanes came
-    off the end -- once any lane can go, there is no free slot to keep it in. Every write here
+    the only way back is the undo history. Keeping it would need a free slot, and with any
+    lane removable there is none. Every write here
     goes through a change gesture in one message callback, so the shift and the new lane count
     land as a single undo step.
 

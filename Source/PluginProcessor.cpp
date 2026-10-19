@@ -116,9 +116,9 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
         ns.depth     = np.depth->load();
 
         // Read only if something is going to look at them. An inert lane's steps are never
-        // consulted -- see the bail-out in SequencerEngine's refreshLane -- and this is the
-        // block that made a one-lane instance, which is what a fresh one is, pay for four:
-        // eighty atomic loads a block for a lane that is not on screen and cannot be heard.
+        // consulted -- see the bail-out in SequencerEngine's refreshLane -- so skipping them
+        // spares a fresh one-lane instance eighty atomic loads a block for each lane that is
+        // not on screen and cannot be heard.
         if (ns.active)
         {
             for (int step = 0; step < params::numSteps; ++step)

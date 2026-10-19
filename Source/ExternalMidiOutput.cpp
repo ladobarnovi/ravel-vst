@@ -143,8 +143,8 @@ void ExternalMidiOutput::run()
 
         {
             // Taken per message rather than around a run of them. setDevice() has to wait for
-            // this lock, and holding it across a run of driver calls made changing the port
-            // stall the UI for as long as the queue was deep.
+            // this lock, and holding it across a run of driver calls would make changing the
+            // port stall the UI for as long as the queue is deep.
             const juce::ScopedLock sl (deviceLock);
 
             if (device != nullptr)

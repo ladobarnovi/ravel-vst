@@ -11,10 +11,10 @@
     this particular computer has plugged in, while loading a preset replaces the patch, which
     is the same kind of act as an undo.
 
-    Owns the browser menu, the name prompt and the edited-dot bookkeeping. All of that used to
-    sit in the editor, which had no reason to know how a preset menu is numbered or how a modal
-    name prompt is kept alive -- and it is the same reasoning that moved the MIDI pill out: the
-    editor should be deciding where things go, not what is inside them.
+    Owns the browser menu, the name prompt and the edited-dot bookkeeping, so the editor does
+    not have to know how a preset menu is numbered or how a modal name prompt is kept alive.
+    ExternalMidiSelector is its own component for the same reason: the editor decides where
+    things go, not what is inside them.
 */
 class PresetBar final : public juce::Component
 {

@@ -43,8 +43,8 @@ private:
         switched to a workspace with a different lane count. */
     void updateSizeConstraints();
 
-    /** The layout that used to live in resized(), now run against content's native bounds
-        rather than the editor's actual (possibly zoomed) ones. */
+    /** Lays out content against its native bounds rather than the editor's actual (possibly
+        zoomed) ones -- resized() only rescales it. */
     void layoutContent();
 
     // Declared first so it outlives every child that references it.
@@ -118,7 +118,7 @@ private:
     int appliedCanUndo = -1, appliedCanRedo = -1;
 
     /** The header's preset pill, plus Save and Init. Its own component: which patch is loaded,
-        how a browser menu is numbered and how a modal name prompt is kept alive were none of
+        how a browser menu is numbered and how a modal name prompt is kept alive are none of
         the editor's business. Polled from timerCallback() rather than running a timer of its
         own. */
     PresetBar presetBar { processorRef };
@@ -148,11 +148,9 @@ private:
 
     /** One of the two stacks -- Notes or CC -- and everything the editor holds per stack.
 
-        Every member in here used to be half of a note-/cc- prefixed pair, with a pair of
-        methods over each pair. LaneKind already runs through Parameters and the engine, so
-        indexing by it here draws the same distinction those layers already draw, rather than
-        inventing a second one: the six methods below became three, and nothing else in the
-        editor has to name a stack twice to do a thing to both.
+        Indexed by LaneKind, which already runs through Parameters and the engine, so the
+        editor draws the same distinction those layers draw rather than inventing a second one,
+        and nothing in it has to name a stack twice to do a thing to both.
     */
     struct Stack
     {
@@ -224,11 +222,11 @@ private:
     /** One column per CC lane in the CC page's footer, holding that lane's own destination --
         Send, Number, Channel, Offset.
 
-        These moved off the lane strips. A destination is a property of where a lane goes rather
-        than of the pattern in it: it is set once and then left, while everything on the strip
-        is dialled while the sequencer runs. Keeping them on the strip also made a CC lane's
-        parameter block twice the height of a Note lane's, which is what forced the two
-        workspaces to different lane heights for no reason the user could see.
+        Here rather than on the lane strips. A destination is a property of where a lane goes
+        rather than of the pattern in it: it is set once and then left, while everything on the
+        strip is dialled while the sequencer runs. On the strip it would also make a CC lane's
+        parameter block twice the height of a Note lane's, forcing the two workspaces to
+        different lane heights for no reason the user could see.
 
         Non-owning; they belong to the CC stack's settings page. Held so the columns for lanes
         this instance does not currently have can be greyed rather than hidden -- the
@@ -271,8 +269,8 @@ private:
     // one moving re-dims the same two rows.
     Watched quantize, pitchScale, polyMode, mpeEnabled;
 
-    /** The header's MIDI-output chooser. Its own component now: enumerating ports, remembering
-        which one is open and laying out its own two controls were three things the editor had
+    /** The header's MIDI-output chooser. Its own component: enumerating ports, remembering
+        which one is open and laying out its own two controls are three things the editor has
         no reason to know about. */
     ExternalMidiSelector externalMidiSelector { processorRef };
 

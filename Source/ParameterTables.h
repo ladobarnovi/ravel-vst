@@ -97,7 +97,7 @@ inline constexpr int mpeConfigurationRpn = 6;
 /** Centre position of the 14-bit pitch wheel: no bend. */
 inline constexpr int pitchBendCentre = 8192;
 
-// The master velocity every note starts from, in place of the parameter that used to set it.
+// The master velocity every note starts from; there is no parameter for it.
 // Each step's own accent trims down from here, so this is the ceiling and 127 is deliberately
 // not it: leaving headroom is what lets an accent read as an accent rather than as everything
 // else being quieter.

@@ -99,9 +99,8 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
         slider.setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
         slider.setColour (juce::Slider::backgroundColourId, theme::stepGround);
 
-        // On drag only. The hover half of it went with the slider's mouse handling, since a
-        // component that is never under the mouse is never hovered; the slot's own tooltip
-        // carries the value instead. See getTooltip.
+        // On drag only. The bar never takes the mouse (see below), so it is never hovered;
+        // the slot's own tooltip carries the value instead. See getTooltip.
         //
         // Which component the bubble hangs off is settled in parentHierarchyChanged(), not
         // here: a slot has no parent yet while it is being constructed.
@@ -1014,9 +1013,9 @@ void LaneComponent::resized()
     r.removeFromRight (lane::padRight);
 
     //--------------------------------------------------------------------------
-    // The mute is the only thing left of the steps now, so it is centred in the whole run from
+    // The mute is the only thing left of the steps, so it is centred in the whole run from
     // the accent rail to the layer chips -- its own column plus the gap after it -- rather
-    // than parked at the left of a column sized for a lane number that is no longer drawn.
+    // than parked at the left of its column.
     // Measured off the rail rather than off x=0 so the margin either side is the space the eye
     // actually sees, not the space the rail is sitting in.
     auto slotColumn = r.removeFromLeft (lane::slotWidth + lane::columnGap)

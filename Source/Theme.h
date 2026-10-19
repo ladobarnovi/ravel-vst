@@ -598,7 +598,6 @@ namespace theme
 //==============================================================================
 // RavelLookAndFeel, which does the actual drawing, is in RavelLookAndFeel.h.
 //
-// It used to sit at the bottom of this file, which meant every translation unit that wanted a
-// colour or a row height also parsed five hundred lines of paint code -- and every tweak to a
-// token above rebuilt all of them. Only the editor needs the LookAndFeel itself; the widgets
-// need these tokens.
+// Kept out of this file so that a translation unit wanting a colour or a row height does not
+// also parse five hundred lines of paint code, and a tweak to a token above does not rebuild
+// all of them. Only the editor needs the LookAndFeel itself; the widgets need these tokens.

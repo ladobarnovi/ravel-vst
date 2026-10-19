@@ -237,8 +237,8 @@ void PresetManager::applyValues (const std::map<juce::String, float>& plainValue
 
     // Cleared once more on the next turn of the message loop. The guard above only covers
     // parameter changes that come back synchronously; a host free to report them
-    // asynchronously delivers ours after applying has already gone false, which put the edited
-    // dot on a patch the instant it finished loading. A genuine edit made inside this same
+    // asynchronously delivers ours after applying has already gone false, which would put the
+    // edited dot on a patch the instant it finished loading. A genuine edit made inside this same
     // callback would be swallowed too, but a load is one callback and nothing else is
     // happening in it.
     juce::WeakReference<PresetManager> weakThis (this);

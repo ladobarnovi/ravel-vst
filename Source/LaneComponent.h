@@ -258,7 +258,7 @@ private:
     /** Which layers this slot was actually given a parameter for. A CC step has no Velocity,
         Gate or Spread bar, so those were never built or attached.
 
-        Visibility cannot stand in for this everywhere it used to: the Spread bar is hidden
+        Visibility cannot stand in for this everywhere: the Spread bar is hidden
         exactly when an Alt-drag wants it, because the Pitch row is the one on screen. */
     bool built[numStepLayers] {};
 

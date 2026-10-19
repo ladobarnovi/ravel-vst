@@ -35,7 +35,7 @@ namespace
     }
 
     /** Deterministic 0..1 draw from a timeline position. Used for probability and
-        humanize, so both are functions of *where* you are rather than of a running RNG --
+        Spread, so both are functions of *where* you are rather than of a running RNG --
         a loop replays identically instead of drifting.
     */
     float hashToUnitFloat (std::int64_t globalIndex, int laneIndex, std::uint64_t salt) noexcept
@@ -284,9 +284,8 @@ int SequencerEngine::nextBoundarySample (std::int64_t currentIndex,
     };
 
     // The division above can land a unit either side of the true crossing when the numbers are
-    // not exactly representable, so the answer is confirmed against the very function the old
-    // per-sample loop called. Both loops correct by a sample or two -- they are a correction,
-    // not a search, and that is what makes this a refactor rather than a reimplementation.
+    // not exactly representable, so the answer is confirmed against resolveGlobalIndex()
+    // itself. Both loops correct by a sample or two -- they are a correction, not a search.
     while (n > from + 1 && indexAt (n - 1) != currentIndex)
         --n;
 
@@ -452,8 +451,8 @@ SequencerEngine::PitchResult SequencerEngine::pitchFor (float value, const Snaps
 
         result.note = juce::jlimit (0, 127, (int) std::lround (absolute));
 
-        // A 12-EDO scale lands exactly on note numbers and the wheel is left alone, as it
-        // always was. Any other EDO puts most of its degrees between the keys, so the
+        // A 12-EDO scale lands exactly on note numbers and the wheel is left alone. Any other
+        // EDO puts most of its degrees between the keys, so the
         // residual rides on pitch bend -- the same trick continuous mode uses below. With
         // MPE off that is one bend per channel, so overlapping notes cannot hold different
         // microtones; with MPE on, startNote() gives each note its own channel instead.
@@ -707,8 +706,8 @@ void SequencerEngine::process (const Snapshot& s,
 
         Everything here is a function of the lane's global index, so all of it holds until the
         lane crosses a step boundary -- 6000 samples at 1/16 and 120 bpm. The loop below
-        refreshes a lane only on the sample its boundary actually falls on, where it used to
-        re-derive all of this, division and floor included, for every lane on every sample.
+        refreshes a lane only on the sample its boundary actually falls on, rather than
+        re-deriving all of this, division and floor included, for every lane on every sample.
     */
     struct LaneRun
     {
@@ -733,7 +732,7 @@ void SequencerEngine::process (const Snapshot& s,
     LaneRun ccRuns[params::numLanes];
 
     // Rate and length cannot move inside a block -- they come off the snapshot -- so they are
-    // read once here rather than per sample, as they used to be.
+    // read once here rather than per sample.
     for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
     {
         noteRuns[laneIndex].stepPpq = params::divisionPpq (s.noteLanes[laneIndex].division);
@@ -824,9 +823,9 @@ void SequencerEngine::process (const Snapshot& s,
     };
 
     // Both folds re-add every lane's share from scratch rather than adjusting a running total
-    // by the difference: the sum has to land on the same float it used to, and floating-point
-    // addition does not associate. Skipping a silent lane rather than adding its zero is part
-    // of that -- it is what the per-sample loop did.
+    // by the difference: floating-point addition does not associate, so a running total would
+    // drift away from the true sum. Only lanes whose step is on count -- a step that is off, or
+    // that lost its probability roll, is transparent to the mix.
     const auto fold = [] (const auto& runs, float offset)
     {
         float accumulator = 0.0f;
@@ -1053,10 +1052,10 @@ void SequencerEngine::process (const Snapshot& s,
                 const auto& ln = s.ccLanes[laneIndex];
 
                 // Inert lanes stay off the wire. `active` folds in both the mute and the lane
-                // count, so this covers a muted lane and -- the case that actually leaked --
-                // a lane the instance has not been given yet: Send defaults to on and the CC
-                // numbers are pre-assigned, so lanes 2-4 of a one-lane instance were each
-                // announcing themselves at zero before anything had been drawn on them.
+                // count, so this covers a muted lane and a lane the instance has not been given
+                // yet. The second matters most: Send defaults to on and the CC numbers are
+                // pre-assigned, so without this lanes 2-4 of a one-lane instance would each
+                // announce themselves at zero before anything had been drawn on them.
                 if (! ln.active || ! ln.ccOn)
                     continue;
 
