@@ -8,3 +8,4 @@ CMakeUserPresets.json
 
 # Packaged installers
 dist/
+graphify-out/
