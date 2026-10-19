@@ -249,17 +249,14 @@ void rotateLane (juce::AudioProcessorValueTreeState& state, int lane, int direct
 */
 void removeLane (juce::AudioProcessorValueTreeState& state, int lane, LaneKind kind = LaneKind::note);
 
-/** A whole lane's step data, for copy/paste between lanes of the same kind. Velocity, gate
-    and spread are along for a note lane's ride and simply unused when the pattern came from,
-    or is pasted onto, a CC lane. */
+/** A whole lane's step data, for copy/paste between lanes of the same kind: one row per
+    StepLayer, indexed by it, plus the on/off strip. A CC lane has no velocity, gate or spread
+    parameter, so those three rows are left at zero when the pattern came from one and
+    skipped when it is pasted onto one. */
 struct LanePattern
 {
-    float values[numSteps] {};
+    float rows[numStepLayers][numSteps] {};
     bool  enabled[numSteps] {};
-    float chance[numSteps] {};
-    float velocity[numSteps] {};
-    float gate[numSteps] {};
-    float spread[numSteps] {};
     bool  valid = false;
 };
 

@@ -223,14 +223,12 @@ private:
 
     const int step;
 
-    juce::Slider valueSlider, spreadSlider, velocitySlider, chanceSlider, gateSlider;
+    /** One bar per layer, indexed by StepLayer. */
+    juce::Slider bars[numStepLayers];
     juce::ToggleButton onButton;
 
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> valueAttachment,
-                                                                         spreadAttachment,
-                                                                         velocityAttachment,
-                                                                         chanceAttachment,
-                                                                         gateAttachment;
+    // Declared after what they drive, so they are destroyed first.
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> barAttachments[numStepLayers];
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> onAttachment;
 
     /** Where the visible bar is drawn at this instant, as a proportion of the bar: the
@@ -256,8 +254,6 @@ private:
     int  appliedTrigOn = -1;
     bool withinLength = true;
     StepLayer currentLayer = StepLayer::value;
-
-    juce::Slider& sliderFor (StepLayer) noexcept;
 
     /** Which layers this slot was actually given a parameter for. A CC step has no Velocity,
         Gate or Spread bar, so those were never built or attached.

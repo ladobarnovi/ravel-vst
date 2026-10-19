@@ -1,5 +1,6 @@
 #include "Parameters.h"
 
+#include <algorithm>
 #include <vector>
 
 namespace params
@@ -529,27 +530,17 @@ void rotateLane (juce::AudioProcessorValueTreeState& state, int lane, int direct
         return;
 
     // Snapshot first: writing in place would read values already overwritten.
-    const auto pattern = copyLane (state, lane, kind);
+    auto pattern = copyLane (state, lane, kind);
 
-    const int shift = direction > 0 ? 1 : numSteps - 1;
+    // The step that becomes step one: the last, rotating right, or the second, rotating left.
+    const int newFirst = direction > 0 ? numSteps - 1 : 1;
 
-    for (int step = 0; step < numSteps; ++step)
-    {
-        const int source = (step + numSteps - shift) % numSteps;
+    for (auto& row : pattern.rows)
+        std::rotate (row, row + newFirst, row + numSteps);
 
-        setParam (state, stepValueId  (lane, step, kind), pattern.values[source]);
-        setParam (state, stepOnId     (lane, step, kind), pattern.enabled[source] ? 1.0f : 0.0f);
-        setParam (state, stepChanceId (lane, step, kind), pattern.chance[source]);
+    std::rotate (pattern.enabled, pattern.enabled + newFirst, pattern.enabled + numSteps);
 
-        // A CC lane has none of these -- only a note lane's velocity, gate and spread move
-        // with the rest.
-        if (kind == LaneKind::note)
-        {
-            setParam (state, stepVelocityId (lane, step), pattern.velocity[source]);
-            setParam (state, stepGateId     (lane, step), pattern.gate[source]);
-            setParam (state, stepSpreadId   (lane, step), pattern.spread[source]);
-        }
-    }
+    pasteLane (state, lane, pattern, kind);
 }
 
 //==============================================================================
@@ -568,16 +559,11 @@ namespace
 
         for (int step = 0; step < numSteps; ++step)
         {
-            ids.push_back (stepValueId  (lane, step, kind));
-            ids.push_back (stepOnId     (lane, step, kind));
-            ids.push_back (stepChanceId (lane, step, kind));
+            ids.push_back (stepOnId (lane, step, kind));
 
-            if (kind == LaneKind::note)
-            {
-                ids.push_back (stepVelocityId (lane, step));
-                ids.push_back (stepGateId     (lane, step));
-                ids.push_back (stepSpreadId   (lane, step));
-            }
+            for (int layer = 0; layer < numStepLayers; ++layer)
+                if (auto id = stepLayerId (lane, step, (StepLayer) layer, kind); id.isNotEmpty())
+                    ids.push_back (std::move (id));
         }
 
         ids.push_back (laneOnId       (lane, kind));
@@ -670,16 +656,11 @@ LanePattern copyLane (juce::AudioProcessorValueTreeState& state, int lane, LaneK
 
     for (int step = 0; step < numSteps; ++step)
     {
-        pattern.values[step]  = getParam (state, stepValueId (lane, step, kind));
         pattern.enabled[step] = getParam (state, stepOnId (lane, step, kind)) > 0.5f;
-        pattern.chance[step]  = getParam (state, stepChanceId (lane, step, kind));
 
-        if (kind == LaneKind::note)
-        {
-            pattern.velocity[step] = getParam (state, stepVelocityId (lane, step));
-            pattern.gate[step]     = getParam (state, stepGateId (lane, step));
-            pattern.spread[step]   = getParam (state, stepSpreadId (lane, step));
-        }
+        for (int layer = 0; layer < numStepLayers; ++layer)
+            if (const auto id = stepLayerId (lane, step, (StepLayer) layer, kind); id.isNotEmpty())
+                pattern.rows[layer][step] = getParam (state, id);
     }
 
     pattern.valid = true;
@@ -693,16 +674,11 @@ void pasteLane (juce::AudioProcessorValueTreeState& state, int lane, const LaneP
 
     for (int step = 0; step < numSteps; ++step)
     {
-        setParam (state, stepValueId  (lane, step, kind), pattern.values[step]);
-        setParam (state, stepOnId     (lane, step, kind), pattern.enabled[step] ? 1.0f : 0.0f);
-        setParam (state, stepChanceId (lane, step, kind), pattern.chance[step]);
+        setParam (state, stepOnId (lane, step, kind), pattern.enabled[step] ? 1.0f : 0.0f);
 
-        if (kind == LaneKind::note)
-        {
-            setParam (state, stepVelocityId (lane, step), pattern.velocity[step]);
-            setParam (state, stepGateId     (lane, step), pattern.gate[step]);
-            setParam (state, stepSpreadId   (lane, step), pattern.spread[step]);
-        }
+        for (int layer = 0; layer < numStepLayers; ++layer)
+            if (const auto id = stepLayerId (lane, step, (StepLayer) layer, kind); id.isNotEmpty())
+                setParam (state, id, pattern.rows[layer][step]);
     }
 }
 

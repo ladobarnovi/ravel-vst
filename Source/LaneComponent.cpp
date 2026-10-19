@@ -76,47 +76,24 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
                     params::LaneKind kind)
     : step (stepIndex), accent (theme::laneAccent (laneIndex))
 {
-    struct LayerSetup
-    {
-        juce::Slider& slider;
-        juce::String  paramID;
-        double        resetTo;
-    };
-
     // Velocity, Gate and Spread are note-only parameters -- a CC lane's step has none of them
     // (see Parameters.cpp) -- so for a CC-kind slot only Value and Chance get built at all.
     //
     // Both the id and the double-click reset come from params, so a bar resets to exactly what
     // the lane's Clear puts that row back to.
-    const LayerSetup setups[]
-    {
-        { valueSlider,    params::stepLayerId (laneIndex, stepIndex, StepLayer::value, kind),
-                          params::stepLayerNeutral (StepLayer::value) },
-        { spreadSlider,   params::stepLayerId (laneIndex, stepIndex, StepLayer::spread, kind),
-                          params::stepLayerNeutral (StepLayer::spread) },
-        { velocitySlider, params::stepLayerId (laneIndex, stepIndex, StepLayer::velocity, kind),
-                          params::stepLayerNeutral (StepLayer::velocity) },
-        { chanceSlider,   params::stepLayerId (laneIndex, stepIndex, StepLayer::chance, kind),
-                          params::stepLayerNeutral (StepLayer::chance) },
-        { gateSlider,     params::stepLayerId (laneIndex, stepIndex, StepLayer::gate, kind),
-                          params::stepLayerNeutral (StepLayer::gate) },
-    };
-
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>* attachments[]
-        { &valueAttachment, &spreadAttachment, &velocityAttachment, &chanceAttachment,
-          &gateAttachment };
-
     for (int i = 0; i < numStepLayers; ++i)
     {
+        const auto paramID = params::stepLayerId (laneIndex, stepIndex, (StepLayer) i, kind);
+
         // Empty for a CC lane's velocity, gate and spread, which do not exist -- skipped
         // rather than attached to the note lane of the same number those ids would otherwise
         // resolve to.
-        if (setups[i].paramID.isEmpty())
+        if (paramID.isEmpty())
             continue;
 
         built[i] = true;
 
-        auto& slider = setups[i].slider;
+        auto& slider = bars[i];
 
         slider.setSliderStyle (juce::Slider::LinearBarVertical);
         slider.setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
@@ -129,7 +106,7 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
         // Which component the bubble hangs off is settled in parentHierarchyChanged(), not
         // here: a slot has no parent yet while it is being constructed.
         slider.setPopupDisplayEnabled (true, false, nullptr);
-        slider.setDoubleClickReturnValue (true, setups[i].resetTo);
+        slider.setDoubleClickReturnValue (true, params::stepLayerNeutral ((StepLayer) i));
 
         // Every bar stays an absolute drag whatever modifier is held. JUCE reads Ctrl, Alt or
         // Cmd as "swap to velocity-sensitive drag" by default (see Slider's
@@ -148,8 +125,8 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
         theme::setRole (slider, theme::Role::stepBar);
         addChildComponent (slider);
 
-        *attachments[i] = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
-            state, setups[i].paramID, slider);
+        barAttachments[i] = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+            state, paramID, slider);
     }
 
     // The window is drawn by the value bar, so the value bar has to be told when it changes.
@@ -158,7 +135,7 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
     // from the host exactly as readily as for one from a drag.
     if (built[(int) StepLayer::spread])
     {
-        spreadSlider.onValueChange = [this] { applySpread(); };
+        bars[(int) StepLayer::spread].onValueChange = [this] { applySpread(); };
         applySpread();
     }
 
@@ -191,46 +168,37 @@ StepSlot::StepSlot (juce::AudioProcessorValueTreeState& state, int laneIndex, in
     applyTrigState();
 }
 
-juce::Slider& StepSlot::sliderFor (StepLayer layer) noexcept
-{
-    switch (layer)
-    {
-        case StepLayer::spread:   return spreadSlider;
-        case StepLayer::velocity: return velocitySlider;
-        case StepLayer::chance:   return chanceSlider;
-        case StepLayer::gate:     return gateSlider;
-        case StepLayer::value:
-        default:                  return valueSlider;
-    }
-}
-
 void StepSlot::applySpread()
 {
+    auto& valueBar = bars[(int) StepLayer::value];
+
     // On the value bar rather than on the one that owns the number: the window is headroom
     // above that bar, and only legible against it. See theme::stepSpreadProperty.
-    theme::setStepSpread (valueSlider, (float) spreadSlider.getValue());
-    valueSlider.repaint();
+    theme::setStepSpread (valueBar, (float) bars[(int) StepLayer::spread].getValue());
+    valueBar.repaint();
 }
 
 void StepSlot::setLandedValue (float proportion)
 {
-    if (juce::approximatelyEqual (theme::stepLandedOf (valueSlider), proportion))
+    auto& valueBar = bars[(int) StepLayer::value];
+
+    if (juce::approximatelyEqual (theme::stepLandedOf (valueBar), proportion))
         return;
 
-    theme::setStepLanded (valueSlider, proportion);
-    valueSlider.repaint();
+    theme::setStepLanded (valueBar, proportion);
+    valueBar.repaint();
 }
 
 void StepSlot::setLayer (StepLayer layer)
 {
     // The bar being hidden must not keep an override from a slide it was part of, or it would
     // come back at that height the next time this layer is selected.
-    theme::clearDrawProportion (sliderFor (currentLayer));
+    theme::clearDrawProportion (bars[(int) currentLayer]);
 
     currentLayer = layer;
 
     for (int l = 0; l < numStepLayers; ++l)
-        sliderFor ((StepLayer) l).setVisible ((StepLayer) l == layer);
+        bars[l].setVisible (l == (int) layer);
 
     applyTrigState();
     repaint();
@@ -247,10 +215,10 @@ float StepSlot::proportionOf (const juce::Slider& slider)
 
 float StepSlot::drawnProportion() const
 {
-    const float overridden = theme::drawProportionOf (const_cast<StepSlot*> (this)->sliderFor (currentLayer));
+    const auto& bar = bars[(int) currentLayer];
+    const float overridden = theme::drawProportionOf (bar);
 
-    return overridden >= 0.0f ? overridden
-                              : proportionOf (const_cast<StepSlot*> (this)->sliderFor (currentLayer));
+    return overridden >= 0.0f ? overridden : proportionOf (bar);
 }
 
 void StepSlot::beginValueSlide()
@@ -263,7 +231,7 @@ void StepSlot::setValueSlideProgress (float progress)
     if (transitionFrom < 0.0f)
         return;
 
-    auto& bar = sliderFor (currentLayer);
+    auto& bar = bars[(int) currentLayer];
 
     if (progress >= 1.0f)
     {
@@ -321,8 +289,8 @@ void StepSlot::parentHierarchyChanged()
     if (host == nullptr)
         return;
 
-    for (int layer = 0; layer < numStepLayers; ++layer)
-        sliderFor ((StepLayer) layer).setPopupDisplayEnabled (true, false, host);
+    for (auto& bar : bars)
+        bar.setPopupDisplayEnabled (true, false, host);
 }
 
 void StepSlot::applyTrigState()
@@ -331,7 +299,7 @@ void StepSlot::applyTrigState()
 
     appliedTrigOn = on ? 1 : 0;
 
-    auto& visible = sliderFor (currentLayer);
+    auto& visible = bars[(int) currentLayer];
 
     // Only on/off and the playhead are mixed into the colours here. Muting and running past
     // the lane's Length fade the whole slot instead -- see applySlotAlpha -- so this does not
@@ -373,7 +341,7 @@ juce::Slider* StepSlot::activeBar() noexcept
 {
     // Visibility is what tells the two apart: setLayer shows exactly the one bar the slot is
     // editing, and on a CC slot the layers that were never built are never shown.
-    auto& bar = sliderFor (currentLayer);
+    auto& bar = bars[(int) currentLayer];
     return bar.isVisible() ? &bar : nullptr;
 }
 
@@ -390,13 +358,15 @@ juce::String StepSlot::getTooltip()
     // thought of even though the parameter behind it is a width. On the Pitch row the hint
     // for the gesture goes with it: an Alt-drag is only discoverable where it works, and it
     // works here.
-    if (const float spread = (float) spreadSlider.getValue();
+    const auto value = (float) bars[(int) StepLayer::value].getValue();
+
+    if (const float spread = (float) bars[(int) StepLayer::spread].getValue();
         built[(int) StepLayer::spread] && spread > 0.001f)
     {
         if (currentLayer == StepLayer::value)
-            text += " (plays " + spreadRangeText ((float) valueSlider.getValue(), spread) + ")";
+            text += " (plays " + spreadRangeText (value, spread) + ")";
         else if (currentLayer == StepLayer::spread)
-            text += " (" + spreadRangeText ((float) valueSlider.getValue(), spread) + ")";
+            text += " (" + spreadRangeText (value, spread) + ")";
     }
 
     if (currentLayer == StepLayer::value && built[(int) StepLayer::spread])
@@ -410,7 +380,7 @@ void StepSlot::beginBarDrag (const juce::MouseEvent& e, StepLayer layer)
 {
     // A bar the slot does not have leaves strokeBar null and the stroke inert, which is what
     // an Alt-drag on a CC lane comes to: there is no Spread there to widen.
-    strokeBar = built[(int) layer] ? &sliderFor (layer) : nullptr;
+    strokeBar = built[(int) layer] ? &bars[(int) layer] : nullptr;
 
     if (strokeBar != nullptr)
         strokeBar->mouseDown (e.getEventRelativeTo (strokeBar));
@@ -527,11 +497,8 @@ void StepSlot::resized()
     // Every bar gets the same rectangle whether or not it is the visible one: the Spread bar
     // is dragged while it is hidden, and a slider maps a drag onto its value through its own
     // bounds.
-    valueSlider.setBounds (r);
-    spreadSlider.setBounds (r);
-    velocitySlider.setBounds (r);
-    chanceSlider.setBounds (r);
-    gateSlider.setBounds (r);
+    for (auto& bar : bars)
+        bar.setBounds (r);
 }
 
 void StepSlot::setPlaying (bool shouldBePlaying)
