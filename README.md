@@ -2,33 +2,42 @@
 
 A polyrhythmic step sequencer, built as a VST3 for Ableton Live 12 on Windows.
 
-Ravel holds **two independent stacks of lanes**: a **Notes** stack that drives pitch, and a
-**CC** stack that drives MIDI CC. Each opens with one lane and goes up to four, added one at a
-time, and each keeps its own lane count — growing one costs the other nothing.
+Ravel holds **three independent stacks of lanes**: two note stacks, **Voice 1** and **Voice 2**,
+that each drive their own pitch, and a **CC** stack that drives MIDI CC. Voice 1 and CC open with
+one lane, Voice 2 opens empty; each goes up to four, added one at a time, and each keeps its own
+lane count — growing one costs the others nothing.
 
 Every lane is a 16-step sequencer with its own **length**, **clock rate** and **depth**. Within
-a stack the lanes fold together into one value: the Note fold becomes pitch (or, in **Poly**
-mode, each Note lane triggers its own note off its own clock), and the CC fold becomes the
-**Mix CC**. On top of that, each CC lane also has its own direct tap onto its own CC number, so
-one instance can modulate up to five destinations at once.
+a stack the lanes fold together into one value: each voice's fold becomes that voice's pitch, so
+the two voices play as two separate melodic lines, and the CC fold becomes the **Mix CC**. On top
+of that, each CC lane also has its own direct tap onto its own CC number, so one instance can
+modulate up to five destinations at once.
 
 ---
 
 ## What it does
 
-### Two stacks
+### Three stacks
 
-The window's top-level tabs are **Notes** and **CC**. They are not two views of the same lanes —
-they are two separate sequencers sharing one clock, one transport and one plugin instance.
+The window's top-level tabs are **Voice 1**, **Voice 2** and **CC**. They are not views of the
+same lanes — they are three separate sequencers sharing one clock, one transport and one plugin
+instance.
 
-|  | Notes stack | CC stack |
+|  | Voice 1 / Voice 2 stacks | CC stack |
 |---|---|---|
-| What the fold drives | Pitch, over an MPE zone (or one channel) | The Mix CC |
-| Lanes | 1–4, own count | 1–4, own count |
+| What the fold drives | That voice's pitch, over an MPE zone (or one channel) | The Mix CC |
+| Lanes | 1–4 on Voice 1, 0–4 on Voice 2, own count | 1–4, own count |
 | Per-step | Value, Spread, Velocity, Chance, Gate | Value, Chance |
 | Per-lane shaping | Length, Rate, Direction, Mix amount | The same four |
 | Per-lane output | — | Its own Send / Number / Channel / Offset |
-| Swing | Shared — one control, on the Notes page | Shared — driven by the Notes page |
+| Per-stack | Its own Offset and Trigger | Mix CC destination, Slew |
+| Swing | Shared — one control, on the Voice 1 page | Shared — driven by the Voice 1 page |
+
+The two voices are the same kind of lane — Voice 2 is a second copy of Voice 1's stack, not a
+different instrument. Each folds only its own lanes and fires its own notes, off its own
+**Trigger**, an octave or three apart if its own **Offset** says so. Everything else about pitch
+and output — Root, Scale, Range, Quantize, Bend range, MPE, Channel — is shared by both and lives
+on Voice 1's page, so the two voices always play in the same key.
 
 The two differ per *step*, not per lane. Velocity and Gate are only ever arguments to *start a
 note*, and a CC lane never starts one, so it has neither — which also keeps the plugin's
@@ -124,9 +133,9 @@ advanced, so a running RNG would draw again mid-step and zipper the pitch. A pur
 the position gives the same answer however often it is asked.
 
 It happens **before the lane's share is taken**, so Mix amount scales the wander with
-everything else — a lane at half depth moves the fold by half its window — and in **Poly**
-mode each lane draws on its own clock, so a stack of lanes with Spread is a chord that
-re-voices itself.
+everything else — a lane at half depth moves the fold by half its window — and each voice
+draws on its own lanes' clocks, so two voices with Spread are a two-note chord that re-voices
+itself.
 
 With **Quantize** on the drawn value lands on a scale degree like any other, so a window wide
 enough to cover three degrees turns that step into *pick one of these three notes*.
@@ -165,8 +174,8 @@ rather than drifting. Same design as Random direction, for the same reason.
 ### Swing
 
 **Swing** delays every other step of the absolute grid, so it stays anchored to the bar rather
-than to wherever a short pattern happened to start. It is **one control across both stacks**,
-living on the Notes page: they fold off the same host clock, and a Note lane swung against a CC
+than to wherever a short pattern happened to start. It is **one control across every stack**,
+living on the Voice 1 page: they fold off the same host clock, and a Note lane swung against a CC
 lane reads as drift rather than as groove. Same shared-switch reasoning as Free Run.
 
 It moves step *boundaries*, which meant reworking how the step index is derived. It's still
@@ -228,8 +237,9 @@ only one row would slide it out from under the rest of the pattern. Spread in pa
 to travel with its own value: a window is measured from the pitch beneath it, so one left
 behind belongs to a note that has gone somewhere else.
 
-The clipboard is per stack: you can paste one Note lane onto another, or one CC lane onto
-another, but not across the two.
+The two voices share a clipboard and CC has its own: you can paste a Note lane onto any other
+Note lane, on either voice, or one CC lane onto another, but not between a Note lane and a CC
+lane.
 
 All of these go through the host as real parameter changes wrapped in change gestures, so they
 land in automation and undo instead of silently mutating state behind the host's back. The
@@ -284,7 +294,7 @@ mention loads at its default.
 ### The fold
 
 Lanes are combined in lane order, starting from zero: each active step adds its own share,
-`mix += depth × value`. Both stacks fold the same way.
+`mix += depth × value`. Every stack folds the same way, and only over its own lanes.
 
 A step that is toggled **off** is transparent for its lane — nothing is added — and it fires
 no note if that lane is the trigger source.
@@ -292,9 +302,10 @@ no note if that lane is the trigger source.
 ### Lanes
 
 Every lane starts flat — sixteen steps of one value, not a demo to clear away — and lanes differ
-only in their default rate. The **first Note lane** is the one exception: its steps come up at
-25 % so a freshly loaded instance is audibly doing something rather than looking broken. Every
-lane after it, and every CC lane, starts at zero, because a lane you just added is a blank sheet
+only in their default rate. The **first Voice 1 lane** is the one exception: its steps come up
+at 25 % so a freshly loaded instance is audibly doing something rather than looking broken. Every
+lane after it, every Voice 2 lane and every CC lane starts at zero, because a lane you just added
+is a blank sheet
 to draw on and one that arrives already pitched is something to clear away first. *+ Add lane* sits under the last lane of the
 current stack and appends one at the bottom; **each lane carries its own Remove**, at the right
 of its action row, so any lane can go and not just the last one. The window grows and shrinks to
@@ -321,29 +332,41 @@ Muting a lane with its own toggle is the same thing as switching every one of it
 once, so a muted lane is transparent for its fold and triggers nothing. That is also how you
 make an instance CC-only: mute its Note lanes.
 
-All four lanes of both stacks exist as parameters from the moment the plugin is loaded, because
-a VST3 cannot add parameters later. The two lane counts only decide which of them are heard and
-shown, which is what makes them automatable and undoable like any other control.
+All four lanes of every stack exist as parameters from the moment the plugin is loaded, because
+a VST3 cannot add parameters later. The three lane counts only decide which of them are heard
+and shown, which is what makes them automatable and undoable like any other control. Voice 2's
+count can go to zero — it starts there, and its last lane can be removed to empty it again —
+while Voice 1 and CC always keep one.
 
 ### The tabs
 
 The header runs left to right from what the plugin *is* to where its output goes: the mark and
 wordmark, the two history arrows, then the **preset pill** — steppers either side of the loaded
 patch's name, with **Save** and **Init** beside it — and, hard against the right edge, the **MIDI
-output** chooser and **Rescan**. The MIDI output routes both stacks alike and so belongs to
-neither tab (see [MPE into Live](#mpe-into-live-the-virtual-port-route)).
+output** chooser and **Rescan**. The MIDI output routes every stack alike and so belongs to
+no tab (see [MPE into Live](#mpe-into-live-the-virtual-port-route)).
 
-Everything else global sits under whichever of the two top-level tabs it belongs to, in the
+Everything else global sits under whichever of the three top-level tabs it belongs to, in the
 footer below that tab's lane stack, laid out as a row of headed columns:
 
-**Notes**
+**Voice 1**
 
 | Column | Controls |
 |---|---|
+| Voice | Offset, Trigger — this voice's own |
 | Pitch | Root, Scale, Range, Quantize |
-| Output | Bend range, Offset, MPE, Channel |
-| Voice | Voices, Poly |
-| Clock | Swing, Free run, Trigger |
+| Output | Bend range, MPE, Channel |
+| Clock | Swing, Free run |
+
+**Voice 2**
+
+| Column | Controls |
+|---|---|
+| Voice | Offset, Trigger — this voice's own |
+
+The **Voice** column comes first on both voice tabs so it sits in the same place on each. It is
+all a voice has of its own; Pitch, Output and Clock are shared by both voices and live on Voice
+1's tab only, the same way Swing lives there and not on CC.
 
 **CC**
 
@@ -357,20 +380,20 @@ included — but it sits in that column anyway, as an ordinary fifth row. It is 
 control there is, and a rule and a sub-heading to mark the distinction cost more attention than
 the distinction is worth; the tooltip carries it instead.
 
-Swing is not repeated here — it is shared, and lives on the Notes page.
+Swing is not repeated here — it is shared, and lives on the Voice 1 page.
 
-These Offsets are not the same control — there are three of them, and no two behave alike. The
-**CC** one adds to that stack's fold before it becomes the Mix CC, 0–100 %; a **lane's** own
+These Offsets are not the same control — there are three kinds of them, and no two behave alike.
+The **CC** one adds to that stack's fold before it becomes the Mix CC, 0–100 %; a **lane's** own
 Offset, in that lane's own column, instead raises its tap's floor and scales the step into the
-headroom above it (see [CC outputs](#cc-outputs)). The **Notes** one transposes in whole octaves,
+headroom above it (see [CC outputs](#cc-outputs)). A **voice's** one transposes in whole octaves,
 −3 … +3, and applies *after* Root, Range and the scale have resolved a pitch — so a pattern keeps
 its shape and its scale degrees and simply moves, instead of being squashed against the fold's
 0–100 % clamp. Notes still clamp to the MIDI range, so how much of a ±3 octave shift is reachable
 depends on Root and Range. **Slew** only ever smooths CC — the Mix CC and every lane's own tap —
-and never touches pitch, so it lives on the CC tab. **Free run** is one shared switch for both
-stacks, because splitting it would mean running two independent timelines through the whole engine
-for a narrow benefit. **Trigger** picks which Note lane's advance fires the shared note, and dims
-in Poly mode, where every lane triggers itself.
+and never touches pitch, so it lives on the CC tab. **Free run** is one shared switch for every
+stack, because splitting it would mean running independent timelines through the whole engine
+for a narrow benefit. **Trigger** picks which of a voice's own lanes fires that voice's note —
+Lane 1 on Voice 2 means Voice 2's first lane — or *Any Lane* for whichever of them advanced.
 
 ### Root and Range
 
@@ -415,9 +438,9 @@ session. Only the degrees *within* an octave fall between the keys.
 
 **Those in-between degrees play as a note plus pitch bend**, the same mechanism continuous
 pitch uses — so with Quantize on, a non-12 scale is subject to the same limit: **one microtone
-at a time per channel.** Overlapping notes (a step's Gate over 100 %, Voices above 1, or four
-poly lanes at once) share the channel's wheel, so they can't hold different microtones. Keep to
-one voice for microtonal work, or give the lanes separate instances. `Bend range` becomes live
+at a time per channel.** Overlapping notes (a step's Gate over 100 %, or both voices sounding
+at once) share the channel's wheel, so they can't hold different microtones. Keep to one voice
+and short gates for microtonal work, or give the lanes separate instances. `Bend range` becomes live
 and is announced by RPN just as it is in continuous mode, and the same rule applies: it has to
 agree with what the instrument is actually reading — see
 [Quantize and continuous pitch](#quantize-and-continuous-pitch).
@@ -488,25 +511,19 @@ transport and a freshly loaded instance stays silent until you press play.
 
 ### Polyphony
 
-**Voices** (Notes tab → Voice, 1–8) is the ceiling on notes sounding at once. At **1** the
-behaviour is the original monophonic one — a retrigger always closes the previous note, so a
-step's Gate over 100 % simply cuts itself off. Above 1, a step with a long Gate **overlaps into
-the following step**.
+The two voices are the way to get two different notes at once: each folds its own lanes into
+its own pitch and fires off its own Trigger, so they run as two independent melodic lines.
 
-In mixed mode this is about overlapping gates, not chords: pitch comes from the single mixed
-value, so simultaneous triggers would land on the same note. Set a step's Gate above 100 % to
-hear it. **Poly** mode is the other way to get several notes at once — each Note lane triggers
-its own note off its own clock and its own value, so the stack runs as independent voices and
-**Trigger** goes unused. Each lane gets its own block of voice slots, so one lane's notes can
-never steal another's.
+Within one voice, a step with a Gate over 100 % **overlaps into the following step** rather than
+being cut off by it. That is about overlapping gates, not chords: a voice's pitch comes from its
+single mixed value, so it only ever starts one note at a time. Each voice has its own block of
+**8 note slots** — the ceiling on how many of its notes can overlap — so one voice holding a
+long gate can never have its note stolen by the other. Past 8, a voice steals from its own
+block, taking whichever of its notes is closest to finishing.
 
-Two details the engine has to get right:
-
-- **A repeated pitch reuses its voice rather than stacking.** MIDI can't distinguish two
-  identical note-ons on one channel, so one note-off would silence both and the survivor
-  would hang forever. Same pitch + same channel retriggers in place.
-- **Turning Voices down releases anything outside the new limit**, rather than orphaning it.
-  So does flipping the Poly switch, which re-partitions the slots underneath.
+**A repeated pitch reuses its slot rather than stacking.** MIDI can't distinguish two identical
+note-ons on one channel, so one note-off would silence both and the survivor would hang forever.
+Same pitch + same channel retriggers in place.
 
 With MPE on — the default — overlapping notes each hold their own microtone, because each
 one is on its own channel. With it off they share one channel and one bend register, so the
@@ -514,7 +531,7 @@ most recent bend applies to all of them. See below.
 
 ### MPE
 
-**MPE** (Notes tab → Output) is **on by default**. Output is then a standard **MPE Lower
+**MPE** (Voice 1 tab → Output) is **on by default**. Output is then a standard **MPE Lower
 Zone**: channel 1 is the zone master, channels 2–16 are the 15 member channels, and every
 simultaneously-sounding note is allocated its own member channel with its own pitch bend.
 The zone is announced with RPN 6 on the master channel before any note goes out, and again
@@ -688,11 +705,11 @@ out of scope for a plugin only running on your own machine.)
 
 280 checks across two suites, neither needing a plugin host.
 
-`Tests/EngineTests.cpp` (135 checks) drives `SequencerEngine` over a synthetic timeline. The
+`Tests/EngineTests.cpp` (130 checks) drives `SequencerEngine` over a synthetic timeline. The
 engine takes PPQ positions as plain arguments rather than reading a playhead itself, which is
 what makes that possible. Covers step timing, gate length, per-lane length and rate, disabled
 steps, the fold, transport jumps, stuck-note release on stop, directions, probability,
-swing, per-step velocity, polyphony and poly mode, per-step Spread — that a step's value is
+swing, per-step velocity, overlapping gates and the two voices, per-step Spread — that a step's value is
 the floor of its window rather than its middle, that the ceiling is clamped into the range, and
 that the same timeline draws the same pitches whatever the block size — the Mix CC and each lane's own CC
 tap (that the Offsets stay out of each other's way, and that a lane's own scales the step into
@@ -701,7 +718,7 @@ continuous-pitch path — including that note number plus pitch bend reconstruct
 fractional pitch, that non-12 EDO scales land where the tuning says, and that the bend range is
 actually transmitted.
 
-`Tests/ProcessorTests.cpp` (145 checks) drives the real `RavelAudioProcessor::processBlock`
+`Tests/ProcessorTests.cpp` (156 checks) drives the real `RavelAudioProcessor::processBlock`
 through a mock playhead. This covers the layer where the plugin could compile, load and still
 emit nothing: playhead handling, the free-run fallback, the parameter snapshot, state
 round-trip, every pattern action — including that RND, CLR and Invert act on the selected row,
@@ -737,7 +754,7 @@ A fourth argument — the label of a chip on the lane strips, so `Pitch` (`Val` 
 across the slide that follows, so the animation can be reviewed from stills. Build the tool `--config Release` for that: a Debug paint of the window
 costs more wall clock than the slide lasts, so every frame would show it already finished.
 
-The first three arguments are the output file, which tab (`notes` or `cc`) and how many lanes. It dials in a
+The first three arguments are the output file, which tab (`notes`, `voice2` or `cc`) and how many lanes. It dials in a
 fixed patch first — odd lane lengths, a muted lane, some steps switched off, a few steps with
 a Spread — because at its defaults the window shows none of the states worth checking: no wrap
 marker, no out-of-cycle steps, no negative Mix amount, no window round a step.
@@ -871,7 +888,7 @@ already includes M4L, and its modulation API can target any parameter directly.
 | `Source/Parameters.*` | Parameter IDs, the APVTS layout, pattern actions |
 | `Source/SequencerEngine.*` | The sequencer core and MIDI generation |
 | `Source/PluginProcessor.*` | Plugin plumbing, playhead handling, state save/load |
-| `Source/PluginEditor.*` | Window layout, the header, and the Notes/CC workspaces |
+| `Source/PluginEditor.*` | Window layout, the header, and the Voice 1 / Voice 2 / CC workspaces |
 | `Source/PresetBar.*` | The header's preset pill, Save and Init: browser menu, name prompt, edited marker |
 | `Source/ExternalMidiSelector.*` | The header's MIDI-output chooser: port list and Rescan |
 | `Source/LaneComponent.*` | One lane: 16 steps plus its controls, in either kind |

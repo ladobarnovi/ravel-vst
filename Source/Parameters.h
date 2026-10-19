@@ -28,10 +28,10 @@ inline juce::StringArray directionNameList()
     return { "Forward", "Reverse", "Ping-Pong", "Random" };
 }
 
-/** Which Note lane's advance fires the shared note in mixed (non-poly) mode, with "Any
-    Lane" on the end. Built from numLanes rather than written out, so the list cannot come
-    to describe a different number of lanes than the plugin actually has -- the engine reads
-    any index at or above numLanes as "any". */
+/** Which of a voice's lanes fires that voice's note, with "Any Lane" on the end. Built from
+    numLanes rather than written out, so the list cannot come to describe a different number
+    of lanes than the plugin actually has -- the engine reads any index at or above numLanes
+    as "any". */
 inline juce::StringArray triggerNameList()
 {
     juce::StringArray names;
@@ -55,16 +55,16 @@ juce::String stepOnId       (int lane, int step, LaneKind kind = LaneKind::note)
 juce::String stepChanceId   (int lane, int step, LaneKind kind = LaneKind::note);
 
 // A CC lane's steps carry no velocity or gate -- both are only ever arguments to
-// startNote, and a CC lane never starts one -- so these parameters are note-only and
-// never need to address a CC lane at all.
-juce::String stepVelocityId (int lane, int step);
-juce::String stepGateId     (int lane, int step);
+// startNote, and a CC lane never starts one -- so these parameters exist only on the two
+// note pools. Never pass LaneKind::cc.
+juce::String stepVelocityId (int lane, int step, LaneKind kind = LaneKind::note);
+juce::String stepGateId     (int lane, int step, LaneKind kind = LaneKind::note);
 
 // How far above its own value this step's pitch may land, as a width: at 30% a step at 30%
 // plays somewhere in 30..60%. Note-only for the same reason as the two above -- what it
 // widens is a pitch, and the same parameter on a CC lane would be step jitter, which is a
 // different feature wearing this one's name.
-juce::String stepSpreadId   (int lane, int step);
+juce::String stepSpreadId   (int lane, int step, LaneKind kind = LaneKind::note);
 
 //==============================================================================
 /** Which of a step's five continuous parameters is being addressed.
@@ -106,10 +106,15 @@ juce::String stepLayerName (StepLayer layer, LaneKind kind = LaneKind::note);
 /** The same, abbreviated for the chips beside the steps, which have 46px to fit it in. */
 juce::String stepLayerShortName (StepLayer layer, LaneKind kind = LaneKind::note);
 
-/** Which pool's lane-count parameter a kind addresses. The two counts are separate
-    parameters -- growing one stack costs the other nothing -- so anything that works on
-    either stack picks between them here rather than branching at the call site. */
+/** Which pool's lane-count parameter a kind addresses. The counts are separate parameters --
+    growing one stack costs the others nothing -- so anything that works on any stack picks
+    between them here rather than branching at the call site. */
 const char* laneCountIdFor (LaneKind kind);
+
+/** A voice's own Trigger and Offset. These two are per voice; every other pitch and output
+    setting is shared by both voices. Never pass LaneKind::cc. */
+const char* triggerSrcIdFor (LaneKind kind);
+const char* noteOffsetIdFor (LaneKind kind);
 
 juce::String laneOnId       (int lane, LaneKind kind = LaneKind::note);
 juce::String laneLengthId   (int lane, LaneKind kind = LaneKind::note);
@@ -124,9 +129,10 @@ juce::String laneCcNumId    (int lane);
 juce::String laneCcChanId   (int lane);
 juce::String laneCcOffsetId (int lane);
 
-// Which Note lane's advance fires the shared note in mixed (non-poly) mode. CC output has
-// no equivalent: it is never "triggered", it continuously reflects the fold.
-inline constexpr auto noteTriggerSrcId = "trig_src";
+// Which of Voice 1's lanes fires its note. CC output has no equivalent: it is never
+// "triggered", it continuously reflects the fold.
+inline constexpr auto noteTriggerSrcId   = "trig_src";
+inline constexpr auto voice2TriggerSrcId = "v_trig_src";
 
 inline constexpr auto quantizeId     = "quantize";
 inline constexpr auto bendRangeId    = "bend_range";
@@ -142,9 +148,10 @@ inline constexpr auto ccOnId         = "cc_on";
 inline constexpr auto ccNumberId     = "cc_num";
 inline constexpr auto ccChannelId    = "cc_ch";
 
-// Transposes the pitch the Note-lane fold resolves to, in whole octaves (-3..+3). Unlike
+// Transposes the pitch Voice 1's fold resolves to, in whole octaves (-3..+3). Unlike
 // ccOffsetId it does not shift the fold itself -- see the note by its parameter definition.
 inline constexpr auto noteOffsetId   = "offset";
+inline constexpr auto voice2OffsetId = "v_offset";
 
 // Shifts the CC-lane mix before it becomes the Mix CC. Independent of any CC lane's own
 // laneCcOffsetId, which shifts that lane's own tap instead.
@@ -165,19 +172,17 @@ inline constexpr auto freeRunId      = "free_run";
 // version already used, so a saved session's value carries straight over.
 inline constexpr auto swingId        = "swing";
 
-inline constexpr auto voiceCountId   = "voices";
-inline constexpr auto polyModeId     = "poly_mode";
-
 // Gives every simultaneously-sounding note its own MIDI channel instead of sharing the Note
-// Channel's one pitch wheel. Orthogonal to Poly -- it applies in mixed mode too, wherever
-// Gate > 100% lets one step's note overlap the next. While it is on, midiChannelId is inert:
-// the zone master is fixed at channel 1 and every note goes out on a member channel.
+// Channel's one pitch wheel -- wherever the two voices overlap, or a Gate > 100% lets one
+// step's note overlap the next. While it is on, midiChannelId is inert: the zone master is
+// fixed at channel 1 and every note goes out on a member channel.
 inline constexpr auto mpeEnabledId   = "mpe_on";
 
-/** How many lanes this instance currently has in each pool, 1 to numLanes. Independent --
-    growing one stack does not cost the other any room. */
-inline constexpr auto noteLaneCountId = "note_lane_count";
-inline constexpr auto ccLaneCountId   = "cc_lane_count";
+/** How many lanes this instance currently has in each pool, minLaneCount to numLanes.
+    Independent -- growing one stack does not cost the others any room. */
+inline constexpr auto noteLaneCountId   = "note_lane_count";
+inline constexpr auto voice2LaneCountId = "v_lane_count";
+inline constexpr auto ccLaneCountId     = "cc_lane_count";
 
 // Not parameters: plain properties on the state tree beside them, saved with the session but
 // never automated or recalled through undo. PresetManager strips them back out of a preset.
@@ -257,7 +262,7 @@ void rotateLane (juce::AudioProcessorValueTreeState& state, int lane, int direct
     goes through a change gesture in one message callback, so the shift and the new lane count
     land as a single undo step.
 
-    Does nothing at a lane count of 1, or for a lane this instance does not have.
+    Does nothing at the stack's minLaneCount, or for a lane this instance does not have.
 */
 void removeLane (juce::AudioProcessorValueTreeState& state, int lane, LaneKind kind = LaneKind::note);
 

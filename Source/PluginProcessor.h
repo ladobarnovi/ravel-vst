@@ -94,10 +94,19 @@ private:
 
     SequencerEngine::Snapshot buildSnapshot() const;
 
-    LaneParams noteLaneParams[params::numLanes];
+    /** The pool each voice's parameters live in, by voice index. */
+    static constexpr params::LaneKind voiceKinds[params::numVoices] { params::LaneKind::note,
+                                                                      params::LaneKind::note2 };
+
+    // Laid out the way the engine's Snapshot::noteLanes is: both voices end to end.
+    LaneParams noteLaneParams[params::numNoteLanes];
     LaneParams ccLaneParams[params::numLanes];
 
-    std::atomic<float>* pNoteTriggerSrc = nullptr;
+    // One each per voice, by voice index.
+    std::atomic<float>* pNoteTriggerSrc[params::numVoices] {};
+    std::atomic<float>* pNoteOffset[params::numVoices]     {};
+    std::atomic<float>* pNoteLaneCount[params::numVoices]  {};
+
     std::atomic<float>* pQuantize     = nullptr;
     std::atomic<float>* pBendRange    = nullptr;
     std::atomic<float>* pRootNote     = nullptr;
@@ -107,15 +116,11 @@ private:
     std::atomic<float>* pCcOn         = nullptr;
     std::atomic<float>* pCcNumber     = nullptr;
     std::atomic<float>* pCcChannel    = nullptr;
-    std::atomic<float>* pNoteOffset   = nullptr;
     std::atomic<float>* pCcOffset     = nullptr;
     std::atomic<float>* pSlew         = nullptr;
     std::atomic<float>* pFreeRun      = nullptr;
     std::atomic<float>* pSwing        = nullptr;
-    std::atomic<float>* pVoiceCount   = nullptr;
-    std::atomic<float>* pPolyMode     = nullptr;
     std::atomic<float>* pMpeEnabled   = nullptr;
-    std::atomic<float>* pNoteLaneCount = nullptr;
     std::atomic<float>* pCcLaneCount   = nullptr;
 
     SequencerEngine engine;

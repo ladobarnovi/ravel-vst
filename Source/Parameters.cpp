@@ -8,11 +8,17 @@ namespace params
 
 namespace
 {
-    // "n" or "c": the two pools' parameters are entirely separate VST3 parameters, not the
-    // same lane wearing two hats.
+    // "n", "v" or "c": the pools' parameters are entirely separate VST3 parameters, not the
+    // same lane wearing several hats. Voice 2 is "v" because "n2" is already Voice 1's lane 2.
     juce::String lanePrefix (int lane, LaneKind kind)
     {
-        return (kind == LaneKind::cc ? "c" : "n") + juce::String (lane + 1);
+        return (kind == LaneKind::cc ? "c" : kind == LaneKind::note2 ? "v" : "n") + juce::String (lane + 1);
+    }
+
+    /** What the host's parameter list calls a pool -- the same names as the editor's tabs. */
+    juce::String poolName (LaneKind kind)
+    {
+        return kind == LaneKind::cc ? "CC" : kind == LaneKind::note2 ? "Voice 2" : "Voice 1";
     }
 
     juce::String stepPrefix (int lane, int step, LaneKind kind)
@@ -28,12 +34,11 @@ juce::String stepValueId  (int lane, int step, LaneKind kind) { return stepPrefi
 juce::String stepOnId     (int lane, int step, LaneKind kind) { return stepPrefix (lane, step, kind) + "_on"; }
 juce::String stepChanceId (int lane, int step, LaneKind kind) { return stepPrefix (lane, step, kind) + "_chance"; }
 
-// Always the note-lane prefix -- all three of these are note-only -- but built by the same
-// stepPrefix as the shared ones above, so the step half of an ID cannot come out spelled two
-// different ways.
-juce::String stepVelocityId (int lane, int step) { return stepPrefix (lane, step, LaneKind::note) + "_vel"; }
-juce::String stepGateId     (int lane, int step) { return stepPrefix (lane, step, LaneKind::note) + "_gate"; }
-juce::String stepSpreadId   (int lane, int step) { return stepPrefix (lane, step, LaneKind::note) + "_spread"; }
+// Note-only, but built by the same stepPrefix as the shared ones above, so the step half of
+// an ID cannot come out spelled two different ways.
+juce::String stepVelocityId (int lane, int step, LaneKind kind) { return stepPrefix (lane, step, kind) + "_vel"; }
+juce::String stepGateId     (int lane, int step, LaneKind kind) { return stepPrefix (lane, step, kind) + "_gate"; }
+juce::String stepSpreadId   (int lane, int step, LaneKind kind) { return stepPrefix (lane, step, kind) + "_spread"; }
 
 juce::String laneOnId       (int lane, LaneKind kind) { return lanePrefix (lane, kind) + "_on"; }
 juce::String laneLengthId   (int lane, LaneKind kind) { return lanePrefix (lane, kind) + "_length"; }
@@ -50,9 +55,9 @@ namespace
 {
     constexpr int versionHint = 1;
 
-    // Every CC lane starts as sixteen steps of zero: a flat pattern, which is a blank
-    // sheet to draw on rather than a demo to clear away first. A canned pattern would also
-    // make the second lane you add sound like it came with an opinion.
+    // Every CC lane and every Voice 2 lane starts as sixteen steps of zero: a flat pattern,
+    // which is a blank sheet to draw on rather than a demo to clear away first. A canned
+    // pattern would also make the second lane you add sound like it came with an opinion.
     constexpr float defaultValues[numLanes][numSteps] {};
 
     // The first Note lane starts with a touch of pitch on every step rather than sitting dead
@@ -120,13 +125,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
-    for (auto kind : { LaneKind::note, LaneKind::cc })
+    for (auto kind : { LaneKind::note, LaneKind::note2, LaneKind::cc })
     {
         const bool isCc = kind == LaneKind::cc;
 
         for (int lane = 0; lane < numLanes; ++lane)
         {
-            const auto laneName = juce::String (isCc ? "CC Lane " : "Note Lane ") + juce::String (lane + 1) + " ";
+            const auto laneName = poolName (kind) + " Lane " + juce::String (lane + 1) + " ";
 
             for (int step = 0; step < numSteps; ++step)
             {
@@ -136,7 +141,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
                     juce::ParameterID { stepValueId (lane, step, kind), versionHint },
                     stepName,
                     juce::NormalisableRange<float> (0.0f, 1.0f, 0.001f),
-                    isCc ? defaultValues[lane][step] : defaultNoteValueFor (lane),
+                    kind == LaneKind::note ? defaultNoteValueFor (lane) : defaultValues[lane][step],
                     juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
 
                 layout.add (std::make_unique<juce::AudioParameterBool> (
@@ -166,7 +171,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
                 // as a half-height bar in the editor's velocity layer -- reading as "half"
                 // when it means "unchanged".
                 layout.add (std::make_unique<juce::AudioParameterFloat> (
-                    juce::ParameterID { stepVelocityId (lane, step), versionHint },
+                    juce::ParameterID { stepVelocityId (lane, step, kind), versionHint },
                     stepName + " Velocity",
                     juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f),
                     1.0f,
@@ -174,10 +179,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
 
                 // How long this step's note is held, as a percentage of the step's own
                 // length. Per step rather than a single master, so a lane can stab on some
-                // steps and hold on others. Above 100% overlaps into the following step --
-                // see Voices.
+                // steps and hold on others. Above 100% overlaps into the following step.
                 layout.add (std::make_unique<juce::AudioParameterFloat> (
-                    juce::ParameterID { stepGateId (lane, step), versionHint },
+                    juce::ParameterID { stepGateId (lane, step, kind), versionHint },
                     stepName + " Gate",
                     juce::NormalisableRange<float> (5.0f, 200.0f, 1.0f),
                     60.0f,
@@ -195,7 +199,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
                 // no width has one value in it, which is the value itself. That is also what
                 // every step of a pattern written before this existed loads with.
                 layout.add (std::make_unique<juce::AudioParameterFloat> (
-                    juce::ParameterID { stepSpreadId (lane, step), versionHint },
+                    juce::ParameterID { stepSpreadId (lane, step, kind), versionHint },
                     stepName + " Spread",
                     juce::NormalisableRange<float> (0.0f, 1.0f, 0.01f),
                     0.0f,
@@ -260,17 +264,19 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     }
 
     //==========================================================================
-    // One lane to begin with in each pool. The other three exist as parameters from the
-    // start -- a VST3 cannot add any later -- but stay silent and hidden until this is
-    // raised. Independent counts: growing one stack costs the other no room.
-    layout.add (std::make_unique<juce::AudioParameterInt> (
-        juce::ParameterID { noteLaneCountId, versionHint }, "Note Lanes", 1, numLanes, 1));
+    // Each pool starts at its minimum: one lane for Voice 1 and CC, none for Voice 2. The
+    // rest exist as parameters from the start -- a VST3 cannot add any later -- but stay
+    // silent and hidden until this is raised. Independent counts: growing one stack costs
+    // the others no room.
+    for (auto kind : { LaneKind::note, LaneKind::note2, LaneKind::cc })
+        layout.add (std::make_unique<juce::AudioParameterInt> (
+            juce::ParameterID { laneCountIdFor (kind), versionHint }, poolName (kind) + " Lanes",
+            minLaneCount (kind), numLanes, minLaneCount (kind)));
 
-    layout.add (std::make_unique<juce::AudioParameterInt> (
-        juce::ParameterID { ccLaneCountId, versionHint }, "CC Lanes", 1, numLanes, 1));
-
-    layout.add (std::make_unique<juce::AudioParameterChoice> (
-        juce::ParameterID { noteTriggerSrcId, versionHint }, "Trigger", triggerNameList(), 0));
+    for (auto kind : { LaneKind::note, LaneKind::note2 })
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { triggerSrcIdFor (kind), versionHint }, poolName (kind) + " Trigger",
+            triggerNameList(), 0));
 
     // On: pitch snaps to degrees of the selected scale. Off: continuous microtonal pitch,
     // carried as the nearest note plus a pitch bend. Defaults to off -- continuous pitch is
@@ -342,10 +348,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     // and leaves the pattern's shape -- and, in Quantize mode, its scale degrees -- intact.
     // Notes still clamp to the MIDI range, so how much of a +/-3 octave shift is reachable
     // depends on Root and Range.
-    layout.add (std::make_unique<juce::AudioParameterInt> (
-        juce::ParameterID { noteOffsetId, versionHint }, "Offset", -3, 3, 0,
-        juce::AudioParameterIntAttributes().withStringFromValueFunction (
-            [] (int v, int) { return (v > 0 ? "+" + juce::String (v) : juce::String (v)) + " oct"; })));
+    //
+    // One per voice, so the two can sit in different registers over the same scale.
+    for (auto kind : { LaneKind::note, LaneKind::note2 })
+        layout.add (std::make_unique<juce::AudioParameterInt> (
+            juce::ParameterID { noteOffsetIdFor (kind), versionHint }, poolName (kind) + " Offset", -3, 3, 0,
+            juce::AudioParameterIntAttributes().withStringFromValueFunction (
+                [] (int v, int) { return (v > 0 ? "+" + juce::String (v) : juce::String (v)) + " oct"; })));
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { ccOffsetId, versionHint }, "CC Offset",
@@ -365,20 +374,10 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     layout.add (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { freeRunId, versionHint }, "Free Run", false));
 
-    // 1 is the historical monophonic behaviour: a retrigger always closes the previous
-    // note. Above 1, a Gate over 100% overlaps into the following step instead.
-    layout.add (std::make_unique<juce::AudioParameterInt> (
-        juce::ParameterID { voiceCountId, versionHint }, "Voices", 1, 8, 1));
-
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { swingId, versionHint }, "Swing",
         juce::NormalisableRange<float> (-1.0f, 1.0f, 0.01f), 0.0f,
         juce::AudioParameterFloatAttributes().withStringFromValueFunction (percentText)));
-
-    // Appended last, and defaulting to off, so a session saved before it existed loads
-    // with the mixed-lane behaviour it was written with.
-    layout.add (std::make_unique<juce::AudioParameterBool> (
-        juce::ParameterID { polyModeId, versionHint }, "Poly", false));
 
     // On by default: every simultaneously-sounding note gets its own MIDI channel -- a
     // standard MPE Lower Zone, master channel 1 plus member channels 2-16 -- so overlapping
@@ -442,9 +441,9 @@ juce::String stepLayerId (int lane, int step, StepLayer layer, LaneKind kind)
 
     switch (layer)
     {
-        case StepLayer::velocity: return isCc ? juce::String() : stepVelocityId (lane, step);
-        case StepLayer::gate:     return isCc ? juce::String() : stepGateId (lane, step);
-        case StepLayer::spread:   return isCc ? juce::String() : stepSpreadId (lane, step);
+        case StepLayer::velocity: return isCc ? juce::String() : stepVelocityId (lane, step, kind);
+        case StepLayer::gate:     return isCc ? juce::String() : stepGateId (lane, step, kind);
+        case StepLayer::spread:   return isCc ? juce::String() : stepSpreadId (lane, step, kind);
         case StepLayer::chance:   return stepChanceId (lane, step, kind);
         case StepLayer::value:
         default:                  return stepValueId (lane, step, kind);
@@ -482,7 +481,7 @@ namespace
             case StepLayer::gate:     return "Gate";
             case StepLayer::spread:   return "Spread";
             case StepLayer::value:
-            default:                  return kind == LaneKind::note ? "Pitch"
+            default:                  return isNoteKind (kind) ? "Pitch"
                                              : (shortForm ? "Val" : "Value");
         }
     }
@@ -617,15 +616,18 @@ namespace
 
 const char* laneCountIdFor (LaneKind kind)
 {
-    return kind == LaneKind::cc ? ccLaneCountId : noteLaneCountId;
+    return kind == LaneKind::cc ? ccLaneCountId : kind == LaneKind::note2 ? voice2LaneCountId : noteLaneCountId;
 }
+
+const char* triggerSrcIdFor (LaneKind kind) { return kind == LaneKind::note2 ? voice2TriggerSrcId : noteTriggerSrcId; }
+const char* noteOffsetIdFor (LaneKind kind) { return kind == LaneKind::note2 ? voice2OffsetId : noteOffsetId; }
 
 void removeLane (juce::AudioProcessorValueTreeState& state, int lane, LaneKind kind)
 {
     const int count = (int) std::lround (getParam (state, laneCountIdFor (kind)));
 
-    // An instance always has at least one lane, and a lane it does not have cannot go.
-    if (count <= 1 || lane < 0 || lane >= count)
+    // A stack never drops below its minimum, and a lane it does not have cannot go.
+    if (count <= minLaneCount (kind) || lane < 0 || lane >= count)
         return;
 
     // Upwards from the hole, so each lane is read before the one below it is overwritten.

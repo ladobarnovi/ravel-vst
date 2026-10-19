@@ -28,14 +28,26 @@ inline constexpr int numLanes = 4;
 inline constexpr int numSteps = 16;
 
 //==============================================================================
-/** Which pool a lane belongs to. Notes and CC each have their own independent stack of up
-    to numLanes lanes -- a Note lane's mix drives pitch (and poly-mode note triggering); a
-    CC lane's mix drives the Mix CC, and each CC lane also keeps its own direct tap onto its
-    own CC number, independent of that fold. A VST3 cannot grow its parameter list at
-    runtime, so both pools' parameters exist for all numLanes lanes from the start -- this
-    is what selects which pool's ID a given lane/step belongs to.
+/** Which pool a lane belongs to. Each pool is its own independent stack of up to numLanes
+    lanes. The two note pools are Voice 1 and Voice 2: identical lanes, but each folds into
+    its own value and fires its own notes, so the two play as separate voices. A CC lane's
+    mix drives the Mix CC, and each CC lane also keeps its own direct tap onto its own CC
+    number, independent of that fold. A VST3 cannot grow its parameter list at runtime, so
+    every pool's parameters exist for all numLanes lanes from the start -- this is what
+    selects which pool's ID a given lane/step belongs to.
+
+    `note` is Voice 1 and keeps its old name, so its parameter IDs -- and every saved session
+    and preset -- carry straight over. The order is also the editor's tab order.
 */
-enum class LaneKind { note, cc };
+enum class LaneKind { note, note2, cc };
+
+inline constexpr bool isNoteKind (LaneKind kind) noexcept { return kind != LaneKind::cc; }
+
+inline constexpr int numVoices    = 2;
+inline constexpr int numNoteLanes = numVoices * numLanes;   ///< Voice v's lane l is note lane v * numLanes + l.
+
+/** Voice 2 starts empty and can be emptied again; the other two stacks always keep a lane. */
+inline constexpr int minLaneCount (LaneKind kind) noexcept { return kind == LaneKind::note2 ? 0 : 1; }
 
 //==============================================================================
 // Clock divisions. The step length is measured in quarter notes, because that is the unit

@@ -38,6 +38,10 @@ namespace
     constexpr int ccMixColumn        = 260;   ///< Mix CC, which carries a group break as well.
     constexpr int ccLaneColumn       = 200;
 
+    /** Every stack, in LaneKind order -- which is also tab order. */
+    constexpr params::LaneKind allKinds[] { params::LaneKind::note, params::LaneKind::note2,
+                                            params::LaneKind::cc };
+
     /** The window grows and shrinks with the lane count rather than the lanes sharing a fixed
         height between them: one lane in a window sized for four would be mostly empty panel,
         and four lanes squeezed into one lane's height would cost the step bars the resolution
@@ -86,7 +90,7 @@ void RavelAudioProcessorEditor::ContentComponent::paint (juce::Graphics& g)
 //==============================================================================
 RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
     : AudioProcessorEditor (&p), processorRef (p),
-      stacks { { p.apvts }, { p.apvts } }
+      stacks { { p.apvts }, { p.apvts }, { p.apvts } }
 {
     setLookAndFeel (&lookAndFeel);
 
@@ -124,16 +128,17 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
     auto& state = processorRef.apvts;
 
     //--------------------------------------------------------------------------
-    // Note lanes and CC lanes are two completely separate stacks, each built up front because
-    // a VST3 cannot add parameters later: both pools exist at full size from the start and
+    // Voice 1, Voice 2 and CC are three completely separate stacks, each built up front because
+    // a VST3 cannot add parameters later: every pool exists at full size from the start and
     // each pool's own count decides how many of its own lanes are shown and heard.
-    for (auto kind : { params::LaneKind::note, params::LaneKind::cc })
+    for (auto kind : allKinds)
     {
         auto& stack = stackFor (kind);
+        auto& clipboard = stackFor (params::isNoteKind (kind) ? params::LaneKind::note : kind).clipboard;
 
         for (int lane = 0; lane < params::numLanes; ++lane)
         {
-            auto* component = stack.lanes.add (new LaneComponent (state, lane, stack.clipboard, kind));
+            auto* component = stack.lanes.add (new LaneComponent (state, lane, clipboard, kind));
             component->onRemove = [this, kind, lane] { removeLane (kind, lane); };
 
             // A value painted across several steps in one stroke is one thing the user did, and
@@ -154,29 +159,30 @@ RavelAudioProcessorEditor::RavelAudioProcessorEditor (RavelAudioProcessor& p)
 
     buildWorkspaces();
 
-    content.addAndMakeVisible (stackFor (params::LaneKind::note).workspace);
-    content.addChildComponent (stackFor (params::LaneKind::cc).workspace);
+    // Added in LaneKind order, which is what makes a tab index and a kind the same number. The
+    // strip shows the first and hides the rest.
+    for (auto kind : allKinds)
+        content.addChildComponent (stackFor (kind).workspace);
 
-    // Added in LaneKind order, which is what makes a tab index and a kind the same number.
-    outputTabs.addTab ("Notes", stackFor (params::LaneKind::note).workspace);
-    outputTabs.addTab ("CC",    stackFor (params::LaneKind::cc).workspace);
+    outputTabs.addTab ("Voice 1", stackFor (params::LaneKind::note).workspace);
+    outputTabs.addTab ("Voice 2", stackFor (params::LaneKind::note2).workspace);
+    outputTabs.addTab ("CC",      stackFor (params::LaneKind::cc).workspace);
     content.addAndMakeVisible (outputTabs);
 
     // Polled on the timer rather than via a parameter listener, because listener
     // callbacks arrive on the audio thread and must not touch components.
     quantize.param   = state.getRawParameterValue (params::quantizeId);
     pitchScale.param = state.getRawParameterValue (params::scaleId);
-    polyMode.param   = state.getRawParameterValue (params::polyModeId);
     mpeEnabled.param = state.getRawParameterValue (params::mpeEnabledId);
 
-    for (auto kind : { params::LaneKind::note, params::LaneKind::cc })
+    for (auto kind : allKinds)
         stackFor (kind).countParam = state.getRawParameterValue (params::laneCountIdFor (kind));
 
     // Sizes the window as a side effect, so this stands in for the setSize() a
     // fixed-height editor would do here. Leaves it at 100% zoom, which the restore below
-    // then overrides if the session remembers something else. Notes is applied second so
-    // its (default-selected) count is the one that actually triggers the resize.
-    for (auto kind : { params::LaneKind::cc, params::LaneKind::note })
+    // then overrides if the session remembers something else. Only the selected tab's stack
+    // resizes, so the order does not matter.
+    for (auto kind : allKinds)
         applyLaneCount (kind, (int) std::lround (stackFor (kind).countParam->load()));
 
     // The zoom the window was last closed at, stored as plain properties on the state tree
@@ -215,6 +221,28 @@ void RavelAudioProcessorEditor::buildWorkspaces()
     auto& notes = stackFor (params::LaneKind::note);
     auto& cc    = stackFor (params::LaneKind::cc);
 
+    // What each voice has of its own, first on both voice tabs so it sits in the same place on
+    // each. Everything else -- pitch, output, clock -- is shared by the two voices and lives on
+    // Voice 1's tab only, the same way Swing lives there and not on CC.
+    for (auto kind : { params::LaneKind::note, params::LaneKind::note2 })
+    {
+        auto& page  = stackFor (kind).settingsPage;
+        auto& voice = page.addColumn ("Voice", settingsColumn);
+
+        // Whole octaves, -3 to +3: seven positions rather than a continuum, so it gets seven
+        // cells lighting out from a marked centre instead of a track. See RowStyle::octaves.
+        voice.add (params::noteOffsetIdFor (kind), "Offset", RowStyle::octaves)
+             ->setTooltip ("Transposes this voice's notes by whole octaves, after Root, Range and "
+                           "the scale have resolved the pitch -- the pattern keeps its shape and its "
+                           "scale degrees, it just moves. Notes clamp to the MIDI range");
+
+        voice.add (params::triggerSrcIdFor (kind), "Trigger")
+             ->setTooltip ("Which of this voice's lanes fires its note. Any Lane fires on every "
+                           "lane's step");
+
+        stackFor (kind).workspace.addAndMakeVisible (page);
+    }
+
     auto& pitch = notes.settingsPage.addColumn ("Pitch", settingsColumn);
     pitch.add (params::rootNoteId, "Root");
     scaleRow = pitch.add (params::scaleId, "Scale");
@@ -233,13 +261,6 @@ void RavelAudioProcessorEditor::buildWorkspaces()
                               "its own setting and uses the MPE default of " + juce::String::charToString (0x00b1) + "48, "
                               "so leave this at 48 unless you turn MPE off");
 
-    // Whole octaves, -3 to +3: seven positions rather than a continuum, so it gets seven cells
-    // lighting out from a marked centre instead of a track. See RowStyle::octaves.
-    output.add (params::noteOffsetId, "Offset", RowStyle::octaves)
-          ->setTooltip ("Transposes every note by whole octaves, after Root, Range and the "
-                        "scale have resolved the pitch -- the pattern keeps its shape and its "
-                        "scale degrees, it just moves. Notes clamp to the MIDI range");
-
     output.add (params::mpeEnabledId, "MPE")
           ->setTooltip ("Gives every simultaneously-sounding note its own MIDI channel -- a "
                         "standard MPE zone, master channel 1 plus member channels 2-16 -- so "
@@ -249,19 +270,11 @@ void RavelAudioProcessorEditor::buildWorkspaces()
     noteChannelRow->setTooltip ("The single channel every note goes out on with MPE off. An MPE "
                                "zone fixes its own channels, so this does nothing while MPE is on");
 
-    auto& voice = notes.settingsPage.addColumn ("Voice", settingsColumn);
-    voice.add (params::voiceCountId, "Voices");
-    voice.add (params::polyModeId, "Poly")
-         ->setTooltip ("In Poly mode each lane outputs its own independent note");
-
     auto& clock = notes.settingsPage.addColumn ("Clock", settingsColumnWide);
     clock.add (params::swingId, "Swing", RowStyle::slider)
-         ->setTooltip ("Delays every other step of the grid. Shared with the CC stack -- both "
-                       "fold off the same host clock");
+         ->setTooltip ("Delays every other step of the grid. Shared with Voice 2 and the CC "
+                       "stack -- all of them fold off the same host clock");
     clock.add (params::freeRunId, "Free run");
-    triggerRow = clock.add (params::noteTriggerSrcId, "Trigger");
-
-    notes.workspace.addAndMakeVisible (notes.settingsPage);
 
     //--------------------------------------------------------------------------
     // The CC tab's own Mix destination: the CC-lane fold's output, same idea as pitch is the
@@ -302,7 +315,7 @@ void RavelAudioProcessorEditor::buildWorkspaces()
         ccLaneColumns[laneIndex] = &column;
     }
 
-    // No Clock column here: Swing is shared with the Notes page, which is where it lives, and
+    // No Clock column here: Swing is shared with Voice 1's page, which is where it lives, and
     // Free run and Trigger were never CC concepts.
     cc.workspace.addAndMakeVisible (cc.settingsPage);
 }
@@ -345,7 +358,7 @@ bool RavelAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
 //==============================================================================
 void RavelAudioProcessorEditor::setLaneCount (params::LaneKind kind, int newCount)
 {
-    newCount = juce::jlimit (1, params::numLanes, newCount);
+    newCount = juce::jlimit (params::minLaneCount (kind), params::numLanes, newCount);
 
     // Through the parameter rather than straight into the member, so the host records it as
     // an edit and can automate and undo it like anything else.
@@ -359,7 +372,7 @@ void RavelAudioProcessorEditor::applyLaneCount (params::LaneKind kind, int newCo
 {
     auto& stack = stackFor (kind);
 
-    newCount = juce::jlimit (1, params::numLanes, newCount);
+    newCount = juce::jlimit (params::minLaneCount (kind), params::numLanes, newCount);
 
     if (stack.count == newCount)
         return;
@@ -370,9 +383,10 @@ void RavelAudioProcessorEditor::applyLaneCount (params::LaneKind kind, int newCo
     {
         stack.lanes[lane]->setVisible (lane < stack.count);
 
-        // Every lane can go except the last one standing, so this is a property of the count
-        // rather than of which lane it is.
-        stack.lanes[lane]->setCanRemove (stack.count > 1);
+        // Every lane can go until the stack is down to its minimum -- the last one standing on
+        // Voice 1 and CC, none on Voice 2 -- so this is a property of the count rather than of
+        // which lane it is.
+        stack.lanes[lane]->setCanRemove (stack.count > params::minLaneCount (kind));
     }
 
     stack.addButton.setVisible (stack.count < params::numLanes);
@@ -433,7 +447,7 @@ void RavelAudioProcessorEditor::updateSizeConstraints()
 
     // The tab strip is built in LaneKind order, so its index selects the stack directly.
     // Clamped because an out-of-range index here would be an out-of-range array read.
-    auto& stack = stacks[juce::jlimit (0, 1, outputTabs.getSelectedIndex())];
+    auto& stack = stacks[juce::jlimit (0, (int) std::size (stacks) - 1, outputTabs.getSelectedIndex())];
 
     nativeContentHeight = windowHeightForWorkspace (stack.count, stack.addButton.isVisible(),
                                                     stack.settingsPage.getPreferredHeight());
@@ -556,7 +570,7 @@ void RavelAudioProcessorEditor::layoutContent()
     //--------------------------------------------------------------------------
     outputTabs.setBounds (r.removeFromTop (TabStrip::height));
 
-    // Both workspaces get the same bounds -- everything left under the tab strip, down to the
+    // Every workspace gets the same bounds -- everything left under the tab strip, down to the
     // window's bottom edge. The tab strip decides which one is visible.
     for (auto& stack : stacks)
     {
@@ -603,22 +617,21 @@ void RavelAudioProcessorEditor::timerCallback()
     // atomic flag and this is where it reaches the UI.
     presetBar.tick();
 
-    auto& noteStack = stackFor (params::LaneKind::note);
-
-    for (int lane = 0; lane < noteStack.lanes.size(); ++lane)
+    for (auto kind : allKinds)
     {
-        noteStack.lanes[lane]->setPlayingStep (engine.getCurrentStep (lane, params::LaneKind::note));
+        auto& stack = stackFor (kind);
 
-        // Where inside its Spread window the step landed. Pushed every frame but only ever
-        // acted on when it has moved, which is once a step -- the value is a function of the
-        // lane's position on the timeline, so it holds still between boundaries.
-        noteStack.lanes[lane]->setPlayingValue (engine.getCurrentValue (lane));
+        for (int lane = 0; lane < stack.lanes.size(); ++lane)
+        {
+            stack.lanes[lane]->setPlayingStep (engine.getCurrentStep (lane, kind));
+
+            // Where inside its Spread window the step landed. Pushed every frame but only ever
+            // acted on when it has moved, which is once a step -- the value is a function of
+            // the lane's position on the timeline, so it holds still between boundaries.
+            if (params::isNoteKind (kind))
+                stack.lanes[lane]->setPlayingValue (engine.getCurrentValue (lane, kind));
+        }
     }
-
-    auto& ccStack = stackFor (params::LaneKind::cc);
-
-    for (int lane = 0; lane < ccStack.lanes.size(); ++lane)
-        ccStack.lanes[lane]->setPlayingStep (engine.getCurrentStep (lane, params::LaneKind::cc));
 
     // Both asked every tick rather than short-circuited: either one moving re-dims the same
     // two rows, and || would leave the other's last value un-updated on the tick they move
@@ -636,9 +649,9 @@ void RavelAudioProcessorEditor::timerCallback()
         bendRangeRow->setDimmed (quantize.last != 0 && ! params::scaleNeedsBend (pitchScale.last));
     }
 
-    // Polled like the rest: either count can also move through host automation or an undo,
+    // Polled like the rest: any count can also move through host automation or an undo,
     // neither of which comes back through the buttons.
-    for (auto kind : { params::LaneKind::note, params::LaneKind::cc })
+    for (auto kind : allKinds)
         if (auto* countParam = stackFor (kind).countParam)
             applyLaneCount (kind, (int) std::lround (countParam->load()));
 
@@ -652,12 +665,6 @@ void RavelAudioProcessorEditor::timerCallback()
         lastOutputTab = currentTab;
         updateSizeConstraints();
     }
-
-    // In poly mode every lane triggers itself, so there is nothing for Trigger to select.
-    // Depth is deliberately left alone: it still shapes the mix that drives the CC output,
-    // and additionally becomes note velocity.
-    if (polyMode.changed())
-        triggerRow->setDimmed (polyMode.last != 0);
 
     // The zone fixes its own channels -- master 1, members 2-16 -- while MPE is on, so
     // Channel has nothing left to select.

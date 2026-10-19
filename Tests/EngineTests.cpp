@@ -167,7 +167,7 @@ namespace
             lane.depth     = 0.0f;
         };
 
-        for (int laneIndex = 0; laneIndex < params::numLanes; ++laneIndex)
+        for (int laneIndex = 0; laneIndex < params::numNoteLanes; ++laneIndex)
         {
             auto& note = s.noteLanes[laneIndex];
             setUpPattern (note);
@@ -180,17 +180,21 @@ namespace
                 note.gate[i]     = 60.0f;
             }
 
-            auto& cc = s.ccLanes[laneIndex];
+            // Voice 2 has no lanes until one is added, the same as a fresh instance -- so every
+            // test that is not about it hears Voice 1 alone.
+            note.active = laneIndex < params::numLanes;
+        }
+
+        for (auto& cc : s.ccLanes)
+        {
             setUpPattern (cc);
             cc.ccOn = false;
         }
 
         s.swing      = 0.0f;
-        s.voiceCount = 1;
 
         s.noteLanes[0].depth = 1.0f;
 
-        s.noteTriggerSource = 0;
         s.root          = 48;
         s.rangeOctaves  = 1;
         s.scale         = 0;        // Chromatic
@@ -198,7 +202,6 @@ namespace
         s.midiChannel   = 1;
         s.ccNumber      = 1;
         s.ccChannel     = 1;
-        s.noteOctaves   = 0;
         s.ccOffset      = 0.0f;
         s.slewMs        = 0.0f;
         s.quantize      = true;
@@ -305,7 +308,7 @@ int main()
         s.noteLanes[1].division = params::divIndex_1_4;
         s.noteLanes[1].depth    = 1.0f;
         s.noteLanes[0].depth    = 0.0f;
-        s.noteTriggerSource     = 1;
+        s.noteTriggerSource[0]  = 1;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -602,7 +605,7 @@ int main()
             s.rangeOctaves = 1;
             s.root         = 48;
             s.quantize     = quantize;
-            s.noteOctaves  = octaves;
+            s.noteOctaves[0] = octaves;
 
             SequencerEngine engine;
             engine.prepare (sampleRate);
@@ -667,7 +670,7 @@ int main()
             s.root         = 48;
             s.quantize     = true;
             s.bendRange    = 2;
-            s.noteOctaves  = octaves;
+            s.noteOctaves[0] = octaves;
 
             SequencerEngine engine;
             engine.prepare (sampleRate);
@@ -1441,28 +1444,25 @@ int main()
         check (ons.size() == 4 && ons[1].number == 54,
                "a muted lane leaves the mix untouched");
 
-        // Muting the lane that drives the notes silences the sequencer, in both modes.
+        // Muting the lane that drives the notes silences that voice -- and only that voice.
         auto muted = baseSnapshot();
         muted.noteLanes[0].length = 4;
         muted.noteLanes[0].active = false;
 
-        SequencerEngine mono;
-        mono.prepare (sampleRate);
+        SequencerEngine oneVoice;
+        oneVoice.prepare (sampleRate);
 
-        check (only (run (mono, muted, 4 * samplesPerStep), noteOn).empty(),
+        check (only (run (oneVoice, muted, 4 * samplesPerStep), noteOn).empty(),
                "muting the trigger lane stops the notes");
 
-        muted.polyMode = true;
-        muted.noteLanes[1].depth  = 1.0f;
-        muted.noteLanes[1].length = 4;
+        muted.noteLanes[params::numLanes].active = true;    // Voice 2's first lane
+        muted.noteLanes[params::numLanes].length = 4;
 
-        SequencerEngine poly;
-        poly.prepare (sampleRate);
+        SequencerEngine twoVoices;
+        twoVoices.prepare (sampleRate);
 
-        const auto polyOns = only (run (poly, muted, 4 * samplesPerStep), noteOn);
-
-        check (polyOns.size() == 4,
-               "in poly mode only the muted lane goes quiet, not its neighbours");
+        check (only (run (twoVoices, muted, 4 * samplesPerStep), noteOn).size() == 4,
+               "the other voice keeps playing through it");
     }
 
     //==========================================================================
@@ -1748,45 +1748,12 @@ int main()
     }
 
     //==========================================================================
-    section ("Voices = 1 keeps the original monophonic behaviour");
-    {
-        auto s = baseSnapshot();
-        s.noteLanes[0].length = 4;
-        s.scale = 0;
-        setLaneGate (s, 0, 180.0f);   // would overlap if polyphony were allowed
-        s.voiceCount = 1;
-
-        for (int i = 0; i < 4; ++i)
-            s.noteLanes[0].values[i] = (float) (i + 1) / 12.0f;   // distinct pitches
-
-        SequencerEngine engine;
-        engine.prepare (sampleRate);
-
-        const auto events = run (engine, s, 4 * samplesPerStep);
-
-        // Walk the stream and track how many notes are sounding at once.
-        int sounding = 0;
-        int peak = 0;
-
-        for (const auto& e : events)
-        {
-            if (e.type == noteOn)  ++sounding;
-            if (e.type == noteOff) --sounding;
-
-            peak = juce::jmax (peak, sounding);
-        }
-
-        check (peak == 1, "with one voice a long gate never overlaps");
-    }
-
-    //==========================================================================
     section ("Polyphony lets a long gate overlap");
     {
         auto s = baseSnapshot();
         s.noteLanes[0].length = 4;
         s.scale = 0;
         setLaneGate (s, 0, 180.0f);   // 1.8 steps long, so each note laps into the next
-        s.voiceCount = 4;
 
         for (int i = 0; i < 4; ++i)
             s.noteLanes[0].values[i] = (float) (i + 1) / 12.0f;
@@ -1814,29 +1781,30 @@ int main()
 
         // A 180% gate means the last note's release lands past the end of the run, so a
         // small tail of still-held voices is correct. What matters is that nothing leaks:
-        // never more held than the voice count, and never a note-off without a note-on.
+        // never more held than a voice has slots, and never a note-off without a note-on.
         const int unreleased = (int) ons.size() - (int) offs.size();
 
-        check (unreleased >= 0 && unreleased <= s.voiceCount,
+        check (unreleased >= 0 && unreleased <= SequencerEngine::slotsPerVoice,
                "note-offs match note-ons apart from voices still held when the run ends");
     }
 
     //==========================================================================
-    section ("Voice count is respected as a ceiling");
+    section ("A voice's own slot count is the ceiling on its overlap");
     {
+        // Sixteen distinct pitches, each held for sixteen steps, so nothing releases on its
+        // own inside the run and every step past the eighth has to steal.
         auto s = baseSnapshot();
-        s.noteLanes[0].length = 8;
         s.scale = 0;
-        setLaneGate (s, 0, 200.0f);
-        s.voiceCount = 2;
+        s.rangeOctaves = 2;
+        setLaneGate (s, 0, 1600.0f);
 
         for (int i = 0; i < params::numSteps; ++i)
-            s.noteLanes[0].values[i] = (float) (i + 1) / 24.0f;
+            s.noteLanes[0].values[i] = (float) i / 24.0f;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
 
-        const auto events = run (engine, s, 8 * samplesPerStep);
+        const auto events = run (engine, s, params::numSteps * samplesPerStep);
 
         int sounding = 0;
         int peak = 0;
@@ -1849,7 +1817,8 @@ int main()
             peak = juce::jmax (peak, sounding);
         }
 
-        check (peak <= 2, "never more notes sounding than the voice count allows");
+        check (peak == SequencerEngine::slotsPerVoice,
+               "a voice overlaps up to its slot count and never past it");
     }
 
     //==========================================================================
@@ -1862,7 +1831,6 @@ int main()
         s.noteLanes[0].values[0] = 0.25f;
         s.scale = 0;
         setLaneGate (s, 0, 190.0f);
-        s.voiceCount = 4;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -1890,7 +1858,6 @@ int main()
         s.noteLanes[0].length = 4;
         s.scale = 0;
         setLaneGate (s, 0, 190.0f);
-        s.voiceCount = 4;
 
         for (int i = 0; i < 4; ++i)
             s.noteLanes[0].values[i] = (float) (i + 1) / 12.0f;
@@ -1929,61 +1896,56 @@ int main()
     }
 
     //==========================================================================
-    section ("Poly mode gives each lane its own voice");
+    section ("Two voices play independently");
     {
-        // Three lanes, one step each so every lane repeats one pitch, and three different
-        // divisions so their triggers land on different grids.
+        // One lane per voice, one step each so every lane repeats one pitch, on two different
+        // divisions so their triggers land on different grids. Voice 2 is an octave up on its
+        // own Offset, and fires off its own first lane -- the same Trigger index as Voice 1's,
+        // meaning its own lane, not Voice 1's.
         auto s = baseSnapshot();
-        s.polyMode = true;
         s.scale = 0;               // Chromatic: a degree is a semitone
         s.rangeOctaves = 1;
-        useLanes (s, 3);
+        useLanes (s, 1);
 
-        for (int lane = 0; lane < params::numLanes; ++lane)
+        auto& voice2 = s.noteLanes[params::numLanes];
+        voice2.active = true;
+        voice2.depth  = 1.0f;
+
+        for (auto* lane : { &s.noteLanes[0], &voice2 })
         {
-            s.noteLanes[lane].length = 1;
-            s.noteLanes[lane].depth  = 1.0f;
-            setLaneGate (s, lane, 50.0f);
+            lane->length = 1;
+            for (auto& g : lane->gate)
+                g = 50.0f;
         }
 
         s.noteLanes[0].values[0] = 0.0f;             // root, 48
-        s.noteLanes[1].values[0] = 4.0f / 12.0f;     // +4, 52
-        s.noteLanes[2].values[0] = 7.0f / 12.0f;     // +7, 55
+        voice2.values[0]         = 4.0f / 12.0f;     // +4, 52, then +12 from its Offset
+        s.noteOctaves[1]         = 1;
 
         s.noteLanes[0].division = params::divIndex_1_16;
-        s.noteLanes[1].division = params::divIndex_1_8;
-        s.noteLanes[2].division = params::divIndex_1_4;
+        voice2.division         = params::divIndex_1_8;
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
 
-        const auto events = run (engine, s, 4 * samplesPerStep);
-        const auto ons    = only (events, noteOn);
+        const auto ons = only (run (engine, s, 4 * samplesPerStep), noteOn);
 
-        bool saw48 = false, saw52 = false, saw55 = false;
+        int ons48 = 0, ons64 = 0, others = 0, togetherAtZero = 0;
 
         for (const auto& e : ons)
         {
-            if (e.number == 48) saw48 = true;
-            if (e.number == 52) saw52 = true;
-            if (e.number == 55) saw55 = true;
-        }
+            if      (e.number == 48) ++ons48;
+            else if (e.number == 64) ++ons64;
+            else                     ++others;
 
-        check (saw48 && saw52 && saw55, "all three lanes emit their own pitch");
-
-        // One 1/4 = four 1/16 steps, so over four 1/16 steps lane 1 fires four times,
-        // lane 2 twice and lane 3 once: seven note-ons in total.
-        check (ons.size() == 7, "each lane fires on its own division, not a shared one");
-
-        // At sample 0 every lane's first step begins together, so their note-ons must share
-        // that offset -- this is the simultaneous onset the mixed mode cannot produce.
-        int togetherAtZero = 0;
-
-        for (const auto& e : ons)
             if (e.sample == 0)
                 ++togetherAtZero;
+        }
 
-        check (togetherAtZero == 3, "lanes starting together produce simultaneous note-ons");
+        // Over four 1/16 steps Voice 1 fires four times and Voice 2, at 1/8, twice.
+        check (ons48 == 4 && ons64 == 2, "each voice fires its own pitch on its own lane's clock");
+        check (others == 0, "neither voice's lanes leak into the other's fold or Offset");
+        check (togetherAtZero == 2, "voices starting together produce simultaneous note-ons");
     }
 
     //==========================================================================
@@ -2055,46 +2017,7 @@ int main()
     }
 
     //==========================================================================
-    section ("Depth still gates a poly lane, without setting its velocity");
-    {
-        auto s = baseSnapshot();
-        s.polyMode = true;
-        s.scale = 0;
-        s.velocity = 100;
-
-        for (int lane = 0; lane < params::numLanes; ++lane)
-        {
-            s.noteLanes[lane].length = 1;
-            s.noteLanes[lane].values[0] = (float) lane / 12.0f;
-            setLaneGate (s, lane, 50.0f);
-        }
-
-        s.noteLanes[0].depth = 1.0f;
-        s.noteLanes[1].depth = 0.05f;   // barely in the mix, but still a full-velocity note
-        s.noteLanes[2].depth = 0.0f;    // silent
-
-        SequencerEngine engine;
-        engine.prepare (sampleRate);
-
-        const auto ons = only (run (engine, s, 2 * samplesPerStep), noteOn);
-
-        int v48 = -1, v49 = -1;
-        bool sawSilentLane = false;
-
-        for (const auto& e : ons)
-        {
-            if (e.number == 48) v48 = e.value;
-            if (e.number == 49) v49 = e.value;
-            if (e.number == 50) sawSilentLane = true;
-        }
-
-        check (! sawSilentLane, "a lane at zero depth stays silent");
-        check (v48 == 100 && v49 == 100,
-               "depth no longer scales velocity, so a quiet mix share still plays full");
-    }
-
-    //==========================================================================
-    section ("In mixed mode the triggering step supplies the velocity");
+    section ("The triggering step supplies the velocity");
     {
         // Trigger = Any Lane, lane 2 on a slower division with its steps accented down. Its
         // notes should come out quieter than lane 1's, even though the pitch they play comes
@@ -2102,8 +2025,7 @@ int main()
         auto s = baseSnapshot();
         s.scale = 0;
         s.velocity = 100;
-        s.noteTriggerSource = params::numLanes;    // Any Lane
-        s.voiceCount = 4;
+        s.noteTriggerSource[0] = params::numLanes;    // Any Lane
 
         s.noteLanes[0].length = 1;
         s.noteLanes[0].division = params::divIndex_1_16;
@@ -2142,89 +2064,45 @@ int main()
     }
 
     //==========================================================================
-    section ("Poly mode keeps each lane's voices to itself");
+    section ("A voice keeps its slots to itself");
     {
-        // Lane 1 holds a note far past its own step while lane 2 hammers away. With a shared
-        // voice pool lane 2 would steal lane 1's slot; with a block per lane it cannot.
+        // Voice 1 holds one note far past this run while Voice 2 piles up more overlapping
+        // notes than it has slots. With a shared pool Voice 2 would steal Voice 1's note; with
+        // a block per voice it can only steal its own.
         auto s = baseSnapshot();
-        s.polyMode = true;
         s.scale = 0;
-        s.voiceCount = 1;
+        s.rangeOctaves = 2;
 
         s.noteLanes[0].length = 1;
         s.noteLanes[0].values[0] = 0.0f;             // note 48
-        s.noteLanes[0].division = params::divIndex_1_4;
-        s.noteLanes[0].depth = 1.0f;
-        setLaneGate (s, 0, 400.0f);   // four steps long
+        s.noteLanes[0].division = 0;                 // 1/1: fires once inside the run
+        setLaneGate (s, 0, 400.0f);                  // four bars long
 
-        s.noteLanes[1].length = 1;
-        s.noteLanes[1].values[0] = 9.0f / 12.0f;     // note 57
-        s.noteLanes[1].division = params::divIndex_1_16;
-        s.noteLanes[1].depth = 1.0f;
-        setLaneGate (s, 1, 400.0f);
+        auto& voice2 = s.noteLanes[params::numLanes];
+        voice2.active = true;
+        voice2.depth  = 1.0f;
+
+        for (int i = 0; i < params::numSteps; ++i)
+        {
+            voice2.values[i] = (float) (i + 1) / 24.0f;   // notes 49 up, never 48
+            voice2.gate[i]   = 1600.0f;                   // nothing releases on its own
+        }
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
 
-        const auto events = run (engine, s, 4 * samplesPerStep);
+        const auto events = run (engine, s, 12 * samplesPerStep);
 
-        // Lane 1's note 48 starts at 0 and its gate runs four 1/4 steps, so nothing should
-        // release it inside this run. Lane 2's note 57 retriggers throughout.
-        int offsOf48 = 0, onsOf57 = 0;
+        int offsOf48 = 0, voice2Offs = 0;
 
         for (const auto& e : events)
         {
             if (e.type == noteOff && e.number == 48) ++offsOf48;
-            if (e.type == noteOn  && e.number == 57) ++onsOf57;
+            if (e.type == noteOff && e.number != 48) ++voice2Offs;
         }
 
-        check (offsOf48 == 0, "a fast lane never steals a slow lane's held note");
-        check (onsOf57 > 1,   "the fast lane still retriggers inside its own block");
-    }
-
-    //==========================================================================
-    section ("Switching the poly switch releases what was sounding");
-    {
-        auto s = baseSnapshot();
-        s.scale = 0;
-        s.voiceCount = 4;
-        s.noteLanes[0].length = 1;
-        s.noteLanes[0].values[0] = 0.0f;
-        setLaneGate (s, 0, 400.0f);
-
-        SequencerEngine engine;
-        engine.prepare (sampleRate);
-
-        juce::MidiBuffer buffer;
-        int sounding = 0;
-
-        for (int pos = 0; pos < 2 * blockSize; pos += blockSize)
-        {
-            buffer.clear();
-            engine.process (s, buffer, blockSize, ppqPerSample * pos, ppqPerSample, true);
-
-            for (const auto metadata : buffer)
-            {
-                if (metadata.getMessage().isNoteOn())  ++sounding;
-                if (metadata.getMessage().isNoteOff()) --sounding;
-            }
-        }
-
-        check (sounding == 1, "a note is held in mixed mode");
-
-        // Flipping the switch moves voice ownership, so the held note has to be released
-        // rather than abandoned in a slot the new mode does not scan.
-        s.polyMode = true;
-        buffer.clear();
-        engine.process (s, buffer, blockSize, ppqPerSample * 2 * blockSize, ppqPerSample, true);
-
-        int released = 0;
-
-        for (const auto metadata : buffer)
-            if (metadata.getMessage().isNoteOff())
-                ++released;
-
-        check (released >= 1, "flipping the switch releases it instead of leaving it stuck");
+        check (offsOf48 == 0,  "the other voice never steals a held note");
+        check (voice2Offs > 0, "a voice past its own slot count steals inside its own block");
     }
 
     //==========================================================================
@@ -2243,7 +2121,6 @@ int main()
         s.quantize     = false;
         s.bendRange    = 2;
         s.mpeEnabled   = true;
-        s.voiceCount   = 2;
         setLaneGate (s, 0, 250.0f);   // 2.5 steps -- outlives the second step's own onset
 
         SequencerEngine engine;
@@ -2280,25 +2157,19 @@ int main()
     }
 
     //==========================================================================
-    section ("MPE gives each poly lane its own channel");
+    section ("MPE gives each voice its own channel");
     {
-        // Same three-lane, simultaneous-onset setup as "Poly mode gives each lane its own
-        // voice" above, with MPE on: the three notes starting together at sample 0 must not
-        // share a channel, or they would fight over one bend the way a single shared channel
-        // already does today.
+        // Both voices starting together at sample 0, with MPE on: the two notes must not share
+        // a channel, or they would fight over one bend the way a single shared channel does.
         auto s = baseSnapshot();
-        s.polyMode     = true;
         s.mpeEnabled   = true;
         s.scale        = 0;
         s.rangeOctaves = 1;
-        useLanes (s, 3);
+        useLanes (s, 1);
 
-        for (int lane = 0; lane < 3; ++lane)
-        {
-            s.noteLanes[lane].length = 1;
-            s.noteLanes[lane].depth  = 1.0f;
-            setLaneGate (s, lane, 50.0f);
-        }
+        s.noteLanes[params::numLanes].active = true;
+        setLaneGate (s, 0, 50.0f);
+        setLaneGate (s, params::numLanes, 50.0f);
 
         SequencerEngine engine;
         engine.prepare (sampleRate);
@@ -2312,19 +2183,11 @@ int main()
             if (e.sample == 0)
                 channelsAtZero.push_back (e.channel);
 
-        bool allDistinctAndInZone = channelsAtZero.size() == 3;
+        const auto inZone = [] (int channel) { return channel >= 2 && channel <= 16; };
 
-        for (size_t i = 0; i < channelsAtZero.size() && allDistinctAndInZone; ++i)
-        {
-            if (channelsAtZero[i] < 2 || channelsAtZero[i] > 16)
-                allDistinctAndInZone = false;
-
-            for (size_t j = i + 1; j < channelsAtZero.size(); ++j)
-                if (channelsAtZero[i] == channelsAtZero[j])
-                    allDistinctAndInZone = false;
-        }
-
-        check (allDistinctAndInZone, "three lanes starting together take three distinct member channels");
+        check (channelsAtZero.size() == 2 && channelsAtZero[0] != channelsAtZero[1]
+                 && inZone (channelsAtZero[0]) && inZone (channelsAtZero[1]),
+               "two voices starting together take two distinct member channels");
     }
 
     //==========================================================================
@@ -2475,19 +2338,17 @@ int main()
     //==========================================================================
     section ("MPE channel pool caps at 15 and steals when exhausted");
     {
-        // Two poly lanes, both retriggering every 1/16 step with a gate that far outlives
-        // this test's window, so nothing would naturally release -- 8 firings each is 16
-        // notes wanting to hold a channel at once, one more than the 15 available.
+        // Both voices retriggering every 1/16 step with a gate that far outlives this test's
+        // window, so nothing would naturally release -- 8 firings each is 16 notes wanting to
+        // hold a channel at once, one more than the 15 available.
         auto s = baseSnapshot();
-        s.polyMode   = true;
         s.mpeEnabled = true;
-        s.voiceCount = 8;
-        useLanes (s, 2);
+        useLanes (s, 1);
+        s.noteLanes[params::numLanes].active = true;
 
-        for (int lane = 0; lane < 2; ++lane)
+        for (int lane : { 0, params::numLanes })
         {
             s.noteLanes[lane].length = 1;
-            s.noteLanes[lane].depth  = 1.0f;
             setLaneGate (s, lane, 1600.0f);
         }
 
@@ -2498,7 +2359,7 @@ int main()
         const auto ons    = only (events, noteOn);
         const auto offs   = only (events, noteOff);
 
-        check (ons.size() == 16, "both lanes fire eight times each over the window");
+        check (ons.size() == 16, "both voices fire eight times each over the window");
 
         bool channelLive[17] {};   // indices 2..16 used; 0 and 1 unused
         int  peakLive = 0;
@@ -2531,7 +2392,6 @@ int main()
     {
         auto s = baseSnapshot();
         s.scale      = 0;
-        s.voiceCount = 4;
         s.mpeEnabled = false;
         s.noteLanes[0].length = 1;
         s.noteLanes[0].values[0] = 0.0f;

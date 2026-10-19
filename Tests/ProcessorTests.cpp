@@ -621,26 +621,62 @@ int main()
         MockPlayHead playHead;
         processor.setPlayHead (&playHead);
 
-        // Poly mode, so each lane that plays contributes its own note-ons and the count
-        // shows up directly in the tally. Over four 1/16 steps lane 1 fires four times and
-        // lane 2, at 1/8, twice.
-        setChoice (processor, params::polyModeId, 1);
+        // Triggered off lane 2, so whether lane 2 is there shows up directly in the tally:
+        // over four 1/16 steps lane 2, at 1/8, fires twice.
+        setChoice (processor, params::noteTriggerSrcId, 1);
 
         setChoice (processor, params::noteLaneCountId, 1);
         const auto one = runProcessor (processor, playHead, true, 4 * 6000);
 
-        check (one.noteOns == 4, "a one-lane instance plays only lane 1");
+        check (one.noteOns == 0, "a one-lane instance does not hear lane 2");
 
         RavelAudioProcessor second;
         second.setPlayConfigDetails (0, 2, 48000.0, 512);
         second.prepareToPlay (48000.0, 512);
         second.setPlayHead (&playHead);
-        setChoice (second, params::polyModeId, 1);
+        setChoice (second, params::noteTriggerSrcId, 1);
         setChoice (second, params::noteLaneCountId, 2);
 
         const auto two = runProcessor (second, playHead, true, 4 * 6000);
 
-        check (two.noteOns == 6, "adding a lane brings its own clock in with it");
+        check (two.noteOns == 2, "adding a lane brings its own clock in with it");
+    }
+
+    //==========================================================================
+    section ("Voice 2 starts empty and plays as a voice of its own");
+    {
+        const auto count = [] (RavelAudioProcessor& processor)
+        {
+            return (int) std::lround (processor.apvts.getRawParameterValue (params::voice2LaneCountId)->load());
+        };
+
+        MockPlayHead playHead;
+
+        RavelAudioProcessor alone;
+        alone.setPlayConfigDetails (0, 2, 48000.0, 512);
+        alone.prepareToPlay (48000.0, 512);
+        alone.setPlayHead (&playHead);
+
+        check (count (alone) == 0, "a fresh instance has no Voice 2 lanes");
+        check (defaultOf (alone, params::stepValueId (0, 0, params::LaneKind::note2)) == 0.0f,
+               "and the first one added is a blank sheet, not Voice 1's pitched default");
+
+        // Voice 1's one lane at 1/16: four notes over four steps.
+        check (runProcessor (alone, playHead, true, 4 * 6000).noteOns == 4,
+               "an empty Voice 2 adds nothing");
+
+        RavelAudioProcessor both;
+        both.setPlayConfigDetails (0, 2, 48000.0, 512);
+        both.prepareToPlay (48000.0, 512);
+        both.setPlayHead (&playHead);
+        setChoice (both, params::voice2LaneCountId, 1);
+
+        check (runProcessor (both, playHead, true, 4 * 6000).noteOns == 8,
+               "adding a Voice 2 lane brings in a second voice firing its own notes");
+
+        params::removeLane (both.apvts, 0, params::LaneKind::note2);
+
+        check (count (both) == 0, "and its last lane can be taken out again, back to empty");
     }
 
     //==========================================================================
@@ -1164,7 +1200,6 @@ int main()
             processor.setPlayConfigDetails (0, 2, 48000.0, 512);
             processor.prepareToPlay (48000.0, 512);
 
-            setChoice (processor, params::voiceCountId, 2);
             setChoice (processor, params::stepGateId (0, 0), 200);   // overlaps into step 2
 
             MockPlayHead playHead;

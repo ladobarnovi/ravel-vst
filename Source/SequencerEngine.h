@@ -61,7 +61,7 @@ public:
         float velocity[params::numSteps] {};
 
         /** Per-step note length, as a percentage of the step's own length. 100 touches the
-            next step without overlapping it; above that overlaps into it (see Voices). */
+            next step without overlapping it; above that overlaps into it. */
         float gate[params::numSteps] {};
 
         /** How far above its own value this step may land, as a width: 0.3 on a step at 0.30
@@ -98,12 +98,14 @@ public:
 
     struct Snapshot
     {
-        NoteLaneSnapshot noteLanes[params::numLanes];
+        /** Both voices' lanes in one run: voice v's lane l is v * numLanes + l, so the first
+            numLanes are Voice 1. Each voice folds only its own lanes and fires its own note. */
+        NoteLaneSnapshot noteLanes[params::numNoteLanes];
         CcLaneSnapshot   ccLanes[params::numLanes];
 
-        // Which Note lane's advance fires the shared note in mixed (non-poly) mode. CC has
-        // no equivalent: its output is never "triggered", it continuously reflects the fold.
-        int   noteTriggerSource = 0;
+        // Which of each voice's lanes fires that voice's note. CC has no equivalent: its
+        // output is never "triggered", it continuously reflects the fold.
+        int   noteTriggerSource[params::numVoices] {};
 
         bool  quantize      = true;
         int   bendRange     = 2;
@@ -122,9 +124,9 @@ public:
         int   ccNumber      = 1;
         int   ccChannel     = 1;
 
-        // Transposes the resolved pitch by whole octaves. Applied in pitchFor(), after the
-        // fold and after the scale, so it never squashes the pattern against the mix clamp.
-        int   noteOctaves   = 0;
+        // Transposes each voice's resolved pitch by whole octaves. Applied in pitchFor(), after
+        // the fold and after the scale, so it never squashes the pattern against the mix clamp.
+        int   noteOctaves[params::numVoices] {};
 
         // Shifts the CC-lane mix before it becomes the Mix CC. Independent of any CC
         // lane's own ccOffset, which shifts that lane's own tap instead.
@@ -136,15 +138,6 @@ public:
         // One Swing for both pools: they run off the same host clock, and swinging a Note
         // lane against a CC lane reads as drift rather than as groove.
         float swing         = 0.0f;
-
-        int   voiceCount    = 1;
-
-        /** False: the lanes are mixed into one value that drives one note.
-            True:  each lane triggers its own note off its own clock, so the lanes run as
-                   independent voices. A lane at zero Depth stays silent, and Trigger is
-                   unused because every lane triggers itself.
-        */
-        bool  polyMode      = false;
 
         /** True: every simultaneously-sounding note gets its own MIDI channel (a standard
             MPE Lower Zone) instead of sharing the Note Channel's one pitch wheel. Off sends
@@ -158,6 +151,10 @@ public:
     };
 
     //==========================================================================
+    /** Starts every lane's UI read-out at "nothing playing", so an editor opened before the
+        first block is not told every lane sits on step one at the bottom of its range. */
+    SequencerEngine() noexcept { publishUiSteps (false); }
+
     void prepare (double sampleRate);
     void reset();
 
@@ -177,12 +174,13 @@ public:
     /** Releases every sounding note immediately -- used on transport stop and reset. */
     void releaseAllVoices (juce::MidiBuffer& out, int sampleOffset);
 
-    /** Voice slots each lane gets to itself in poly mode. This is the ceiling on Voices,
-        which is why the pool is a fixed block per lane rather than a shared free list:
-        a lane holding a long gate can then never have its note stolen by a faster lane.
+    /** Note slots each voice gets to itself -- the ceiling on how many of one voice's notes
+        can overlap when a Gate runs past 100%. A fixed block per voice rather than a shared
+        free list, so one voice holding a long gate can never have its note stolen by the
+        other.
     */
-    static constexpr int voicesPerLane = 8;
-    static constexpr int maxVoices     = params::numLanes * voicesPerLane;
+    static constexpr int slotsPerVoice = 8;
+    static constexpr int maxVoices     = params::numVoices * slotsPerVoice;
 
     // Standard MPE Lower Zone: channel 1 is the master, channels 2-16 are the 15 member
     // channels each simultaneous note gets its own pitch bend on. Fixed, not user-configurable
@@ -209,7 +207,7 @@ public:
 
     int getCurrentStep (int lane, params::LaneKind kind = params::LaneKind::note) const noexcept
     {
-        return (kind == params::LaneKind::cc ? ccUiStep[lane] : noteUiStep[lane])
+        return (kind == params::LaneKind::cc ? ccUiStep[lane] : noteUiStep[noteLaneIndex (lane, kind)])
                  .load (std::memory_order_relaxed);
     }
 
@@ -220,13 +218,19 @@ public:
         value, which the bar is already showing. It exists so a window can be read as a
         window -- a band with no mark in it says a step might land anywhere in a range, and
         says nothing about where it just did. */
-    float getCurrentValue (int lane) const noexcept
+    float getCurrentValue (int lane, params::LaneKind kind = params::LaneKind::note) const noexcept
     {
-        return noteUiValue[lane].load (std::memory_order_relaxed);
+        return noteUiValue[noteLaneIndex (lane, kind)].load (std::memory_order_relaxed);
     }
 
     /** -1 means this lane is not sounding a value right now. */
     static constexpr float noValue = -1.0f;
+
+    /** Where a voice's lane sits in Snapshot::noteLanes. */
+    static constexpr int noteLaneIndex (int lane, params::LaneKind kind) noexcept
+    {
+        return (kind == params::LaneKind::note2 ? params::numLanes : 0) + lane;
+    }
 
 private:
     //==========================================================================
@@ -290,7 +294,7 @@ private:
         float value = noValue;
     };
 
-    LaneState noteLaneStates[params::numLanes];
+    LaneState noteLaneStates[params::numNoteLanes];
     LaneState ccLaneStates[params::numLanes];
 
     double currentSampleRate = 44100.0;
@@ -308,7 +312,7 @@ private:
     Voice voices[maxVoices];
 
     /** One MPE member channel's own bookkeeping. Decoupled from the voice-slot pool above on
-        purpose: up to maxVoices (32) slots can be logically active in poly mode, but only
+        purpose: up to maxVoices (16) slots can be logically active, but only
         mpeMemberChannels (15) physical channels exist, so which slot currently owns a
         channel, and whether that channel's bend range has been announced, are tracked and
         stolen independently of slot stealing.
@@ -365,15 +369,8 @@ private:
     */
     int allocateMpeChannel (juce::MidiBuffer& out, int sampleOffset);
 
-    /** Whether the current mode and voice count still own a slot. In poly mode a lane's
-        block always starts at the same index, so only the offset within it is checked --
-        which is what keeps a held note in slot 0 of lane 2 alive when Voices changes. */
-    static bool slotIsOwned (int slot, int voiceLimit, bool polyMode) noexcept;
-
-    /** Releases voices in slots the current mode and voice count no longer own. */
-    void retireUnownedVoices (juce::MidiBuffer& out, int sampleOffset, int voiceLimit, bool polyMode);
-
-    /** The note and pitch bend a 0..1 value maps to under the current pitch setting. Channel
+    /** The note and pitch bend a 0..1 value maps to under the current pitch setting, moved by
+        the voice's own octave offset. Channel
         is resolved separately, by startNote() -- it is not a function of pitch mapping,
         since MPE picks it from the member-channel pool rather than the fixed note channel.
     */
@@ -383,7 +380,7 @@ private:
         int   bend     = -1;    // -1 means no bend is needed
     };
 
-    static PitchResult pitchFor (float value, const Snapshot& s, int bendRange) noexcept;
+    static PitchResult pitchFor (float value, const Snapshot& s, int octaves, int bendRange) noexcept;
 
     /** The MIDI velocity for a note fired by a given step: the global Velocity scaled by
         that step's own accent. */
@@ -418,10 +415,6 @@ private:
     int   configuredBendRange = -1;
     int   configuredChannel   = -1;
 
-    // Slot ownership differs between the two modes, so anything still sounding when the
-    // switch is flipped is released rather than left for the other mode to inherit.
-    int   configuredPolyMode  = -1;
-
     // Mirrors configuredMode/configuredBendRange/configuredChannel above, but for the MPE
     // path: RPN 6 addresses the whole zone from the master channel, and RPN 0 has to reach
     // each member channel individually rather than one shared note channel. Kept fully
@@ -431,16 +424,12 @@ private:
     int   configuredMpeWantedMode = -1;      // 0 while pitch rides the wheel, 1 while it does not
     int   configuredMpeBendRange  = -1;
 
-    // Channel scheme differs between MPE on/off, same reasoning as configuredPolyMode above:
-    // a flip mid-performance releases everything rather than leave it addressed under the
-    // scheme that just left.
+    // Channel scheme differs between MPE on/off: a flip mid-performance releases everything
+    // rather than leave it addressed under the scheme that just left.
     int   configuredMpeFlag       = -1;
 
-    std::atomic<int>   noteUiStep[params::numLanes] {};
+    // Start at "nothing playing" -- the constructor publishes that before anything reads them.
+    std::atomic<int>   noteUiStep[params::numNoteLanes] {};
     std::atomic<int>   ccUiStep[params::numLanes] {};
-    // Spelled out rather than value-initialised, because zero is a real position inside a
-    // window and this has to start at "nothing landed here yet": publishUiSteps only runs
-    // from process(), so an editor opened before the first block would otherwise be told
-    // every lane was sitting at the bottom of its range.
-    std::atomic<float> noteUiValue[params::numLanes] { -1.0f, -1.0f, -1.0f, -1.0f };
+    std::atomic<float> noteUiValue[params::numNoteLanes] {};
 };

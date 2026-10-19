@@ -146,7 +146,8 @@ private:
         juce::Rectangle<int> settingsArea;
     };
 
-    /** One of the two stacks -- Notes or CC -- and everything the editor holds per stack.
+    /** One of the three stacks -- Voice 1, Voice 2 or CC -- and everything the editor holds per
+        stack.
 
         Indexed by LaneKind, which already runs through Parameters and the engine, so the
         editor draws the same distinction those layers draw rather than inventing a second one,
@@ -155,33 +156,37 @@ private:
     struct Stack
     {
         /** The settings page is the only thing in here that needs the parameter tree.
-            Deliberately not explicit, so the editor's member-init list can build both stacks
+            Deliberately not explicit, so the editor's member-init list can build every stack
             from one braced initialiser each. */
         Stack (juce::AudioProcessorValueTreeState& state) : settingsPage (state) {}
 
         WorkspaceComponent workspace;
         TabPage settingsPage;
 
-        // Every lane in both stacks is built up front, because its parameters exist up front:
+        // Every lane in every stack is built up front, because its parameters exist up front:
         // a VST3 cannot add parameters later. The count only decides how many of them are
         // shown and heard.
         juce::OwnedArray<LaneComponent> lanes;
 
         juce::TextButton addButton { "+ Add lane" };
 
-        // One clipboard per stack: pasting a Note lane's pattern onto a CC lane (or the
-        // reverse) is a cross-domain operation that doesn't mean anything -- a CC lane never
-        // reads velocity or gate -- so the two kinds don't share one.
+        // Pasting a Note lane's pattern onto a CC lane (or the reverse) is a cross-domain
+        // operation that doesn't mean anything -- a CC lane never reads velocity or gate -- so
+        // the CC stack keeps its own. The two voices share Voice 1's: their lanes are the same
+        // kind of lane, and copying a pattern across to the other voice is the obvious use.
         params::LanePattern clipboard;
 
         std::atomic<float>* countParam = nullptr;
-        int count = 0;
+
+        // -1 rather than any real count, so the first applyLaneCount always runs -- Voice 2's
+        // real count starts at 0.
+        int count = -1;
     };
 
     /** Indexed by LaneKind. The tab strip is built in the same order, so a kind and its tab
         index are the same number -- which is what lets applyLaneCount ask whether the stack it
         is changing is the one on screen without a second mapping. */
-    Stack stacks[2];
+    Stack stacks[3];
 
     Stack& stackFor (params::LaneKind kind) noexcept { return stacks[(int) kind]; }
 
@@ -200,7 +205,7 @@ private:
     void removeLane (params::LaneKind kind, int laneIndex);
 
     /** The lane-stack-plus-add-button-plus-footer layout, run once per stack against that
-        stack's own bounds. Both stacks get this same shape, and lanes of both kinds are the
+        stack's own bounds. Every stack gets this same shape, and lanes of every kind are the
         same height, so it does not need to know which one it is laying out. */
     void layoutWorkspace (Stack& stack);
 
@@ -210,11 +215,10 @@ private:
     // tab switch resizes the window through the same path a lane-count change does.
     int lastOutputTab = -1;
 
-    // Non-owning; point into the Notes stack's settings page. Dimmed when the current mode
+    // Non-owning; point into the Voice 1 stack's settings page. Dimmed when the current mode
     // ignores them.
     ControlRow* scaleRow = nullptr;
     ControlRow* bendRangeRow = nullptr;
-    ControlRow* triggerRow = nullptr;
 
     // Dimmed while MPE is on -- the zone fixes the channels then, not this parameter.
     ControlRow* noteChannelRow = nullptr;
@@ -267,7 +271,7 @@ private:
     // Quantize and Scale are a pair: the scale decides whether Bend Range is in play, because
     // a 19-, 23-, 31-, 41- or 53-EDO scale rides on the wheel even with Quantize on. Either
     // one moving re-dims the same two rows.
-    Watched quantize, pitchScale, polyMode, mpeEnabled;
+    Watched quantize, pitchScale, mpeEnabled;
 
     /** The header's MIDI-output chooser. Its own component: enumerating ports, remembering
         which one is open and laying out its own two controls are three things the editor has

@@ -614,7 +614,7 @@ LaneComponent::LaneComponent (juce::AudioProcessorValueTreeState& state, int lan
     // looking like a different kind of grid from the Notes tab's, when they are the same grid
     // with fewer layers behind it. One latched chip says "Value, and that is all there is"
     // where an empty column said nothing at all.
-    const int builtLayers = kind == params::LaneKind::note ? numStepLayers : 1;
+    const int builtLayers = params::isNoteKind (kind) ? numStepLayers : 1;
 
     static const char* layerTooltips[]
     {

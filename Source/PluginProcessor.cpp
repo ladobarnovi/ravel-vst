@@ -7,26 +7,38 @@ RavelAudioProcessor::RavelAudioProcessor()
                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "RAVEL", params::createParameterLayout())
 {
-    for (int lane = 0; lane < params::numLanes; ++lane)
+    for (int voice = 0; voice < params::numVoices; ++voice)
     {
-        auto& np = noteLaneParams[lane];
+        const auto kind = voiceKinds[voice];
 
-        for (int step = 0; step < params::numSteps; ++step)
+        for (int lane = 0; lane < params::numLanes; ++lane)
         {
-            np.values[step]  = apvts.getRawParameterValue (params::stepValueId (lane, step));
-            np.enabled[step] = apvts.getRawParameterValue (params::stepOnId (lane, step));
-            np.chance[step]  = apvts.getRawParameterValue (params::stepChanceId (lane, step));
-            np.stepVelocity[step] = apvts.getRawParameterValue (params::stepVelocityId (lane, step));
-            np.stepGate[step] = apvts.getRawParameterValue (params::stepGateId (lane, step));
-            np.stepSpread[step] = apvts.getRawParameterValue (params::stepSpreadId (lane, step));
+            auto& np = noteLaneParams[voice * params::numLanes + lane];
+
+            for (int step = 0; step < params::numSteps; ++step)
+            {
+                np.values[step]  = apvts.getRawParameterValue (params::stepValueId (lane, step, kind));
+                np.enabled[step] = apvts.getRawParameterValue (params::stepOnId (lane, step, kind));
+                np.chance[step]  = apvts.getRawParameterValue (params::stepChanceId (lane, step, kind));
+                np.stepVelocity[step] = apvts.getRawParameterValue (params::stepVelocityId (lane, step, kind));
+                np.stepGate[step] = apvts.getRawParameterValue (params::stepGateId (lane, step, kind));
+                np.stepSpread[step] = apvts.getRawParameterValue (params::stepSpreadId (lane, step, kind));
+            }
+
+            np.active    = apvts.getRawParameterValue (params::laneOnId (lane, kind));
+            np.length    = apvts.getRawParameterValue (params::laneLengthId (lane, kind));
+            np.division  = apvts.getRawParameterValue (params::laneDivId (lane, kind));
+            np.direction = apvts.getRawParameterValue (params::laneDirId (lane, kind));
+            np.depth     = apvts.getRawParameterValue (params::laneDepthId (lane, kind));
         }
 
-        np.active    = apvts.getRawParameterValue (params::laneOnId (lane));
-        np.length    = apvts.getRawParameterValue (params::laneLengthId (lane));
-        np.division  = apvts.getRawParameterValue (params::laneDivId (lane));
-        np.direction = apvts.getRawParameterValue (params::laneDirId (lane));
-        np.depth     = apvts.getRawParameterValue (params::laneDepthId (lane));
+        pNoteTriggerSrc[voice] = apvts.getRawParameterValue (params::triggerSrcIdFor (kind));
+        pNoteOffset[voice]     = apvts.getRawParameterValue (params::noteOffsetIdFor (kind));
+        pNoteLaneCount[voice]  = apvts.getRawParameterValue (params::laneCountIdFor (kind));
+    }
 
+    for (int lane = 0; lane < params::numLanes; ++lane)
+    {
         auto& cp = ccLaneParams[lane];
 
         for (int step = 0; step < params::numSteps; ++step)
@@ -47,7 +59,6 @@ RavelAudioProcessor::RavelAudioProcessor()
         cp.ccOffset  = apvts.getRawParameterValue (params::laneCcOffsetId (lane));
     }
 
-    pNoteTriggerSrc = apvts.getRawParameterValue (params::noteTriggerSrcId);
     pQuantize      = apvts.getRawParameterValue (params::quantizeId);
     pBendRange     = apvts.getRawParameterValue (params::bendRangeId);
     pRootNote      = apvts.getRawParameterValue (params::rootNoteId);
@@ -57,15 +68,11 @@ RavelAudioProcessor::RavelAudioProcessor()
     pCcOn          = apvts.getRawParameterValue (params::ccOnId);
     pCcNumber      = apvts.getRawParameterValue (params::ccNumberId);
     pCcChannel     = apvts.getRawParameterValue (params::ccChannelId);
-    pNoteOffset    = apvts.getRawParameterValue (params::noteOffsetId);
     pCcOffset      = apvts.getRawParameterValue (params::ccOffsetId);
     pSlew          = apvts.getRawParameterValue (params::slewId);
     pFreeRun       = apvts.getRawParameterValue (params::freeRunId);
     pSwing         = apvts.getRawParameterValue (params::swingId);
-    pVoiceCount    = apvts.getRawParameterValue (params::voiceCountId);
-    pPolyMode      = apvts.getRawParameterValue (params::polyModeId);
     pMpeEnabled    = apvts.getRawParameterValue (params::mpeEnabledId);
-    pNoteLaneCount = apvts.getRawParameterValue (params::noteLaneCountId);
     pCcLaneCount   = apvts.getRawParameterValue (params::ccLaneCountId);
 }
 
@@ -97,19 +104,26 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
 {
     SequencerEngine::Snapshot s;
 
-    const int noteLaneCount = juce::jlimit (1, params::numLanes,
-                                            (int) std::lround (pNoteLaneCount->load()));
-    const int ccLaneCount   = juce::jlimit (1, params::numLanes,
-                                            (int) std::lround (pCcLaneCount->load()));
+    const int ccLaneCount = juce::jlimit (1, params::numLanes, (int) std::lround (pCcLaneCount->load()));
 
-    for (int lane = 0; lane < params::numLanes; ++lane)
+    for (int voice = 0; voice < params::numVoices; ++voice)
     {
-        const auto& np = noteLaneParams[lane];
-        auto& ns = s.noteLanes[lane];
+        s.noteTriggerSource[voice] = (int) std::lround (pNoteTriggerSrc[voice]->load());
+        s.noteOctaves[voice]       = (int) std::lround (pNoteOffset[voice]->load());
+    }
+
+    for (int noteLane = 0; noteLane < params::numNoteLanes; ++noteLane)
+    {
+        const auto& np = noteLaneParams[noteLane];
+        auto& ns = s.noteLanes[noteLane];
+
+        const int voice     = noteLane / params::numLanes;
+        const int laneCount = juce::jlimit (params::minLaneCount (voiceKinds[voice]), params::numLanes,
+                                            (int) std::lround (pNoteLaneCount[voice]->load()));
 
         // A lane the instance has not been given yet is inert in exactly the same way a
         // muted one is, so the engine needs to know about only the one flag.
-        ns.active    = lane < noteLaneCount && np.active->load() > 0.5f;
+        ns.active    = noteLane % params::numLanes < laneCount && np.active->load() > 0.5f;
         ns.length    = (int) std::lround (np.length->load());
         ns.division  = (int) std::lround (np.division->load());
         ns.direction = (int) std::lround (np.direction->load());
@@ -131,7 +145,10 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
                 ns.spread[step]   = np.stepSpread[step]->load();
             }
         }
+    }
 
+    for (int lane = 0; lane < params::numLanes; ++lane)
+    {
         const auto& cp = ccLaneParams[lane];
         auto& cs = s.ccLanes[lane];
 
@@ -157,7 +174,6 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
         cs.ccOffset  = cp.ccOffset->load();
     }
 
-    s.noteTriggerSource = (int) std::lround (pNoteTriggerSrc->load());
     s.quantize          = pQuantize->load() > 0.5f;
     s.bendRange         = (int) std::lround (pBendRange->load());
     s.root              = (int) std::lround (pRootNote->load());
@@ -170,12 +186,9 @@ SequencerEngine::Snapshot RavelAudioProcessor::buildSnapshot() const
     s.ccOn              = pCcOn->load() > 0.5f;
     s.ccNumber          = (int) std::lround (pCcNumber->load());
     s.ccChannel         = (int) std::lround (pCcChannel->load());
-    s.noteOctaves       = (int) std::lround (pNoteOffset->load());
     s.ccOffset          = pCcOffset->load();
     s.slewMs            = pSlew->load();
     s.swing             = pSwing->load();
-    s.voiceCount        = (int) std::lround (pVoiceCount->load());
-    s.polyMode          = pPolyMode->load() > 0.5f;
     // On: the engine gives each simultaneous note its own MPE member channel and
     // s.midiChannel is inert. Off: every note goes out on s.midiChannel and shares that
     // one channel's single pitch wheel.

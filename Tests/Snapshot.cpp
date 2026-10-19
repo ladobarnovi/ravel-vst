@@ -10,7 +10,7 @@
     Not part of the plugin, and not built by default -- CMake only creates the target when
     RAVEL_SNAPSHOT_SOURCE points at this file.
 
-    Usage:  RavelSnapshot <out.png> [notes|cc] [laneCount] [chipToClick]
+    Usage:  RavelSnapshot <out.png> [notes|voice2|cc] [laneCount] [chipToClick]
 
     Given a fourth argument -- the label of a chip on the lane strips, so Val, Spread, Vel,
     Prob, Gate, RND or CLR -- it clicks that chip on every lane and writes a numbered frame per sample
@@ -125,7 +125,6 @@ namespace
         setParameter (state, params::swingId, 0.18f);
         setParameter (state, params::quantizeId, 1.0f);
         setParameter (state, params::mpeEnabledId, 1.0f);
-        setParameter (state, params::voiceCountId, 4.0f);
         setParameter (state, params::freeRunId, 1.0f);
         setParameter (state, params::slewId, 22.0f);
         setParameter (state, params::laneCcOffsetId (1), 0.25f);
@@ -194,6 +193,10 @@ int main (int argc, char** argv)
     setParameter (processor.apvts, params::noteLaneCountId, (float) laneCount);
     setParameter (processor.apvts, params::ccLaneCountId,   (float) juce::jmin (laneCount, 2));
 
+    // Voice 2 only gets lanes when it is the tab being looked at, so a count of 0 shows it
+    // the way a fresh instance does.
+    setParameter (processor.apvts, params::voice2LaneCountId, workspace == "voice2" ? (float) laneCount : 0.0f);
+
     dialInDemoPattern (processor.apvts);
 
     std::unique_ptr<juce::AudioProcessorEditor> editor (processor.createEditor());
@@ -204,9 +207,12 @@ int main (int argc, char** argv)
         return 1;
     }
 
-    if (workspace == "cc")
-        if (auto* tabs = findDescendant<TabStrip> (*editor))
-            tabs->setSelectedIndex (1);
+    const auto kind = workspace == "cc"     ? params::LaneKind::cc
+                    : workspace == "voice2" ? params::LaneKind::note2
+                                            : params::LaneKind::note;
+
+    if (auto* tabs = findDescendant<TabStrip> (*editor))
+        tabs->setSelectedIndex ((int) kind);
 
     // The tab switch resizes the window, but only from the editor's timer -- so the size
     // below has to be read after the queue has drained, not before.
